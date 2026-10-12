@@ -142,7 +142,7 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
     <section class="screen active" id="screen-garage">
       <div class="card" style="margin-top:8px;padding-bottom:8px">
         <div class="vehicle-hero">
-          <img src="leaf.jpg" alt="Nissan Leaf">
+          <img src="leaf.png" alt="Nissan Leaf">
           <div class="name">Nissan Leaf</div>
         </div>
       </div>
@@ -192,7 +192,7 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
     <!-- ДИСТАНЦИОННЫЕ УСЛУГИ -->
     <section class="screen" id="screen-remote">
       <div style="padding:12px 16px 0;text-align:center">
-        <img src="leaf.jpg" alt="" style="width:200px;object-fit:contain;max-height:110px">
+        <img src="leaf.png" alt="" style="width:200px;object-fit:contain;max-height:110px">
         <div style="font-size:15px;text-transform:uppercase;color:#13172c;letter-spacing:1px;margin-top:4px">Nissan Leaf</div>
       </div>
       <div class="remote-wrap">
@@ -302,7 +302,12 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
       <div class="section-title">Приложение</div>
       <div class="more-item" onclick="openSettings()">
         <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-1.42 3.42 2 2 0 01-1.41-.59l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-3.42-1.42 2 2 0 01.59-1.41l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 011.42-3.42 2 2 0 011.41.59l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 013.42 1.42 2 2 0 01-.59 1.41l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></div>
-        Настройки подключения
+        <span id="more-settings-label">Настройки подключения</span>
+        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+      </div>
+      <div class="more-item" id="more-ota" style="display:none" onclick="location.href='/ota'">
+        <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg></div>
+        Обновление прошивки
         <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
       </div>
       <div class="more-item" onclick="toast('Leaf Control — TCU для Nissan Leaf ZE1')">
@@ -547,6 +552,7 @@ function remoteStatus(type){
 
 // ---------- settings modal ----------
 function openSettings(){
+  if(mode==='local'){ location.href='/settings'; return; }
   cfg=loadCfg()||{host:'m5.wqtt.ru',port:15871,user:'',pass:'',vid:'leaf'};
   $('cfg-host').value=cfg.host||''; $('cfg-port').value=cfg.port||15871;
   $('cfg-user').value=cfg.user||''; $('cfg-pass').value=cfg.pass||'';
@@ -575,7 +581,11 @@ async function boot(){
     const ac=new AbortController();
     setTimeout(()=>ac.abort(),1800);
     const r=await fetch('/api/status',{signal:ac.signal});
-    if(r.ok){ mode='local'; pollLocal(); setInterval(pollLocal,3000); $('more-mode').textContent='Локально (плата)'; return; }
+    if(r.ok){ mode='local'; pollLocal(); setInterval(pollLocal,3000);
+      $('more-mode').textContent='Локально (плата)';
+      $('more-settings-label').textContent='Настройки платы';
+      $('more-ota').style.display='flex';
+      return; }
   }catch(e){}
   if(loadCfg()){ mqttConnect(); $('more-mode').textContent='MQTT'; }
   else { setConn(false,'НЕТ ДАННЫХ'); $('more-mode').textContent='Не настроено — нажмите Настройки'; openSettings(); }

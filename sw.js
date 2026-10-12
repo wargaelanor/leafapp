@@ -1,5 +1,5 @@
-const CACHE = 'leaf-v1';
-const ASSETS = ['./', './index.html', './leaf.jpg', './manifest.webmanifest', './icon-192.png'];
+const CACHE = 'leaf-v2';
+const ASSETS = ['./', './index.html', './leaf.png', './manifest.webmanifest', './icon-192.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
