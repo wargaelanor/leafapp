@@ -528,8 +528,9 @@ async function pollLocal(){
 }
 async function localCmd(path){
   try{
-    // redirect:'manual' keeps the 303 from downloading the whole HTML page
-    const r = await fetch(path,{redirect:'manual'});
+    // POST-only routes (CSRF protection); redirect:'manual' keeps the 303
+    // from downloading the whole HTML page
+    const r = await fetch(path,{method:'POST', redirect:'manual'});
     if(r.type==='opaqueredirect'){ return true; } // 303 = accepted
     if(!r.ok){ toast('Команда отклонена'); return false; }
     return true;
