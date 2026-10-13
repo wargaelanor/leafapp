@@ -94,6 +94,10 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
 .remote-meta .cell svg{width:20px;height:20px;color:#707070}
 .remote-meta .cell span{font-size:11px}
 .remote-meta .updated{font-size:11px;color:#c1c1c1}
+.remote-extra{display:flex;gap:10px;justify-content:center;margin:12px 0 4px}
+.pill-btn{display:flex;align-items:center;gap:7px;background:#fff;border:1px solid #e6e6e6;border-radius:22px;padding:9px 20px;font-size:13px;color:#333;font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.06);cursor:pointer}
+.pill-btn:active{background:#f4f4f4}
+.pill-btn svg{width:16px;height:16px}
 .vs-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 16px}
 .vs-cell{background:#fff;border-radius:8px;padding:12px;box-shadow:0 1px 3px rgba(0,0,0,.06);display:flex;align-items:center;gap:10px}
 .vs-cell .vsi{width:32px;height:32px;display:flex;align-items:center;justify-content:center;color:#0077ac;flex-shrink:0}
@@ -186,6 +190,31 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
         <div class="ft"><div class="ft-title">Дистанционные услуги</div><div class="ft-sub">Климат, зарядка, двери</div></div>
         <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
       </div>
+      <div class="feature-card" onclick="go('remote')">
+        <div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2a7 7 0 00-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 00-7-7zm0 9.5A2.5 2.5 0 1112 6.5a2.5 2.5 0 010 5z"/></svg></div>
+        <div class="ft"><div class="ft-title">Поиск моей машины</div><div class="ft-sub">Сигнал и фары</div></div>
+        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+      </div>
+      <div class="feature-card" onclick="toast('Магазин недоступен')">
+        <div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 4h-2l-1 2v2a2 2 0 001.6 1.96A6 6 0 0012.9 20 6 6 0 0019 11.96 2 2 0 0020.6 10V8l-1-2H7zm1 4l.4-1h7.2l.6 1H8zm-.6 2h9.35a4 4 0 01-3.9 6.06A8 8 0 0112 10.5a8 8 0 01-1.75-.06 4 4 0 01-.85.56z" fill="currentColor"/></svg></div>
+        <div class="ft"><div class="ft-title">Магазин</div><div class="ft-sub">Аксессуары и сервис</div></div>
+        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+      </div>
+      <div class="feature-card" onclick="toast('Нет подключённых уведомлений')">
+        <div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 22a2.5 2.5 0 002.45-2h-4.9A2.5 2.5 0 0012 22zm7-6v-5a7 7 0 00-5-6.7V3a2 2 0 10-4 0v1.3A7 7 0 005 11v5l-2 2v1h18v-1l-2-2z"/></svg></div>
+        <div class="ft"><div class="ft-title">Уведомления ЭЗ</div><div class="ft-sub">Завершение зарядки и др.</div></div>
+        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+      </div>
+      <div class="feature-card" onclick="toast('История зарядок недоступна')">
+        <div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13.63.51L4.24 13.11c-.6.85 0 2.06 1.03 2.06h4.66l-1.63 8.12c-.24 1.33 1.45 2.12 2.3 1.03l9.39-12.6c.6-.85 0-2.06-1.03-2.06h-4.66l1.63-8.12c.24-1.33-1.45-2.12-2.3-1.03z"/></svg></div>
+        <div class="ft"><div class="ft-title">История зарядок</div><div class="ft-sub">Сеансы и статистика</div></div>
+        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+      </div>
+      <div class="feature-card" onclick="toast('Анализ поездок недоступен')">
+        <div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3.5 18.5l5.57-5.57 3.54 3.53L20.5 8.07V16h-2V10.5L9.6 17.43l-3.54-3.53L4 16.09l-.5 2.41zM2 20h20v2H2v-2z"/></svg></div>
+        <div class="ft"><div class="ft-title">Анализ поездок</div><div class="ft-sub">Эффективность и стиль</div></div>
+        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+      </div>
       <div style="height:16px"></div>
     </section>
 
@@ -203,9 +232,9 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
           <span class="val" id="sp-val">21.0</span>
         </div>
         <div class="remote-pad">
-          <div class="rbtn a" id="rb-unlock" onclick="cmd('unlock')">
-            <svg viewBox="0 0 26 30" fill="none"><path d="M23.13 29.6H2.78A2.78 2.78 0 010 26.83V13.88A2.78 2.78 0 012.78 11.1h1.85V8.33A8.34 8.34 0 0112.95 0h.02a8.28 8.28 0 015.26 1.91 8.47 8.47 0 012.85 4.72h-2.85a5.62 5.62 0 00-1.99-2.77 5.5 5.5 0 00-3.3-1.09A5.56 5.56 0 007.4 8.33V11.1h10.05v.03h5V11.1h.68A2.78 2.78 0 0125.9 13.88v12.95a2.78 2.78 0 01-2.77 2.77zM2.78 13.88v12.95h20.35V13.88H2.78z" fill="#333"/></svg>
-            <span>Открыть</span>
+          <div class="rbtn a" id="rb-horn" onclick="cmd('hornlights')">
+            <svg viewBox="0 0 24 24" fill="#333"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0014 7.97v8.05A4.47 4.47 0 0016.5 12zM14 3.23v2.06a7 7 0 010 13.42v2.06a9 9 0 000-17.54z"/></svg>
+            <span>Сигнал и фары</span>
           </div>
           <div class="rbtn b" id="rb-lock" onclick="cmd('lock')">
             <svg viewBox="0 0 26 30" fill="none"><path d="M23.13 11.1h-1.85l-.01-2.7A8.33 8.33 0 104.63 8.33l0 2.77H2.78A2.78 2.78 0 000 13.88v12.95a2.78 2.78 0 002.78 2.77h20.35A2.78 2.78 0 0025.9 26.83V13.88a2.78 2.78 0 00-2.77-2.78zM7.4 8.33a5.55 5.55 0 0111.1 0v2.77H7.4V8.33zm15.73 18.5H2.78V13.88h20.35v12.95z" fill="#333"/></svg>
@@ -216,14 +245,18 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
             <svg viewBox="0 0 24 25" fill="none" stroke="#333" stroke-width="1.6"><path d="M13.63.51L4.24 13.11c-.6.85 0 2.06 1.03 2.06h4.66l-1.63 8.12c-.24 1.33 1.45 2.12 2.3 1.03l9.39-12.6c.6-.85 0-2.06-1.03-2.06h-4.66l1.63-8.12c.24-1.33-1.45-2.12-2.3-1.03z"/></svg>
             <span id="rb-climate-label">Климат</span>
           </div>
-          <div class="rbtn c" id="rb-charge" onclick="cmd('charge')">
-            <svg viewBox="0 0 25 25" fill="currentColor"><path d="M14.65 2.17a1.13 1.13 0 00-2.25 0l-.01 4.13h2.25l.01-4.13zM5.63 2.17a1.13 1.13 0 00-2.25 0l-.01 4.13h2.26l0-4.13zm11.65 5.64H.75A.75.75 0 000 8.56v.75c0 .42.34.75.75.75H1.5v3a7.5 7.5 0 006.39 7.4v7.62h2.25V20.46a7.5 7.5 0 006.39-7.4v-3h.75a.75.75 0 00.75-.75v-.75a.75.75 0 00-.75-.75zm-3 5.26a5.26 5.26 0 01-10.52 0v-3h10.52v3z"/></svg>
-            <span>Зарядка</span>
+          <div class="rbtn c" id="rb-lights" onclick="cmd('lights')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="1.5"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-4 10.5c.6.55 1 1.25 1 2v.5h6v-.5c0-.75.4-1.45 1-2A6 6 0 0012 3z"/></svg>
+            <span>Фары</span>
           </div>
-          <div class="rbtn d" id="rb-refresh" onclick="cmd('refresh')">
-            <svg viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="1.6"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
-            <span>Обновить</span>
+          <div class="rbtn d" id="rb-unlock" onclick="cmd('unlock')">
+            <svg viewBox="0 0 26 30" fill="none"><path d="M23.13 29.6H2.78A2.78 2.78 0 010 26.83V13.88A2.78 2.78 0 012.78 11.1h1.85V8.33A8.34 8.34 0 0112.95 0h.02a8.28 8.28 0 015.26 1.91 8.47 8.47 0 012.85 4.72h-2.85a5.62 5.62 0 00-1.99-2.77 5.5 5.5 0 00-3.3-1.09A5.56 5.56 0 007.4 8.33V11.1h10.05v.03h5V11.1h.68A2.78 2.78 0 0125.9 13.88v12.95a2.78 2.78 0 01-2.77 2.77zM2.78 13.88v12.95h20.35V13.88H2.78z" fill="#333"/></svg>
+            <span>Открыть</span>
           </div>
+        </div>
+        <div class="remote-extra">
+          <button class="pill-btn" onclick="cmd('charge')"><svg viewBox="0 0 25 25" fill="currentColor"><path d="M14.65 2.17a1.13 1.13 0 00-2.25 0l-.01 4.13h2.25l.01-4.13zM5.63 2.17a1.13 1.13 0 00-2.25 0l-.01 4.13h2.26l0-4.13zm11.65 5.64H.75A.75.75 0 000 8.56v.75c0 .42.34.75.75.75H1.5v3a7.5 7.5 0 006.39 7.4v7.62h2.25V20.46a7.5 7.5 0 006.39-7.4v-3h.75a.75.75 0 00.75-.75v-.75a.75.75 0 00-.75-.75zm-3 5.26a5.26 5.26 0 01-10.52 0v-3h10.52v3z"/></svg>Зарядка</button>
+          <button class="pill-btn" onclick="cmd('refresh')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>Обновить</button>
         </div>
         <div class="remote-divider"></div>
         <div class="remote-meta">
@@ -528,6 +561,7 @@ function cmd(type){
   if(mode==='local'){
     const sp=parseFloat($('sp-slider').value);
     const map={ charge:'/charge_on', lock:'/lock', unlock:'/unlock', refresh:'/refresh',
+      lights:'/lights', hornlights:'/hornlights',
       hvac: S.hvac?'/hvac_off':'/hvac_on?setpoint='+sp };
     localCmd(map[type]);
     return;
@@ -537,6 +571,7 @@ function cmd(type){
   const sp=parseFloat($('sp-slider').value);
   const payload={ charge:'charge start', lock:'lock', unlock:'unlock',
     refresh:'server v3 update modified',
+    lights:'lights', hornlights:'hornlights',
     hvac: S.hvac?'climatecontrol off':'climatecontrol on '+sp }[type];
   client.publish(p,payload);
   toast('Команда отправлена');
@@ -544,7 +579,8 @@ function cmd(type){
 }
 function remoteStatus(type){
   const el=$('remote-status');
-  const names={charge:'Зарядка',lock:'Закрытие',unlock:'Открытие',refresh:'Обновление',hvac:'Климат'};
+  const names={charge:'Зарядка',lock:'Закрытие',unlock:'Открытие',refresh:'Обновление',hvac:'Климат',
+    lights:'Фары',hornlights:'Сигнал и фары'};
   el.textContent=names[type]+': запрос отправлен…';
   setTimeout(()=>{el.textContent=names[type]+': выполнено';},2000);
   setTimeout(()=>{el.textContent='Выберите действие';},4500);
