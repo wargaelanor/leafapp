@@ -51,12 +51,20 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
 .btn-primary{display:block;width:calc(100% - 32px);margin:0 16px 16px;padding:13px;background:#0077ac;color:#fff;border:none;border-radius:4px;font-size:14px;font-family:inherit;cursor:pointer;letter-spacing:.3px}
 .btn-primary:active{background:#005f8c}
 .btn-primary:disabled{background:#a5cde3}
+.btn-primary.charging{background:#34c759}
 .action-buttons{display:flex;justify-content:center;gap:32px;padding:16px 0 20px;background:#f4f5f7;margin:8px 16px;border-radius:8px}
 .action-btn{display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer}
 .action-btn .circle{width:68px;height:68px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.1);display:flex;align-items:center;justify-content:center}
 .action-btn .circle svg{width:30px;height:30px;color:#333}
 .action-btn span{font-size:12px;color:#707070}
+.action-btn .circle.on{background:#e9f7ef;box-shadow:0 0 0 2px #34c759 inset,0 1px 4px rgba(0,0,0,.1)}
+.action-btn .circle.on svg{color:#1a7f37}
+.action-btn .circle.hot{background:#fff6e8;box-shadow:0 0 0 2px #ff9500 inset,0 1px 4px rgba(0,0,0,.1)}
+.action-btn .circle.hot svg{color:#e67e22}
+.action-btn .circle.unlocked{background:#fff6e8;box-shadow:0 0 0 2px #ff9500 inset,0 1px 4px rgba(0,0,0,.1)}
 .feature-card{background:#fff;border-radius:8px;margin:0 16px 8px;box-shadow:0 1px 3px rgba(0,0,0,.06);padding:16px;display:flex;align-items:center;gap:14px;cursor:pointer}
+.feature-card.active{background:#fff8ec;box-shadow:0 0 0 1px #ff9500 inset,0 1px 3px rgba(0,0,0,.06)}
+.feature-card.active .ft-title{color:#b45309}
 .feature-card .fi{width:44px;height:44px;background:#f4f5f7;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .feature-card .fi svg{width:24px;height:24px;color:#0077ac}
 .feature-card .ft{flex:1;min-width:0}
@@ -163,19 +171,19 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
             <span id="g-charge-state">—</span>
           </div>
         </div>
-        <button class="btn-primary" id="g-charge-btn" onclick="cmd('charge')">Начать зарядку</button>
+        <button class="btn-primary" id="g-charge-btn" onclick="toggleCharge()">Начать зарядку</button>
       </div>
       <div class="action-buttons">
-        <div class="action-btn" onclick="go('remote')">
-          <div class="circle"><svg viewBox="0 0 24 25" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M13.63.51L4.24 13.11c-.6.85 0 2.06 1.03 2.06h4.66l-1.63 8.12c-.24 1.33 1.45 2.12 2.3 1.03l9.39-12.6c.6-.85 0-2.06-1.03-2.06h-4.66l1.63-8.12c.24-1.33-1.45-2.12-2.3-1.03z" fill="#333"/></svg></div>
-          <span>Зарядка</span>
+        <div class="action-btn" id="act-lights" onclick="actLights()">
+          <div class="circle" id="act-lights-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-4 10.5c.6.55 1 1.25 1 2v.5h6v-.5c0-.75.4-1.45 1-2A6 6 0 0012 3z"/></svg></div>
+          <span>Свет</span>
         </div>
-        <div class="action-btn" onclick="go('remote')">
-          <div class="circle"><svg viewBox="0 0 26 30" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M23.13 11.1h-1.85l-.01-2.7A8.33 8.33 0 104.63 8.33l0 2.77H2.78A2.78 2.78 0 000 13.88v12.95a2.78 2.78 0 002.78 2.77h20.35A2.78 2.78 0 0025.9 26.83V13.88a2.78 2.78 0 00-2.77-2.78zM7.4 8.33a5.55 5.55 0 0111.1 0v2.77H7.4V8.33zm15.73 18.5H2.78V13.88h20.35v12.95z" fill="#333"/></svg></div>
+        <div class="action-btn" id="act-doors" onclick="actDoors()">
+          <div class="circle" id="act-doors-ic"><svg viewBox="0 0 26 30" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M23.13 11.1h-1.85l-.01-2.7A8.33 8.33 0 104.63 8.33l0 2.77H2.78A2.78 2.78 0 000 13.88v12.95a2.78 2.78 0 002.78 2.77h20.35A2.78 2.78 0 0025.9 26.83V13.88a2.78 2.78 0 00-2.77-2.78zM7.4 8.33a5.55 5.55 0 0111.1 0v2.77H7.4V8.33zm15.73 18.5H2.78V13.88h20.35v12.95z" fill="#333"/></svg></div>
           <span>Двери</span>
         </div>
-        <div class="action-btn" onclick="go('remote')">
-          <div class="circle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="12" cy="12" r="3.4"/><path d="M12 16.5a4.5 4.5 0 01-3.4-1.5 4.9 4.9 0 01-3.8 1.4 9.5 9.5 0 01-6.2-3.4 2.6 2.6 0 012.5-4.3 4.5 4.5 0 011.7 0 9.8 9.8 0 012.7-2.5 4.9 4.9 0 013.8-1.4 5.3 5.3 0 015.5 3.1 9.8 9.8 0 01.2 2.7 4.5 4.5 0 01-1.7 0zM3.2 13.4a6.9 6.9 0 001.9.5 9.8 9.8 0 002.7-.2 4.5 4.5 0 011.2-5 4.9 4.9 0 01-3.2-3.8 2.6 2.6 0 01-4.3-2.1 9.5 9.5 0 01-3.4 6.2 5.3 5.3 0 013.1 5.5zM12 7.5a4.5 4.5 0 013.4 1.5 4.9 4.9 0 013.8-1.4 5.3 5.3 0 015.5 3.1 9.8 9.8 0 01-3.4 6.2 5.3 5.3 0 01-5.5-3.1 9.8 9.8 0 01.2-2.7 4.5 4.5 0 01-1.7 0z" fill="#333"/></svg></div>
+        <div class="action-btn" id="act-climate" onclick="actClimate()">
+          <div class="circle" id="act-climate-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="12" cy="12" r="3.4"/><path d="M12 16.5a4.5 4.5 0 01-3.4-1.5 4.9 4.9 0 01-3.8 1.4 9.5 9.5 0 01-6.2-3.4 2.6 2.6 0 012.5-4.3 4.5 4.5 0 011.7 0 9.8 9.8 0 012.7-2.5 4.9 4.9 0 013.8-1.4 5.3 5.3 0 015.5 3.1 9.8 9.8 0 01.2 2.7 4.5 4.5 0 01-1.7 0zM3.2 13.4a6.9 6.9 0 001.9.5 9.8 9.8 0 002.7-.2 4.5 4.5 0 011.2-5 4.9 4.9 0 01-3.2-3.8 2.6 2.6 0 01-4.3-2.1 9.5 9.5 0 01-3.4 6.2 5.3 5.3 0 013.1 5.5zM12 7.5a4.5 4.5 0 013.4 1.5 4.9 4.9 0 013.8-1.4 5.3 5.3 0 015.5 3.1 9.8 9.8 0 01-3.4 6.2 5.3 5.3 0 01-5.5-3.1 9.8 9.8 0 01.2-2.7 4.5 4.5 0 01-1.7 0z" fill="#333"/></svg></div>
           <span>Климат</span>
         </div>
       </div>
@@ -190,14 +198,9 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
         <div class="ft"><div class="ft-title">Дистанционные услуги</div><div class="ft-sub">Климат, зарядка, двери</div></div>
         <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
       </div>
-      <div class="feature-card" onclick="go('remote')">
+      <div class="feature-card" id="find-car" onclick="findCar()">
         <div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2a7 7 0 00-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 00-7-7zm0 9.5A2.5 2.5 0 1112 6.5a2.5 2.5 0 010 5z"/></svg></div>
-        <div class="ft"><div class="ft-title">Поиск моей машины</div><div class="ft-sub">Сигнал и фары</div></div>
-        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
-      </div>
-      <div class="feature-card" onclick="toast('Магазин недоступен')">
-        <div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 4h-2l-1 2v2a2 2 0 001.6 1.96A6 6 0 0012.9 20 6 6 0 0019 11.96 2 2 0 0020.6 10V8l-1-2H7zm1 4l.4-1h7.2l.6 1H8zm-.6 2h9.35a4 4 0 01-3.9 6.06A8 8 0 0112 10.5a8 8 0 01-1.75-.06 4 4 0 01-.85.56z" fill="currentColor"/></svg></div>
-        <div class="ft"><div class="ft-title">Магазин</div><div class="ft-sub">Аксессуары и сервис</div></div>
+        <div class="ft"><div class="ft-title">Поиск моей машины</div><div class="ft-sub" id="find-car-sub">Сигнал и фары</div></div>
         <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
       </div>
       <div class="feature-card" onclick="toast('Нет подключённых уведомлений')">
@@ -228,7 +231,7 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
         <div class="remote-status" id="remote-status">Выберите действие</div>
         <div class="setpoint-row">
           <label>Климат, °C</label>
-          <input type="range" id="sp-slider" min="16" max="28" step="0.5" value="21" oninput="document.getElementById('sp-val').textContent=this.value">
+          <input type="range" id="sp-slider" min="16" max="28" step="0.5" value="21" oninput="spChanged(this.value)">
           <span class="val" id="sp-val">21.0</span>
         </div>
         <div class="remote-pad">
@@ -255,7 +258,7 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
           </div>
         </div>
         <div class="remote-extra">
-          <button class="pill-btn" onclick="cmd('charge')"><svg viewBox="0 0 25 25" fill="currentColor"><path d="M14.65 2.17a1.13 1.13 0 00-2.25 0l-.01 4.13h2.25l.01-4.13zM5.63 2.17a1.13 1.13 0 00-2.25 0l-.01 4.13h2.26l0-4.13zm11.65 5.64H.75A.75.75 0 000 8.56v.75c0 .42.34.75.75.75H1.5v3a7.5 7.5 0 006.39 7.4v7.62h2.25V20.46a7.5 7.5 0 006.39-7.4v-3h.75a.75.75 0 00.75-.75v-.75a.75.75 0 00-.75-.75zm-3 5.26a5.26 5.26 0 01-10.52 0v-3h10.52v3z"/></svg>Зарядка</button>
+          <button class="pill-btn" onclick="toggleCharge()"><svg viewBox="0 0 25 25" fill="currentColor"><path d="M14.65 2.17a1.13 1.13 0 00-2.25 0l-.01 4.13h2.25l.01-4.13zM5.63 2.17a1.13 1.13 0 00-2.25 0l-.01 4.13h2.26l0-4.13zm11.65 5.64H.75A.75.75 0 000 8.56v.75c0 .42.34.75.75.75H1.5v3a7.5 7.5 0 006.39 7.4v7.62h2.25V20.46a7.5 7.5 0 006.39-7.4v-3h.75a.75.75 0 00.75-.75v-.75a.75.75 0 00-.75-.75zm-3 5.26a5.26 5.26 0 01-10.52 0v-3h10.52v3z"/></svg>Зарядка</button>
           <button class="pill-btn" onclick="cmd('refresh')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>Обновить</button>
         </div>
         <div class="remote-divider"></div>
@@ -406,11 +409,18 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
 // ---------- state ----------
 const S = { soc:-1, cabin:-99, charging:false, charger:'', hvac:false, lock:-1,
   setpoint:-1, fan:-1, heat:false, cool:false, vent:-1,
-  soh:-1, gids:-1, v:-1, i:0, packValid:false, amb:-99, on:-1, seq:false, locking:false };
+  soh:-1, gids:-1, v:-1, i:0, packValid:false, amb:-99, on:-1, seq:false, locking:false,
+  lights:-1 };
 let mode = 'local'; // 'local' | 'mqtt'
 let lastUpdate = 0;
 let client = null;
 let cfg = null;
+let spTouched = false;
+let findActive = false;
+let findTimer = null;
+const LOCK_CLOSED_SVG = '<svg viewBox="0 0 26 30" fill="none"><path d="M23.13 11.1h-1.85l-.01-2.7A8.33 8.33 0 104.63 8.33l0 2.77H2.78A2.78 2.78 0 000 13.88v12.95a2.78 2.78 0 002.78 2.77h20.35A2.78 2.78 0 0025.9 26.83V13.88a2.78 2.78 0 00-2.77-2.78zM7.4 8.33a5.55 5.55 0 0111.1 0v2.77H7.4V8.33zm15.73 18.5H2.78V13.88h20.35v12.95z" fill="currentColor"/></svg>';
+const LOCK_OPEN_SVG = '<svg viewBox="0 0 26 30" fill="none"><path d="M23.13 29.6H2.78A2.78 2.78 0 010 26.83V13.88A2.78 2.78 0 012.78 11.1h1.85V8.33A8.34 8.34 0 0112.95 0h.02a8.28 8.28 0 015.26 1.91 8.47 8.47 0 012.85 4.72h-2.85a5.62 5.62 0 00-1.99-2.77 5.5 5.5 0 00-3.3-1.09A5.56 5.56 0 007.4 8.33V11.1h10.05v.03h5V11.1h.68A2.78 2.78 0 0125.9 13.88v12.95a2.78 2.78 0 01-2.77 2.77zM2.78 13.88v12.95h20.35V13.88H2.78z" fill="currentColor"/></svg>';
+const DOOR_SVG = '<svg viewBox="0 0 26 30" fill="none"><path d="M23.13 11.1h-1.85l-.01-2.7A8.33 8.33 0 104.63 8.33l0 2.77H2.78A2.78 2.78 0 000 13.88v12.95a2.78 2.78 0 002.78 2.77h20.35A2.78 2.78 0 0025.9 26.83V13.88a2.78 2.78 0 00-2.77-2.78zM7.4 8.33a5.55 5.55 0 0111.1 0v2.77H7.4V8.33zm15.73 18.5H2.78V13.88h20.35v12.95z" fill="currentColor"/></svg>';
 
 // ---------- helpers ----------
 const $ = id => document.getElementById(id);
@@ -444,8 +454,27 @@ function render(){
   bar.style.width = pct+'%';
   bar.className = 'fill' + (pct>20?'':' crit') + (pct>20&&pct<=40?' low':'');
   $('g-charge-state').textContent = S.charging ? 'Заряжается' : (S.charger?chargerRu():'—');
-  $('g-charge-btn').textContent = S.charging ? 'Идёт зарядка' : 'Начать зарядку';
-  $('g-charge-btn').disabled = S.charging;
+  const cb = $('g-charge-btn');
+  cb.disabled = false;
+  if(S.charging){ cb.textContent = 'Идёт зарядка'; cb.classList.add('charging'); }
+  else { cb.classList.remove('charging');
+    cb.textContent = S.charger==='done' ? 'Зарядка окончена' : 'Начать зарядку'; }
+
+  // action icon states
+  $('act-lights-ic').classList.toggle('hot', S.lights===1);
+  $('act-climate-ic').classList.toggle('on', S.hvac);
+  const dIc = $('act-doors-ic');
+  if(dIc.dataset.k !== String(S.lock)){
+    dIc.dataset.k = String(S.lock);
+    dIc.innerHTML = S.lock===1 ? LOCK_CLOSED_SVG : (S.lock===0 ? LOCK_OPEN_SVG : DOOR_SVG);
+    dIc.classList.toggle('unlocked', S.lock===0);
+  }
+
+  // setpoint slider: follow the car until the user touches it
+  if(!spTouched && S.setpoint>=16 && S.setpoint<=28){
+    $('sp-slider').value = S.setpoint;
+    $('sp-val').textContent = parseFloat(S.setpoint);
+  }
 
   $('rm-lock').textContent = S.lock===1?'Заблокировано':(S.lock===0?'Открыто':'—');
   $('rm-updated').textContent = lastUpdate ? 'Обновлено: '+new Date(lastUpdate).toLocaleTimeString('ru-RU') : 'Обновлено: никогда';
@@ -481,13 +510,18 @@ async function pollLocal(){
     S.heat=!!j.heat; S.cool=!!j.cool; S.vent=j.vent;
     S.soh=j.soh; S.gids=j.gids; S.v=j.v; S.i=j.i; S.packValid=!!j.pack;
     S.amb=j.amb; S.on=j.on; S.seq=!!j.seq; S.locking=!!j.locking;
+    S.lights = (j.lights===undefined) ? -1 : (j.lights?1:0);
     lastUpdate = Date.now();
     setConn(true, 'LOCAL');
     render();
   }catch(e){ setConn(false,'LOCAL'); }
 }
 async function localCmd(path){
-  try{ await fetch(path); toast('Команда отправлена'); S.seq=true; render(); setTimeout(pollLocal,1500); }
+  try{
+    const r = await fetch(path);
+    if(!r.ok){ toast('Команда отклонена'); return; }
+    toast('Команда отправлена'); S.seq=true; render(); setTimeout(pollLocal,1500);
+  }
   catch(e){ toast('Ошибка отправки'); }
 }
 
@@ -548,6 +582,7 @@ function mqttConnect(){
       case 'v/b/current': S.i=num; break;
       case 'v/e/ambienttemp': S.amb=num; break;
       case 'v/e/on': S.on=(t==='yes')?1:0; break;
+      case 'v/e/headlights': S.lights=(t==='yes')?1:0; break;
       default: return;
     }
     lastUpdate=Date.now();
@@ -560,8 +595,8 @@ function cmd(type){
   if(!navigator.onLine && mode==='mqtt') toast('Нет сети');
   if(mode==='local'){
     const sp=parseFloat($('sp-slider').value);
-    const map={ charge:'/charge_on', lock:'/lock', unlock:'/unlock', refresh:'/refresh',
-      lights:'/lights', hornlights:'/hornlights',
+    const map={ charge:'/charge_on', chargeoff:'/charge_off', lock:'/lock', unlock:'/unlock', refresh:'/refresh',
+      lights:'/lights', hornlights:'/hornlights', rhloff:'/rhloff',
       hvac: S.hvac?'/hvac_off':'/hvac_on?setpoint='+sp };
     localCmd(map[type]);
     return;
@@ -569,9 +604,9 @@ function cmd(type){
   if(!client||!client.connected){ toast('Нет подключения к брокеру'); return; }
   const p='ovms/'+cfg.user+'/'+(cfg.vid||'leaf')+'/client/pwa/command/c';
   const sp=parseFloat($('sp-slider').value);
-  const payload={ charge:'charge start', lock:'lock', unlock:'unlock',
+  const payload={ charge:'charge start', chargeoff:'charge stop', lock:'lock', unlock:'unlock',
     refresh:'server v3 update modified',
-    lights:'lights', hornlights:'hornlights',
+    lights:'lights', hornlights:'hornlights', rhloff:'lights off',
     hvac: S.hvac?'climatecontrol off':'climatecontrol on '+sp }[type];
   client.publish(p,payload);
   toast('Команда отправлена');
@@ -579,11 +614,46 @@ function cmd(type){
 }
 function remoteStatus(type){
   const el=$('remote-status');
-  const names={charge:'Зарядка',lock:'Закрытие',unlock:'Открытие',refresh:'Обновление',hvac:'Климат',
-    lights:'Фары',hornlights:'Сигнал и фары'};
+  const names={charge:'Зарядка',chargeoff:'Стоп зарядки',lock:'Закрытие',unlock:'Открытие',refresh:'Обновление',hvac:'Климат',
+    lights:'Фары',hornlights:'Сигнал и фары',rhloff:'Отмена'};
   el.textContent=names[type]+': запрос отправлен…';
   setTimeout(()=>{el.textContent=names[type]+': выполнено';},2000);
   setTimeout(()=>{el.textContent='Выберите действие';},4500);
+}
+
+// ---------- garage quick actions ----------
+function toggleCharge(){ cmd(S.charging ? 'chargeoff' : 'charge'); }
+function actLights(){
+  if(S.lights===1){ cmd('rhloff'); S.lights=0; }
+  else { cmd('lights'); S.lights=1; }
+  render();
+}
+function actDoors(){
+  if(S.lock===1){ cmd('unlock'); S.lock=0; }
+  else { cmd('lock'); S.lock=1; }
+  render();
+}
+function actClimate(){ cmd('hvac'); }
+function spChanged(v){
+  spTouched=true;
+  localStorage.setItem('leafsp',v);
+  $('sp-val').textContent=v;
+}
+function updateFindCard(){
+  const c=$('find-car'); if(!c) return;
+  c.classList.toggle('active',findActive);
+  $('find-car-sub').textContent = findActive ? 'Нажмите ещё раз, чтобы отменить' : 'Сигнал и фары';
+}
+function findCar(){
+  if(findActive){
+    findActive=false; clearTimeout(findTimer); updateFindCard();
+    cmd('rhloff'); toast('Действие отменено');
+    return;
+  }
+  if(!confirm('Включить свет и сигнал на машине?')) return;
+  cmd('hornlights');
+  findActive=true; updateFindCard();
+  findTimer=setTimeout(()=>{ findActive=false; updateFindCard(); },60000);
 }
 
 // ---------- settings modal ----------
@@ -608,6 +678,8 @@ function saveSettings(){
 
 // ---------- boot ----------
 async function boot(){
+  const savedSp = localStorage.getItem('leafsp');
+  if(savedSp){ $('sp-slider').value = savedSp; $('sp-val').textContent = savedSp; spTouched = true; }
   render();
   if('serviceWorker' in navigator && location.protocol==='https:'){
     navigator.serviceWorker.register('sw.js').catch(()=>{});
