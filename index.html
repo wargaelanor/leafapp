@@ -443,7 +443,14 @@ function chargerRu(){
 }
 
 // ---------- render ----------
+let renderQueued = false;
 function render(){
+  // Debounce: MQTT bursts deliver a dozen topics per second
+  if(renderQueued) return;
+  renderQueued = true;
+  requestAnimationFrame(()=>{ renderQueued = false; renderNow(); });
+}
+function renderNow(){
   const soc = S.soc>=0 ? S.soc : null;
   const km = rangeKm();
   $('g-soc').textContent = soc!=null ? soc.toFixed(0) : '—';
@@ -500,7 +507,10 @@ function render(){
 }
 
 // ---------- local mode ----------
+let pollBusy = false;
 async function pollLocal(){
+  if(pollBusy) return; // no overlapping requests if the board hangs
+  pollBusy = true;
   try{
     const r = await fetch('/api/status');
     if(!r.ok) throw 0;
@@ -515,14 +525,17 @@ async function pollLocal(){
     setConn(true, 'LOCAL');
     render();
   }catch(e){ setConn(false,'LOCAL'); }
+  finally{ pollBusy = false; }
 }
 async function localCmd(path){
   try{
-    const r = await fetch(path);
-    if(!r.ok){ toast('Команда отклонена'); return; }
-    toast('Команда отправлена'); S.seq=true; render(); setTimeout(pollLocal,1500);
+    // redirect:'manual' keeps the 303 from downloading the whole HTML page
+    const r = await fetch(path,{redirect:'manual'});
+    if(r.type==='opaqueredirect'){ return true; } // 303 = accepted
+    if(!r.ok){ toast('Команда отклонена'); return false; }
+    return true;
   }
-  catch(e){ toast('Ошибка отправки'); }
+  catch(e){ toast('Ошибка отправки'); return false; }
 }
 
 // ---------- mqtt mode ----------
@@ -548,6 +561,7 @@ function mqttConnect(){
   try{ if(client) client.end(true); }catch(e){}
   client = mqtt.connect(url,{ username:cfg.user, password:cfg.pass,
     clientId:'leafpwa-'+Math.random().toString(16).slice(2,8), reconnectPeriod:4000 });
+  const myClient = client;
   client.on('connect',()=>{
     setConn(true,'ОНЛАЙН');
     $('more-mode').textContent='MQTT · '+cfg.host;
@@ -555,12 +569,16 @@ function mqttConnect(){
     client.subscribe(p+'metric/#');
     client.subscribe(p+'client/pwa/response/#');
   });
-  client.on('close',()=>setConn(false,'ОФФЛАЙН'));
-  client.on('error',()=>setConn(false,'ОШИБКА'));
+  client.on('close',()=>{ if(myClient===client) setConn(false,'ОФФЛАЙН'); });
+  client.on('error',()=>{ if(myClient===client) setConn(false,'ОШИБКА'); });
   client.on('message',(topic,payload)=>{
+    if(myClient!==client) return; // stale connection from a previous session
     const t=payload.toString();
-    const p='ovms/'+cfg.user+'/'+(cfg.vid||'leaf')+'/metric/';
-    if(topic.startsWith(p+'client/')){ toast(t); return; }
+    const base='ovms/'+cfg.user+'/'+(cfg.vid||'leaf')+'/';
+    // Firmware replies to client/<id>/response/<cmd> — check before the
+    // metric prefix (client topics live OUTSIDE metric/)
+    if(topic.startsWith(base+'client/')){ toast(t); return; }
+    const p=base+'metric/';
     if(!topic.startsWith(p)) return;
     const m=topic.slice(p.length);
     const num=parseFloat(t);
@@ -591,17 +609,21 @@ function mqttConnect(){
 }
 
 // ---------- commands ----------
-function cmd(type){
+function cmd(type, quiet){
   if(!navigator.onLine && mode==='mqtt') toast('Нет сети');
   if(mode==='local'){
+    if(S.seq){ if(!quiet) toast('Дождитесь завершения текущей команды'); return Promise.resolve(false); }
     const sp=parseFloat($('sp-slider').value);
     const map={ charge:'/charge_on', chargeoff:'/charge_off', lock:'/lock', unlock:'/unlock', refresh:'/refresh',
       lights:'/lights', hornlights:'/hornlights', rhloff:'/rhloff',
       hvac: S.hvac?'/hvac_off':'/hvac_on?setpoint='+sp };
-    localCmd(map[type]);
-    return;
+    toast('Команда отправлена');
+    return localCmd(map[type]).then(ok=>{
+      if(ok){ S.seq=true; render(); setTimeout(pollLocal,1500); }
+      return ok;
+    });
   }
-  if(!client||!client.connected){ toast('Нет подключения к брокеру'); return; }
+  if(!client||!client.connected){ toast('Нет подключения к брокеру'); return Promise.resolve(false); }
   const p='ovms/'+cfg.user+'/'+(cfg.vid||'leaf')+'/client/pwa/command/c';
   const sp=parseFloat($('sp-slider').value);
   const payload={ charge:'charge start', chargeoff:'charge stop', lock:'lock', unlock:'unlock',
@@ -611,6 +633,7 @@ function cmd(type){
   client.publish(p,payload);
   toast('Команда отправлена');
   remoteStatus(type);
+  return Promise.resolve(true);
 }
 function remoteStatus(type){
   const el=$('remote-status');
@@ -623,16 +646,11 @@ function remoteStatus(type){
 
 // ---------- garage quick actions ----------
 function toggleCharge(){ cmd(S.charging ? 'chargeoff' : 'charge'); }
-function actLights(){
-  if(S.lights===1){ cmd('rhloff'); S.lights=0; }
-  else { cmd('lights'); S.lights=1; }
-  render();
-}
-function actDoors(){
-  if(S.lock===1){ cmd('unlock'); S.lock=0; }
-  else { cmd('lock'); S.lock=1; }
-  render();
-}
+// No optimistic state flips: the truth comes from the next poll (local)
+// or from the retained metric (MQTT). Optimistic values used to lie
+// after a 403 (locking disabled) or when the board was busy.
+function actLights(){ cmd(S.lights===1 ? 'rhloff' : 'lights'); }
+function actDoors(){ cmd(S.lock===1 ? 'unlock' : 'lock'); }
 function actClimate(){ cmd('hvac'); }
 function spChanged(v){
   spTouched=true;
@@ -647,13 +665,21 @@ function updateFindCard(){
 function findCar(){
   if(findActive){
     findActive=false; clearTimeout(findTimer); updateFindCard();
-    cmd('rhloff'); toast('Действие отменено');
+    // Retry while the horn/lights sequence is busy — the board drops
+    // commands issued during an active sequence
+    cancelRhl();
+    toast('Действие отменено');
     return;
   }
   if(!confirm('Включить свет и сигнал на машине?')) return;
   cmd('hornlights');
   findActive=true; updateFindCard();
   findTimer=setTimeout(()=>{ findActive=false; updateFindCard(); },60000);
+}
+function cancelRhl(){
+  cmd('rhloff',true).then(ok=>{
+    if(!ok && S.seq) setTimeout(cancelRhl,2000);
+  });
 }
 
 // ---------- settings modal ----------
