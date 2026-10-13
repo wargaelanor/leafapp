@@ -1,4 +1,4 @@
-const CACHE = 'leaf-v2';
+const CACHE = 'leaf-v3';
 const ASSETS = ['./', './index.html', './leaf.png', './manifest.webmanifest', './icon-192.png'];
 
 self.addEventListener('install', e => {
