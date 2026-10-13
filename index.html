@@ -487,7 +487,6 @@ function renderNow(){
   $('rm-updated').textContent = lastUpdate ? 'Обновлено: '+new Date(lastUpdate).toLocaleTimeString('ru-RU') : 'Обновлено: никогда';
   $('rb-climate').classList.toggle('on', S.hvac);
   $('rb-climate-label').textContent = S.hvac ? 'Выкл климат' : 'Климат';
-  $('rb-lock').disabled = !S.locking && mode==='local' ? false : false;
 
   $('s-soc').textContent = soc!=null ? soc.toFixed(0)+' %' : '—';
   $('s-range').textContent = km!=null ? km+' км' : '—';
@@ -650,7 +649,10 @@ function toggleCharge(){ cmd(S.charging ? 'chargeoff' : 'charge'); }
 // or from the retained metric (MQTT). Optimistic values used to lie
 // after a 403 (locking disabled) or when the board was busy.
 function actLights(){ cmd(S.lights===1 ? 'rhloff' : 'lights'); }
-function actDoors(){ cmd(S.lock===1 ? 'unlock' : 'lock'); }
+function actDoors(){
+  if(mode==='local' && !S.locking){ toast('Блокировка выключена в настройках платы'); return; }
+  cmd(S.lock===1 ? 'unlock' : 'lock');
+}
 function actClimate(){ cmd('hvac'); }
 function spChanged(v){
   spTouched=true;
