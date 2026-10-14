@@ -139,6 +139,25 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
 .modal .btns .cancel{background:#f1f1f1;color:#333}
 .seq-banner{background:#fff4e5;color:#b45309;text-align:center;font-size:13px;padding:8px;display:none}
 .seq-banner.show{display:block}
+.trip-summary{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:12px 16px}
+.trip-summary .cell{background:#fff;border-radius:8px;padding:12px 8px;box-shadow:0 1px 3px rgba(0,0,0,.06);text-align:center}
+.trip-summary .cell .num{font-size:20px;color:#333;font-weight:600}
+.trip-summary .cell .lbl{font-size:10px;color:#707070;text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+.trip-active-banner{margin:0 16px 8px;padding:10px 14px;background:#e9f7ef;border:1px solid #34c759;border-radius:8px;font-size:12px;color:#1a7f37;display:none;align-items:center;gap:8px}
+.trip-active-banner.show{display:flex}
+.trip-active-banner i{width:8px;height:8px;border-radius:50%;background:#34c759;flex-shrink:0}
+.trip-list{margin:0 16px}
+.trip-item{background:#fff;border-radius:8px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,.06);padding:14px}
+.trip-item .t-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.trip-item .t-date{font-size:12px;color:#707070}
+.trip-item .t-dur{font-size:12px;color:#707070}
+.trip-item .t-metrics{display:flex;gap:14px;font-size:13px;color:#333;margin-bottom:6px}
+.trip-item .t-metrics .m-val{font-weight:600}
+.trip-item .t-meta{font-size:11px;color:#c1c1c1;display:flex;gap:12px;flex-wrap:wrap}
+.trip-item .t-meta .route{color:#0077ac;cursor:pointer}
+.trip-empty{text-align:center;color:#707070;font-size:14px;padding:48px 20px}
+.trip-clear{display:block;width:calc(100% - 32px);margin:12px 16px;padding:12px;background:#fff;color:#ff3b30;border:1px solid #ff3b30;border-radius:8px;font-size:13px;font-family:inherit;cursor:pointer}
+.trip-clear:active{background:#fff0f0}
 </style>
 </head>
 <body>
@@ -223,9 +242,9 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
         <div class="ft"><div class="ft-title">История зарядок</div><div class="ft-sub">Сеансы и статистика</div></div>
         <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
       </div>
-      <div class="feature-card" onclick="toast('Анализ поездок недоступен')">
+      <div class="feature-card" onclick="go('trips')">
         <div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3.5 18.5l5.57-5.57 3.54 3.53L20.5 8.07V16h-2V10.5L9.6 17.43l-3.54-3.53L4 16.09l-.5 2.41zM2 20h20v2H2v-2z"/></svg></div>
-        <div class="ft"><div class="ft-title">Анализ поездок</div><div class="ft-sub">Эффективность и стиль</div></div>
+        <div class="ft"><div class="ft-title">Поездки</div><div class="ft-sub" id="f-trips-sub">Статистика и история</div></div>
         <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
       </div>
       <div style="height:16px"></div>
@@ -343,6 +362,20 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
       <div style="height:16px"></div>
     </section>
 
+    <!-- ПОЕЗДКИ -->
+    <section class="screen" id="screen-trips">
+      <div class="trip-summary">
+        <div class="cell"><div class="num" id="ts-total">0</div><div class="lbl">Поездок</div></div>
+        <div class="cell"><div class="num" id="ts-km">0</div><div class="lbl">км всего</div></div>
+        <div class="cell"><div class="num" id="ts-kwh">0</div><div class="lbl">кВт·ч</div></div>
+      </div>
+      <div class="trip-active-banner" id="trip-active-banner"><i></i><span>Идёт поездка…</span></div>
+      <div class="trip-list" id="trip-list"></div>
+      <div class="trip-empty" id="trip-empty">Поездки появятся автоматически при движении с включённым зажиганием</div>
+      <button class="trip-clear" id="trip-clear" style="display:none" onclick="clearTrips()">Очистить историю</button>
+      <div style="height:16px"></div>
+    </section>
+
     <!-- ЕЩЁ -->
     <section class="screen" id="screen-more">
       <div class="section-title">Приложение</div>
@@ -384,6 +417,10 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
     <div class="tab" data-screen="status">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
       <span>Состояние</span>
+    </div>
+    <div class="tab" data-screen="trips">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 19V5m0 14l4-4 4 3 4-6 4 4"/></svg>
+      <span>Поездки</span>
     </div>
     <div class="tab" data-screen="more">
       <svg viewBox="0 0 25 5" fill="currentColor"><circle cx="2.5" cy="2.5" r="2.5"/><circle cx="12.5" cy="2.5" r="2.5"/><circle cx="22.5" cy="2.5" r="2.5"/></svg>
@@ -440,6 +477,7 @@ function go(name){
   document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('active',s.id==='screen-'+name));
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.screen===name));
   $('screens').scrollTop=0;
+  if(name==='trips') refreshTripsScreen();
 }
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>go(t.dataset.screen)));
 
@@ -551,9 +589,10 @@ async function pollLocal(){
     S.amb=j.amb; S.on=j.on; S.seq=!!j.seq; S.locking=!!j.locking;
     S.lights = (j.lights===undefined) ? -1 : (j.lights?1:0);
     if(j.gps && j.gps.lat && j.gps.lon && j.gps.age < 900)
-      S.gps = { lat:j.gps.lat, lon:j.gps.lon, at:Date.now()-j.gps.age*1000 };
+      S.gps = { lat:j.gps.lat, lon:j.gps.lon, spd:(j.gps.spd||0)*1.852, at:Date.now()-j.gps.age*1000 };
     lastUpdate = Date.now();
     setConn(true, 'LOCAL');
+    tripTick();
     render();
   }catch(e){ setConn(false,'LOCAL'); }
   finally{ pollBusy = false; }
@@ -633,10 +672,11 @@ function mqttConnect(){
       case 'v/e/ambienttemp': S.amb=num; break;
       case 'v/e/on': S.on=(t==='yes')?1:0; break;
       case 'v/e/headlights': S.lights=(t==='yes')?1:0; break;
-      case 'v/location/last': try{ const g=JSON.parse(t); if(g.lat&&g.lon) S.gps={lat:g.lat,lon:g.lon,at:Date.now()}; }catch(e){} break;
+      case 'v/location/last': try{ const g=JSON.parse(t); if(g.lat&&g.lon) S.gps={lat:g.lat,lon:g.lon,spd:(g.spd||0)*1.852,at:Date.now()}; }catch(e){} break;
       default: return;
     }
     lastUpdate=Date.now();
+    tripTick();
     render();
   });
 }
@@ -729,6 +769,206 @@ function cancelRhl(){
   });
 }
 
+// ---------- trips (IndexedDB) ----------
+const TRIP_DB='leaftrips', TRIP_STORE='trips';
+let tripDB=null;
+let trip=null;           // active trip record
+let tripPrevOn=-1;
+let tripLastPointMs=0;
+let tripLastMoveMs=0;    // last time we saw real movement
+let tripStaleTimer=null;
+
+function tripOpenDB(){
+  return new Promise((res,rej)=>{
+    const r=indexedDB.open(TRIP_DB,1);
+    r.onupgradeneeded=()=>{ r.result.createObjectStore(TRIP_STORE,{keyPath:'id'}); };
+    r.onsuccess=()=>res(r.result);
+    r.onerror=()=>rej(r.error);
+  });
+}
+function tripPut(rec){
+  if(!tripDB) return Promise.resolve();
+  return new Promise((res,rej)=>{
+    const tx=tripDB.transaction(TRIP_STORE,'readwrite');
+    tx.objectStore(TRIP_STORE).put(rec);
+    tx.oncomplete=()=>res();
+    tx.onerror=()=>rej(tx.error);
+  });
+}
+function tripGetAll(){
+  return new Promise((res,rej)=>{
+    if(!tripDB) return res([]);
+    const r=tripDB.transaction(TRIP_STORE).objectStore(TRIP_STORE).getAll();
+    r.onsuccess=()=>res(r.result||[]);
+    r.onerror=()=>rej(r.error);
+  });
+}
+function tripClearAll(){
+  return new Promise((res,rej)=>{
+    if(!tripDB) return res();
+    const tx=tripDB.transaction(TRIP_STORE,'readwrite');
+    tx.objectStore(TRIP_STORE).clear();
+    tx.oncomplete=()=>res();
+    tx.onerror=()=>rej(tx.error);
+  });
+}
+function haversineKm(lat1,lon1,lat2,lon2){
+  const R=6371, toR=d=>d*Math.PI/180;
+  const dLat=toR(lat2-lat1), dLon=toR(lon2-lon1);
+  const a=Math.sin(dLat/2)**2+Math.cos(toR(lat1))*Math.cos(toR(lat2))*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(a));
+}
+function tripHasGps(){ return !!(S.gps && S.gps.lat && S.gps.lon); }
+function tripValidGps(g){ return !!(g && g.lat && g.lon); }
+
+function tripComputeSummary(points){
+  let distKm=0, energyWh=0, maxSpd=0, startSoc=null, endSoc=null, startLat=null, startLon=null, endLat=null, endLon=null;
+  for(let k=0;k<points.length;k++){
+    const p=points[k];
+    if(p.spd!=null && p.spd>maxSpd) maxSpd=p.spd;
+    if(p.soc!=null){ if(startSoc==null) startSoc=p.soc; endSoc=p.soc; }
+    if(tripValidGps(p)){ if(startLat==null){startLat=p.lat;startLon=p.lon;} endLat=p.lat; endLon=p.lon; }
+    if(k>0){
+      const q=points[k-1];
+      const dtH=(p.t-q.t)/3600000;
+      if(tripValidGps(p)&&tripValidGps(q)){
+        const d=haversineKm(q.lat,q.lon,p.lat,p.lon);
+        if(d<50) distKm+=d; // guard vs GPS jump
+      }
+      if(p.v!=null&&p.i!=null&&q.v!=null&&q.i!=null){
+        const avgW=((p.v*p.i)+(q.v*q.i))/2;
+        // i is charge-positive, so discharge (driving consumption) yields negative
+        energyWh -= avgW*dtH; // consume-positive convention
+      }
+    }
+  }
+  return {distKm, energyWh, maxSpd, startSoc, endSoc, startLat, startLon, endLat, endLon};
+}
+
+function tripStart(now){
+  trip={ id:'trip_'+now.toString(36)+'_'+Math.random().toString(36).slice(2,6),
+    startMs:now, endMs:null, points:[] };
+  tripLastMoveMs=now;
+  tripLastPointMs=now;
+  tripPut(trip);
+}
+function tripEnd(now, reason){
+  if(!trip) return;
+  const durSec=(now-trip.startMs)/1000;
+  const sum=tripComputeSummary(trip.points);
+  trip.endMs=now;
+  trip.endReason=reason;
+  Object.assign(trip,sum);
+  // discard junk trips (too short, no movement)
+  if(durSec<20 && sum.distKm<0.05){ trip=null; return; }
+  tripPut(trip);
+  trip=null;
+  refreshTripsScreen();
+}
+function tripRecordPoint(now){
+  const p={ t:now,
+    lat: tripHasGps()?S.gps.lat:null, lon: tripHasGps()?S.gps.lon:null,
+    spd:(S.gps&&S.gps.spd)||0, v:S.packValid?S.v:null, i:S.packValid?S.i:null,
+    soc:S.soc>=0?S.soc:null };
+  trip.points.push(p);
+  tripLastPointMs=now;
+  tripPut(trip); // persist on every point so a reload doesn't lose the trip
+}
+
+function tripTick(){
+  if(!tripDB) return;
+  const now=Date.now();
+  const moved = tripHasGps() && ((S.gps.spd||0)>2);
+  // detect movement from coordinate delta too (local mode has no spd)
+  if(!moved && trip && trip.points.length){
+    const last=trip.points[trip.points.length-1];
+    if(tripValidGps(last) && tripHasGps()){
+      const d=haversineKm(last.lat,last.lon,S.gps.lat,S.gps.lon);
+      if(d>0.02) moved=true; // 20m in one tick = movement
+    }
+  }
+  if(moved) tripLastMoveMs=now;
+
+  if(!trip){
+    // start when ignition turns on and we have data flowing
+    if(S.on===1 && tripPrevOn!==1 && lastUpdate){
+      tripStart(now);
+    }
+  } else {
+    const noMoveMs = now - tripLastMoveMs;
+    const end = (S.on===0) || (noMoveMs>15*60*1000); // off, or no movement 15min
+    if(end){
+      tripEnd(now, S.on===0?'off':'idle');
+    } else if(now-tripLastPointMs>=5000){
+      tripRecordPoint(now);
+    }
+  }
+  tripPrevOn=S.on;
+}
+
+async function tripCleanupOrphans(){
+  const all=await tripGetAll();
+  let changed=false;
+  for(const t of all){
+    if(t.endMs==null && (!trip || t.id!==trip.id)){
+      const lastT=t.points.length?t.points[t.points.length-1].t:t.startMs;
+      const sum=tripComputeSummary(t.points);
+      t.endMs=lastT; t.endReason='orphan';
+      Object.assign(t,sum);
+      await tripPut(t);
+      changed=true;
+    }
+  }
+  if(changed) refreshTripsScreen();
+}
+
+function fmtDur(sec){
+  sec=Math.max(0,Math.round(sec));
+  const h=Math.floor(sec/3600), m=Math.round((sec%3600)/60);
+  if(h>0) return h+' ч '+m+' мин';
+  if(m>0) return m+' мин';
+  return sec+' с';
+}
+async function refreshTripsScreen(){
+  const banner=$('trip-active-banner');
+  if(banner) banner.classList.toggle('show', !!trip);
+  if(!tripDB) return;
+  const all=await tripGetAll();
+  all.sort((a,b)=>b.startMs-a.startMs);
+  const done=all.filter(t=>t.endMs!=null);
+  const totalKm=done.reduce((s,t)=>s+(t.distKm||0),0);
+  const totalWh=done.reduce((s,t)=>s+(t.energyWh||0),0);
+  $('ts-total').textContent=done.length;
+  $('ts-km').textContent=totalKm.toFixed(1);
+  $('ts-kwh').textContent=(totalWh/1000).toFixed(2);
+  const list=$('trip-list'); if(!list) return;
+  if(!done.length){ list.innerHTML=''; $('trip-empty').style.display='block'; $('trip-clear').style.display='none'; return; }
+  $('trip-empty').style.display='none'; $('trip-clear').style.display='block';
+  list.innerHTML=done.map(t=>{
+    const d=new Date(t.startMs);
+    const dstr=d.toLocaleDateString('ru-RU',{day:'2-digit',month:'short'})+' '+d.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
+    const dur=(t.endMs-t.startMs)/1000;
+    const socStr=(t.startSoc!=null&&t.endSoc!=null)?(t.startSoc.toFixed(0)+'→'+t.endSoc.toFixed(0)+'%'):'';
+    const route=(t.startLat!=null)?'<span class="route" onclick="openTripRoute('+t.startLat+','+t.startLon+')">Маршрут</span>':'';
+    return '<div class="trip-item">'+
+      '<div class="t-head"><span class="t-date">'+dstr+'</span><span class="t-dur">'+fmtDur(dur)+'</span></div>'+
+      '<div class="t-metrics"><span><span class="m-val">'+(t.distKm||0).toFixed(1)+'</span> км</span>'+
+      '<span><span class="m-val">'+(t.maxSpd||0).toFixed(0)+'</span> км/ч</span>'+
+      '<span><span class="m-val">'+((t.energyWh||0)/1000).toFixed(2)+'</span> кВт·ч</span></div>'+
+      '<div class="t-meta">'+(socStr?'<span>Заряд: '+socStr+'</span>':'')+route+'</div>'+
+      '</div>';
+  }).join('');
+}
+function openTripRoute(lat,lon){
+  window.open('https://yandex.ru/maps/?pt='+lon.toFixed(6)+','+lat.toFixed(6)+'&z=15&l=map','_blank');
+}
+async function clearTrips(){
+  if(!confirm('Удалить всю историю поездок?')) return;
+  await tripClearAll();
+  refreshTripsScreen();
+  toast('История очищена');
+}
+
 // ---------- settings modal ----------
 function openSettings(){
   if(mode==='local'){ location.href='/settings'; return; }
@@ -754,6 +994,9 @@ async function boot(){
   const savedSp = localStorage.getItem('leafsp');
   if(savedSp){ $('sp-slider').value = savedSp; $('sp-val').textContent = savedSp; spTouched = true; }
   render();
+  tripOpenDB().then(db=>{ tripDB=db; return tripCleanupOrphans(); })
+    .then(()=>refreshTripsScreen()).catch(()=>{});
+  setInterval(tripTick, 15000); // stale/idle check even when no messages arrive
   if('serviceWorker' in navigator && location.protocol==='https:'){
     navigator.serviceWorker.register('sw.js').catch(()=>{});
   }
