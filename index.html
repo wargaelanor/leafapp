@@ -237,9 +237,9 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
         <div class="ft"><div class="ft-title">Уведомления ЭЗ</div><div class="ft-sub">Завершение зарядки и др.</div></div>
         <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
       </div>
-      <div class="feature-card" onclick="toast('История зарядок недоступна')">
+      <div class="feature-card" onclick="go('charges')">
         <div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13.63.51L4.24 13.11c-.6.85 0 2.06 1.03 2.06h4.66l-1.63 8.12c-.24 1.33 1.45 2.12 2.3 1.03l9.39-12.6c.6-.85 0-2.06-1.03-2.06h-4.66l1.63-8.12c.24-1.33-1.45-2.12-2.3-1.03z"/></svg></div>
-        <div class="ft"><div class="ft-title">История зарядок</div><div class="ft-sub">Сеансы и статистика</div></div>
+        <div class="ft"><div class="ft-title">История зарядок</div><div class="ft-sub" id="f-charges-sub">Сеансы и статистика</div></div>
         <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
       </div>
       <div class="feature-card" onclick="go('trips')">
@@ -362,6 +362,20 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
       <div style="height:16px"></div>
     </section>
 
+    <!-- ЗАРЯДКИ -->
+    <section class="screen" id="screen-charges">
+      <div class="trip-summary">
+        <div class="cell"><div class="num" id="cs-total">0</div><div class="lbl">Сеансов</div></div>
+        <div class="cell"><div class="num" id="cs-kwh">0</div><div class="lbl">кВт·ч</div></div>
+        <div class="cell"><div class="num" id="cs-hours">0</div><div class="lbl">часов</div></div>
+      </div>
+      <div class="trip-active-banner" id="charge-active-banner"><i></i><span>Идёт зарядка…</span></div>
+      <div class="trip-list" id="charge-list"></div>
+      <div class="trip-empty" id="charge-empty">Сеансы зарядки появятся автоматически при подключении зарядного устройства</div>
+      <button class="trip-clear" id="charge-clear" style="display:none" onclick="clearCharges()">Очистить историю</button>
+      <div style="height:16px"></div>
+    </section>
+
     <!-- ПОЕЗДКИ -->
     <section class="screen" id="screen-trips">
       <div class="trip-summary">
@@ -478,6 +492,7 @@ function go(name){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.screen===name));
   $('screens').scrollTop=0;
   if(name==='trips') refreshTripsScreen();
+  if(name==='charges') refreshChargesScreen();
 }
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>go(t.dataset.screen)));
 
@@ -593,6 +608,7 @@ async function pollLocal(){
     lastUpdate = Date.now();
     setConn(true, 'LOCAL');
     tripTick();
+    chargeTick();
     render();
   }catch(e){ setConn(false,'LOCAL'); }
   finally{ pollBusy = false; }
@@ -657,7 +673,7 @@ function mqttConnect(){
       case 'v/b/soc': S.soc=num; break;
       case 'v/e/cabintemp': S.cabin=num; break;
       case 'v/c/charging': S.charging=(t==='yes'); break;
-      case 'v/c/state': S.charger=t; break;
+      case 'v/c/state': S.charger=t; if(chg) chg.endState=t; break;
       case 'v/e/hvac': S.hvac=(t==='yes'); break;
       case 'v/e/locked': S.lock=(t==='yes')?1:0; break;
       case 'v/e/cabinsetpoint': S.setpoint=num; break;
@@ -677,6 +693,7 @@ function mqttConnect(){
     }
     lastUpdate=Date.now();
     tripTick();
+    chargeTick();
     render();
   });
 }
@@ -969,6 +986,152 @@ async function clearTrips(){
   toast('История очищена');
 }
 
+// ---------- charges (IndexedDB) ----------
+const CHG_DB='leafcharges', CHG_STORE='charges';
+let chgDB=null;
+let chg=null;            // active charge session
+let chgPrevCharging=false;
+let chgLastPointMs=0;
+
+function chargeOpenDB(){
+  return new Promise((res,rej)=>{
+    const r=indexedDB.open(CHG_DB,1);
+    r.onupgradeneeded=()=>{ r.result.createObjectStore(CHG_STORE,{keyPath:'id'}); };
+    r.onsuccess=()=>res(r.result);
+    r.onerror=()=>rej(r.error);
+  });
+}
+function chgPut(rec){
+  if(!chgDB) return Promise.resolve();
+  return new Promise((res,rej)=>{
+    const tx=chgDB.transaction(CHG_STORE,'readwrite');
+    tx.objectStore(CHG_STORE).put(rec);
+    tx.oncomplete=()=>res();
+    tx.onerror=()=>rej(tx.error);
+  });
+}
+function chgGetAll(){
+  return new Promise((res,rej)=>{
+    if(!chgDB) return res([]);
+    const r=chgDB.transaction(CHG_STORE).objectStore(CHG_STORE).getAll();
+    r.onsuccess=()=>res(r.result||[]);
+    r.onerror=()=>rej(r.error);
+  });
+}
+function chgClearAll(){
+  return new Promise((res,rej)=>{
+    if(!chgDB) return res();
+    const tx=chgDB.transaction(CHG_STORE,'readwrite');
+    tx.objectStore(CHG_STORE).clear();
+    tx.oncomplete=()=>res();
+    tx.onerror=()=>rej(tx.error);
+  });
+}
+function chgComputeSummary(points){
+  let energyWh=0, startSoc=null, endSoc=null, maxV=null;
+  for(let k=0;k<points.length;k++){
+    const p=points[k];
+    if(p.soc!=null){ if(startSoc==null) startSoc=p.soc; endSoc=p.soc; }
+    if(p.v!=null && (maxV==null||p.v>maxV)) maxV=p.v;
+    if(k>0){
+      const q=points[k-1];
+      if(p.v!=null&&p.i!=null&&q.v!=null&&q.i!=null){
+        const dtH=(p.t-q.t)/3600000;
+        const avgW=((p.v*p.i)+(q.v*q.i))/2;
+        energyWh += avgW*dtH; // charge-positive current → energy into battery
+      }
+    }
+  }
+  return {energyWh, startSoc, endSoc, maxV};
+}
+function chargeStart(now){
+  chg={ id:'chg_'+now.toString(36)+'_'+Math.random().toString(36).slice(2,6),
+    startMs:now, endMs:null, points:[] };
+  chgLastPointMs=now;
+  chgPut(chg);
+}
+function chargeEnd(now, reason){
+  if(!chg) return;
+  const durSec=(now-chg.startMs)/1000;
+  const sum=chgComputeSummary(chg.points);
+  chg.endMs=now;
+  chg.endReason=reason;
+  chg.endState=S.charger||'';
+  Object.assign(chg,sum);
+  // discard junk sessions (too short / no energy)
+  if(durSec<30 && (sum.energyWh||0)<0.01){ chg=null; return; }
+  chgPut(chg);
+  chg=null;
+  refreshChargesScreen();
+}
+function chargeRecordPoint(now){
+  chg.points.push({ t:now, soc:S.soc>=0?S.soc:null,
+    v:S.packValid?S.v:null, i:S.packValid?S.i:null });
+  chgLastPointMs=now;
+  chgPut(chg);
+}
+function chargeTick(){
+  if(!chgDB) return;
+  const now=Date.now();
+  if(!chg){
+    if(S.charging && !chgPrevCharging && lastUpdate) chargeStart(now);
+  } else {
+    if(!S.charging) chargeEnd(now,'stopped');
+    else if(now-chgLastPointMs>=30000) chargeRecordPoint(now); // 30s, charging is slow
+  }
+  chgPrevCharging=S.charging;
+}
+async function chargeCleanupOrphans(){
+  const all=await chgGetAll();
+  let changed=false;
+  for(const c of all){
+    if(c.endMs==null && (!chg || c.id!==chg.id)){
+      const lastT=c.points.length?c.points[c.points.length-1].t:c.startMs;
+      const sum=chgComputeSummary(c.points);
+      c.endMs=lastT; c.endReason='orphan';
+      Object.assign(c,sum);
+      await chgPut(c);
+      changed=true;
+    }
+  }
+  if(changed) refreshChargesScreen();
+}
+async function refreshChargesScreen(){
+  const banner=$('charge-active-banner');
+  if(banner) banner.classList.toggle('show', !!chg);
+  if(!chgDB) return;
+  const all=await chgGetAll();
+  all.sort((a,b)=>b.startMs-a.startMs);
+  const done=all.filter(c=>c.endMs!=null);
+  const totalWh=done.reduce((s,c)=>s+(c.energyWh||0),0);
+  const totalSec=done.reduce((s,c)=>s+((c.endMs-c.startMs)/1000),0);
+  $('cs-total').textContent=done.length;
+  $('cs-kwh').textContent=(totalWh/1000).toFixed(2);
+  $('cs-hours').textContent=(totalSec/3600).toFixed(1);
+  const list=$('charge-list'); if(!list) return;
+  if(!done.length){ list.innerHTML=''; $('charge-empty').style.display='block'; $('charge-clear').style.display='none'; return; }
+  $('charge-empty').style.display='none'; $('charge-clear').style.display='block';
+  list.innerHTML=done.map(c=>{
+    const d=new Date(c.startMs);
+    const dstr=d.toLocaleDateString('ru-RU',{day:'2-digit',month:'short'})+' '+d.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
+    const dur=(c.endMs-c.startMs)/1000;
+    const socStr=(c.startSoc!=null&&c.endSoc!=null)?(c.startSoc.toFixed(0)+'→'+c.endSoc.toFixed(0)+'%'):'';
+    const st=c.endState?(' · '+({'done':'завершено','stopped':'прервано','wait':'ожидание'}[c.endState]||c.endState)):'';
+    return '<div class="trip-item">'+
+      '<div class="t-head"><span class="t-date">'+dstr+'</span><span class="t-dur">'+fmtDur(dur)+'</span></div>'+
+      '<div class="t-metrics"><span><span class="m-val">'+((c.energyWh||0)/1000).toFixed(2)+'</span> кВт·ч</span>'+
+      (c.maxV!=null?'<span><span class="m-val">'+c.maxV.toFixed(0)+'</span> V</span>':'')+'</div>'+
+      '<div class="t-meta">'+(socStr?'<span>Заряд: '+socStr+'</span>':'')+'<span>'+st+'</span></div>'+
+      '</div>';
+  }).join('');
+}
+async function clearCharges(){
+  if(!confirm('Удалить всю историю зарядок?')) return;
+  await chgClearAll();
+  refreshChargesScreen();
+  toast('История очищена');
+}
+
 // ---------- settings modal ----------
 function openSettings(){
   if(mode==='local'){ location.href='/settings'; return; }
@@ -996,7 +1159,9 @@ async function boot(){
   render();
   tripOpenDB().then(db=>{ tripDB=db; return tripCleanupOrphans(); })
     .then(()=>refreshTripsScreen()).catch(()=>{});
-  setInterval(tripTick, 15000); // stale/idle check even when no messages arrive
+  chargeOpenDB().then(db=>{ chgDB=db; return chargeCleanupOrphans(); })
+    .then(()=>refreshChargesScreen()).catch(()=>{});
+  setInterval(()=>{ tripTick(); chargeTick(); }, 15000); // stale/idle check even when no messages arrive
   if('serviceWorker' in navigator && location.protocol==='https:'){
     navigator.serviceWorker.register('sw.js').catch(()=>{});
   }
