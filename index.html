@@ -473,6 +473,7 @@ const S = { soc:-1, cabin:-99, charging:false, charger:'', hvac:false, lock:-1,
   soh:-1, gids:-1, v:-1, i:0, packValid:false, amb:-99, on:-1, seq:false, locking:false,
   lights:-1, gps:null };
 let mode = 'local'; // 'local' | 'mqtt'
+let onBoard = false; // true only when served from the board itself (local /api/status works)
 let lastUpdate = 0;
 let client = null;
 let cfg = null;
@@ -1134,7 +1135,7 @@ async function clearCharges(){
 
 // ---------- settings modal ----------
 function openSettings(){
-  if(mode==='local'){ location.href='/settings'; return; }
+  if(onBoard){ location.href='/settings'; return; }
   cfg=loadCfg()||{host:'m5.wqtt.ru',port:15871,user:'',pass:'',vid:'leaf'};
   $('cfg-host').value=cfg.host||''; $('cfg-port').value=cfg.port||15871;
   $('cfg-user').value=cfg.user||''; $('cfg-pass').value=cfg.pass||'';
@@ -1170,7 +1171,7 @@ async function boot(){
     const ac=new AbortController();
     setTimeout(()=>ac.abort(),1800);
     const r=await fetch('/api/status',{signal:ac.signal});
-    if(r.ok){ mode='local'; pollLocal(); setInterval(pollLocal,3000);
+    if(r.ok){ mode='local'; onBoard=true; pollLocal(); setInterval(pollLocal,3000);
       $('more-mode').textContent='Локально (плата)';
       $('more-settings-label').textContent='Настройки платы';
       $('more-ota').style.display='flex';
