@@ -54,14 +54,16 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
 .btn-primary.charging{background:#34c759}
 .action-buttons{display:flex;justify-content:center;gap:32px;padding:16px 0 20px;background:#f4f5f7;margin:8px 16px;border-radius:8px}
 .action-btn{display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer}
-.action-btn .circle{width:68px;height:68px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.1);display:flex;align-items:center;justify-content:center}
-.action-btn .circle svg{width:30px;height:30px;color:#333}
+.action-btn .circle{width:68px;height:68px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.1);display:flex;align-items:center;justify-content:center;transition:transform .18s,background .18s,box-shadow .18s}
+.action-btn .circle svg{width:30px;height:30px;color:#333;transition:color .18s}
 .action-btn span{font-size:12px;color:#707070}
 .action-btn .circle.on{background:#e9f7ef;box-shadow:0 0 0 2px #34c759 inset,0 1px 4px rgba(0,0,0,.1)}
 .action-btn .circle.on svg{color:#1a7f37}
 .action-btn .circle.hot{background:#fff6e8;box-shadow:0 0 0 2px #ff9500 inset,0 1px 4px rgba(0,0,0,.1)}
 .action-btn .circle.hot svg{color:#e67e22}
 .action-btn .circle.unlocked{background:#fff6e8;box-shadow:0 0 0 2px #ff9500 inset,0 1px 4px rgba(0,0,0,.1)}
+.action-btn .circle.flash{background:#fff6e8;box-shadow:0 0 0 2px #ff9500 inset,0 1px 4px rgba(0,0,0,.1);transform:scale(0.92)}
+.action-btn .circle.flash svg{color:#e67e22}
 .feature-card{background:#fff;border-radius:8px;margin:0 16px 8px;box-shadow:0 1px 3px rgba(0,0,0,.06);padding:16px;display:flex;align-items:center;gap:14px;cursor:pointer}
 .feature-card.active{background:#fff8ec;box-shadow:0 0 0 1px #ff9500 inset,0 1px 3px rgba(0,0,0,.06)}
 .feature-card.active .ft-title{color:#b45309}
@@ -640,6 +642,13 @@ function mqttConnect(){
 }
 
 // ---------- commands ----------
+function pressFx(type){
+  const map={ lights:'act-lights-ic', rhloff:'act-lights-ic', hornlights:'act-lights-ic',
+    lock:'act-doors-ic', unlock:'act-doors-ic', hvac:'act-climate-ic' };
+  const el=map[type]&&$(map[type]); if(!el) return;
+  el.classList.add('flash');
+  setTimeout(()=>el.classList.remove('flash'),200);
+}
 function cmd(type, quiet){
   if(!navigator.onLine && mode==='mqtt') toast('Нет сети');
   if(mode==='local'){
@@ -648,6 +657,7 @@ function cmd(type, quiet){
     const map={ charge:'/charge_on', chargeoff:'/charge_off', lock:'/lock', unlock:'/unlock', refresh:'/refresh',
       lights:'/lights', hornlights:'/hornlights', rhloff:'/rhloff',
       hvac: S.hvac?'/hvac_off':'/hvac_on?setpoint='+sp };
+    pressFx(type);
     toast('Команда отправлена');
     return localCmd(map[type]).then(ok=>{
       if(ok){ S.seq=true; render(); setTimeout(pollLocal,1500); }
@@ -662,6 +672,7 @@ function cmd(type, quiet){
     lights:'lights', hornlights:'hornlights', rhloff:'lights off',
     hvac: S.hvac?'climatecontrol off':'climatecontrol on '+sp }[type];
   client.publish(p,payload);
+  pressFx(type);
   toast('Команда отправлена');
   remoteStatus(type);
   return Promise.resolve(true);
