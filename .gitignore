@@ -1,0 +1,20 @@
+# project-specific (existing entries kept)
+skills/
+node_modules/
+
+# build artifacts
+build/
+*.bin
+*.elf
+*.map
+*.apk
+
+# editors / os
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# python tooling
+__pycache__/
+*.pyc
