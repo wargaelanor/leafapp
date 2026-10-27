@@ -123,6 +123,14 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
 .more-item .mi svg{width:20px;height:20px}
 .toast{position:absolute;left:50%;bottom:80px;transform:translateX(-50%) translateY(20px);background:rgba(51,51,51,.92);color:#fff;padding:10px 20px;border-radius:20px;font-size:13px;opacity:0;pointer-events:none;transition:.25s;z-index:100;white-space:nowrap;max-width:90%;overflow:hidden;text-overflow:ellipsis}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.hold-target{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;touch-action:pan-y}
+.hold-visual{position:relative!important}
+.rbtn.hold-visual{position:absolute!important}
+.hold-progress{position:absolute;pointer-events:none;opacity:0;transition:opacity .12s}
+.hold-target.holding .hold-progress{opacity:1}
+.hold-target.holding .hold-visual{transform:scale(.96)}
+.hold-progress.hold-ring{inset:-5px;border-radius:50%;background:conic-gradient(#0077ac calc(var(--hold,0)*1%),rgba(0,119,172,.12) 0);-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 3px));mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 3px))}
+.hold-progress.fill{inset:0 auto 0 0;width:calc(var(--hold,0)*1%);border-radius:inherit;background:rgba(0,119,172,.18)}
 .gps-row{display:none;margin:0 16px 8px;gap:8px;align-items:center}
 .gps-row a{flex:1;text-align:center;background:#fff;color:#0077ac;font-size:13px;padding:9px 6px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.06);text-decoration:none}
 .gps-row span{font-size:11px;color:#707070;white-space:nowrap}
@@ -196,18 +204,18 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
             <span id="g-charge-state">—</span>
           </div>
         </div>
-        <button class="btn-primary" id="g-charge-btn" onclick="toggleCharge()">Начать зарядку</button>
+        <button class="btn-primary" id="g-charge-btn">Начать зарядку</button>
       </div>
       <div class="action-buttons">
-        <div class="action-btn" id="act-lights" onclick="actLights()">
+        <div class="action-btn" id="act-lights">
           <div class="circle" id="act-lights-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-4 10.5c.6.55 1 1.25 1 2v.5h6v-.5c0-.75.4-1.45 1-2A6 6 0 0012 3z"/></svg></div>
           <span>Свет</span>
         </div>
-        <div class="action-btn" id="act-doors" onclick="actDoors()">
+        <div class="action-btn" id="act-doors">
           <div class="circle" id="act-doors-ic"><svg viewBox="0 0 26 30" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M23.13 11.1h-1.85l-.01-2.7A8.33 8.33 0 104.63 8.33l0 2.77H2.78A2.78 2.78 0 000 13.88v12.95a2.78 2.78 0 002.78 2.77h20.35A2.78 2.78 0 0025.9 26.83V13.88a2.78 2.78 0 00-2.77-2.78zM7.4 8.33a5.55 5.55 0 0111.1 0v2.77H7.4V8.33zm15.73 18.5H2.78V13.88h20.35v12.95z" fill="#333"/></svg></div>
           <span>Двери</span>
         </div>
-        <div class="action-btn" id="act-climate" onclick="actClimate()">
+        <div class="action-btn" id="act-climate">
           <div class="circle" id="act-climate-ic"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><circle cx="24" cy="7" r="4" fill="currentColor"/><path d="M23 12.5c-2 0-3.6 1.2-4.3 3l-1.5 4c-.4 1.1-1.4 1.8-2.5 1.8h-4.4a2.5 2.5 0 000 5h5.1c2.8 0 5.3-1.7 6.4-4.3l3.4-7.8c.4-.9-.3-1.7-1.2-1.7h-1zM13.8 24l-5.2 6" fill="currentColor" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><path d="M2.5 6h9m0 0L8.3 2.8M11.5 6L8.3 9.2M2.5 13l6 5m0 0l-.5-4.4M8.5 18l-4.4.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
           <span>Климат</span>
         </div>
@@ -223,7 +231,7 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
         <div class="ft"><div class="ft-title">Дистанционные услуги</div><div class="ft-sub">Климат, зарядка, двери</div></div>
         <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
       </div>
-      <div class="feature-card" id="find-car" onclick="findCar()">
+      <div class="feature-card" id="find-car">
         <div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2a7 7 0 00-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 00-7-7zm0 9.5A2.5 2.5 0 1112 6.5a2.5 2.5 0 010 5z"/></svg></div>
         <div class="ft"><div class="ft-title">Поиск моей машины</div><div class="ft-sub" id="find-car-sub">Сигнал и фары</div></div>
         <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
@@ -265,30 +273,30 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
           <span class="val" id="sp-val">21.0</span>
         </div>
         <div class="remote-pad">
-          <div class="rbtn a" id="rb-horn" onclick="cmd('hornlights')">
+          <div class="rbtn a" id="rb-horn">
             <svg viewBox="0 0 24 24" fill="#333"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0014 7.97v8.05A4.47 4.47 0 0016.5 12zM14 3.23v2.06a7 7 0 010 13.42v2.06a9 9 0 000-17.54z"/></svg>
             <span>Сигнал и фары</span>
           </div>
-          <div class="rbtn b" id="rb-lock" onclick="sendLockCmd(1)">
+          <div class="rbtn b" id="rb-lock">
             <svg viewBox="0 0 26 30" fill="none"><path d="M23.13 11.1h-1.85l-.01-2.7A8.33 8.33 0 104.63 8.33l0 2.77H2.78A2.78 2.78 0 000 13.88v12.95a2.78 2.78 0 002.78 2.77h20.35A2.78 2.78 0 0025.9 26.83V13.88a2.78 2.78 0 00-2.77-2.78zM7.4 8.33a5.55 5.55 0 0111.1 0v2.77H7.4V8.33zm15.73 18.5H2.78V13.88h20.35v12.95z" fill="#333"/></svg>
             <span>Закрыть</span>
           </div>
-          <div class="rbtn start" id="rb-climate" onclick="cmd('hvac')">
+          <div class="rbtn start" id="rb-climate">
             <div class="ring"></div>
             <svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><circle cx="24" cy="7" r="4" fill="currentColor"/><path d="M23 12.5c-2 0-3.6 1.2-4.3 3l-1.5 4c-.4 1.1-1.4 1.8-2.5 1.8h-4.4a2.5 2.5 0 000 5h5.1c2.8 0 5.3-1.7 6.4-4.3l3.4-7.8c.4-.9-.3-1.7-1.2-1.7h-1zM13.8 24l-5.2 6" fill="currentColor" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><path d="M2.5 6h9m0 0L8.3 2.8M11.5 6L8.3 9.2M2.5 13l6 5m0 0l-.5-4.4M8.5 18l-4.4.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             <span id="rb-climate-label">Климат</span>
           </div>
-          <div class="rbtn c" id="rb-lights" onclick="cmd('lights')">
+          <div class="rbtn c" id="rb-lights">
             <svg viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="1.5"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-4 10.5c.6.55 1 1.25 1 2v.5h6v-.5c0-.75.4-1.45 1-2A6 6 0 0012 3z"/></svg>
             <span>Фары</span>
           </div>
-          <div class="rbtn d" id="rb-unlock" onclick="sendLockCmd(0)">
+          <div class="rbtn d" id="rb-unlock">
             <svg viewBox="0 0 26 30" fill="none"><path d="M23.13 29.6H2.78A2.78 2.78 0 010 26.83V13.88A2.78 2.78 0 012.78 11.1h1.85V8.33A8.34 8.34 0 0112.95 0h.02a8.28 8.28 0 015.26 1.91 8.47 8.47 0 012.85 4.72h-2.85a5.62 5.62 0 00-1.99-2.77 5.5 5.5 0 00-3.3-1.09A5.56 5.56 0 007.4 8.33V11.1h10.05v.03h5V11.1h.68A2.78 2.78 0 0125.9 13.88v12.95a2.78 2.78 0 01-2.77 2.77zM2.78 13.88v12.95h20.35V13.88H2.78z" fill="#333"/></svg>
             <span>Открыть</span>
           </div>
         </div>
         <div class="remote-extra">
-          <button class="pill-btn" onclick="toggleCharge()"><svg viewBox="0 0 25 25" fill="currentColor"><path d="M14.65 2.17a1.13 1.13 0 00-2.25 0l-.01 4.13h2.25l.01-4.13zM5.63 2.17a1.13 1.13 0 00-2.25 0l-.01 4.13h2.26l0-4.13zm11.65 5.64H.75A.75.75 0 000 8.56v.75c0 .42.34.75.75.75H1.5v3a7.5 7.5 0 006.39 7.4v7.62h2.25V20.46a7.5 7.5 0 006.39-7.4v-3h.75a.75.75 0 00.75-.75v-.75a.75.75 0 00-.75-.75zm-3 5.26a5.26 5.26 0 01-10.52 0v-3h10.52v3z"/></svg>Зарядка</button>
+          <button class="pill-btn" id="remote-charge"><svg viewBox="0 0 25 25" fill="currentColor"><path d="M14.65 2.17a1.13 1.13 0 00-2.25 0l-.01 4.13h2.25l.01-4.13zM5.63 2.17a1.13 1.13 0 00-2.25 0l-.01 4.13h2.26l0-4.13zm11.65 5.64H.75A.75.75 0 000 8.56v.75c0 .42.34.75.75.75H1.5v3a7.5 7.5 0 006.39 7.4v7.62h2.25V20.46a7.5 7.5 0 006.39-7.4v-3h.75a.75.75 0 00.75-.75v-.75a.75.75 0 00-.75-.75zm-3 5.26a5.26 5.26 0 01-10.52 0v-3h10.52v3z"/></svg>Зарядка</button>
           <button class="pill-btn" onclick="cmd('refresh')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>Обновить</button>
         </div>
         <div class="remote-divider"></div>
@@ -498,6 +506,64 @@ const DOOR_SVG = '<svg viewBox="0 0 26 30" fill="none"><path d="M23.13 11.1h-1.8
 const $ = id => document.getElementById(id);
 function toast(msg){ const el=$('toast'); el.textContent=msg; el.classList.add('show');
   clearTimeout(el._t); el._t=setTimeout(()=>el.classList.remove('show'),2200); }
+
+// Vehicle commands require a deliberate 1.5 s hold. The progress ring/fill
+// gives immediate feedback; releasing, scrolling or moving away cancels it.
+const HOLD_MS=1500, HOLD_MOVE_PX=12;
+function holdButton(el, run, visual){
+  if(!el) return;
+  const host=visual||el;
+  const round=host.classList.contains('circle')||host.classList.contains('rbtn');
+  const progress=document.createElement('span');
+  progress.className='hold-progress '+(round?'hold-ring':'fill');
+  host.classList.add('hold-visual');
+  el.classList.add('hold-target');
+  if(!/^(BUTTON|A)$/.test(el.tagName)){ el.tabIndex=0; el.setAttribute('role','button'); }
+  host.prepend(progress);
+  let started=0, timer=0, raf=0, pointerId=null, x=0, y=0;
+  const paint=()=>{
+    progress.style.setProperty('--hold',Math.min(100,(performance.now()-started)/HOLD_MS*100).toFixed(1));
+    raf=requestAnimationFrame(paint);
+  };
+  const reset=()=>{
+    clearTimeout(timer); cancelAnimationFrame(raf);
+    timer=raf=0; started=0; pointerId=null;
+    el.classList.remove('holding');
+    progress.style.setProperty('--hold',0);
+  };
+  const begin=(id,px,py)=>{
+    if(started||el.disabled||el.getAttribute('aria-disabled')==='true') return;
+    started=performance.now(); pointerId=id; x=px; y=py;
+    el.classList.add('holding'); paint();
+    timer=setTimeout(()=>{
+      reset();
+      if(navigator.vibrate) try{ navigator.vibrate(30); }catch(e){}
+      run();
+    },HOLD_MS);
+  };
+  const end=(quiet=false)=>{
+    if(!started) return;
+    reset();
+    if(!quiet) toast('Удерживайте кнопку 1,5 секунды');
+  };
+  el.addEventListener('pointerdown',e=>{
+    if(e.button!==0) return;
+    begin(e.pointerId,e.clientX,e.clientY);
+    try{ el.setPointerCapture(e.pointerId); }catch(err){}
+  });
+  el.addEventListener('pointermove',e=>{
+    if(started&&e.pointerId===pointerId&&Math.hypot(e.clientX-x,e.clientY-y)>HOLD_MOVE_PX) end(true);
+  });
+  el.addEventListener('pointerup',()=>end(false));
+  el.addEventListener('pointercancel',()=>end(true));
+  el.addEventListener('lostpointercapture',()=>end(true));
+  el.addEventListener('contextmenu',e=>e.preventDefault());
+  el.addEventListener('keydown',e=>{
+    if((e.key==='Enter'||e.key===' ')&&!e.repeat){ e.preventDefault(); begin('key',0,0); }
+  });
+  el.addEventListener('keyup',e=>{ if(e.key==='Enter'||e.key===' ') end(false); });
+  el.addEventListener('blur',()=>end(true));
+}
 function go(name){
   document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('active',s.id==='screen-'+name));
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.screen===name));
@@ -849,7 +915,6 @@ function findCar(){
     toast('Действие отменено');
     return;
   }
-  if(!confirm('Включить свет и сигнал на машине?')) return;
   cmd('hornlights');
   findActive=true; updateFindCard();
   findTimer=setTimeout(()=>{ findActive=false; updateFindCard(); },60000);
@@ -859,6 +924,18 @@ function cancelRhl(){
     if(!ok && S.seq) setTimeout(cancelRhl,2000);
   });
 }
+
+holdButton($('g-charge-btn'),toggleCharge);
+holdButton($('act-lights'),actLights,$('act-lights-ic'));
+holdButton($('act-doors'),actDoors,$('act-doors-ic'));
+holdButton($('act-climate'),actClimate,$('act-climate-ic'));
+holdButton($('find-car'),findCar);
+holdButton($('rb-horn'),()=>cmd('hornlights'));
+holdButton($('rb-lock'),()=>sendLockCmd(1));
+holdButton($('rb-climate'),()=>cmd('hvac'));
+holdButton($('rb-lights'),()=>cmd('lights'));
+holdButton($('rb-unlock'),()=>sendLockCmd(0));
+holdButton($('remote-charge'),toggleCharge);
 
 // ---------- trips (IndexedDB) ----------
 const TRIP_DB='leaftrips', TRIP_STORE='trips';
