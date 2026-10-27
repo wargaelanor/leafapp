@@ -22,7 +22,7 @@ ESP32-S3 (`firmware/LeafControl/`) + инструменты (`tools/`) +
 ## Сборка и прошивка
 
 ```powershell
-# 0) сгенерировать webapp_html.h, если менялся index.html/leaf.png
+# 0) сгенерировать webapp_html.h, если менялся index.html
 powershell -File tools\mkwebapp.ps1
 
 # 1) компиляция (arduino-cli должен быть установлен)
