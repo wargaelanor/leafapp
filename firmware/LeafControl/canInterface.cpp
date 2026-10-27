@@ -11,6 +11,7 @@ static bool busOffRecoveryAttempted = false;
 // Per-frame serial logging costs ~3-5 ms per frame at 115200 — off by default.
 // Enable temporarily via CLI: log on / log off
 bool canLogFrames = false;
+uint32_t canFramesB = 0;
 
 void print_can_message(twai_message_t &message) {
       unsigned long message_time = millis() - logStartTime;
@@ -95,6 +96,7 @@ void readAndHandleCANMessage() {
   // loop() overflows the queue on a busy bus.
   while (drained < 32 && twai_receive(&message, 0) == ESP_OK) {
     handleReceivedMessage(message.identifier, message.data, message.data_length_code);
+    canFramesB++;
     if (canLogFrames) {
       Serial.print("< ");
       print_can_message(message);

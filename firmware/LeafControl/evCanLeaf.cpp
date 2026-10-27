@@ -11,6 +11,7 @@
 
 static MCP2515 evCan(EVCAN_SPI_CS, 10000000, &SPI); // SPI clock 10MHz; setBitrate defaults to 16MHz crystal
 static bool evCanOk = false;
+uint32_t canFramesA = 0;
 
 static void handleEvFrame(uint32_t id, uint8_t len, const uint8_t* data) {
   if (id == 0x5BC && len >= 5) {
@@ -81,6 +82,7 @@ void manageEvCAN() {
   while (evCan.checkReceive() == MCP2515::ERROR_OK) {
     struct can_frame frame;
     if (evCan.readMessage(&frame) != MCP2515::ERROR_OK) break;
+    canFramesA++;
     handleEvFrame(frame.can_id, frame.can_dlc, frame.data);
   }
 }

@@ -64,6 +64,10 @@ bool sendCAN(const CANMessage<N> &message) {
 // Per-frame CAN logging switch (CLI: log on / log off)
 extern bool canLogFrames;
 
+// Simple activity counters, printed by the 'status' CLI command
+extern uint32_t canFramesB;  // frames received on Port B (IT-CAN, TWAI)
+extern uint32_t canFramesA;  // frames received on Port A (EV-CAN, MCP2515)
+
 template<size_t N>
 bool receivedMessageIs(uint32_t identifier, unsigned int len, const CANMessage<N> &message) {
   return message.identifier == identifier && len >= N;

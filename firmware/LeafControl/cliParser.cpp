@@ -2,6 +2,18 @@
 #include <Arduino.h>
 #include "configuration.h"
 #include "canInterface.h"
+#include "vehicleTypes.h"
+
+// Live vehicle state, defined in LeafControl.ino (diagnostics only)
+extern float currentSOC;
+extern float cabinTemp;
+extern float currentSetpoint;
+extern float currentFanSpeed;
+extern bool isChargingNow;
+extern bool isHvacOn;
+extern bool headlightsState;
+extern int8_t lockState;
+extern EvBatteryData evData;
 
 static char inputBuffer[128];
 static int inputIndex = 0;
@@ -191,6 +203,24 @@ void executeCommand(char* cmd) {
             Serial.printf("CAN frame logging: %s\n", canLogFrames ? "on" : "off");
             Serial.println("Usage: log on|off");
         }
+    }
+    else if (strcmp(command, "status") == 0) {
+        Serial.println("---- vehicle state ----");
+        Serial.printf("SOC: nominal %.1f %% | dashboard %.1f %%\n",
+                      currentSOC, evData.instrumentSOC);
+        Serial.printf("Range: dashboard %d km\n", evData.instrumentRange);
+        Serial.printf("Pack: %.1f V %.1f A (valid %d), battery temp %.1f C\n",
+                      evData.packVoltage, evData.packCurrent,
+                      evData.packDataValid ? 1 : 0, evData.batteryTemp);
+        Serial.printf("SOH %d %% | GIDS %d | cell delta %d mV\n",
+                      evData.soh, evData.gids, evData.cellDeltaMv);
+        Serial.printf("Ambient %.1f C | cabin %.1f C | setpoint %.1f | fan %.0f\n",
+                      evData.ambientTemp, cabinTemp, currentSetpoint, currentFanSpeed);
+        Serial.printf("Lock %d | charging %d | hvac %d | lights %d | carOn %d\n",
+                      (int)lockState, isChargingNow ? 1 : 0, isHvacOn ? 1 : 0,
+                      headlightsState ? 1 : 0, (int)evData.vehicleOn);
+        Serial.printf("CAN frames: Port B %lu | Port A %lu\n",
+                      (unsigned long)canFramesB, (unsigned long)canFramesA);
     }
     else if (strcmp(command, "reboot") == 0) {
         Serial.println("Rebooting...");
