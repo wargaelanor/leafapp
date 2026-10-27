@@ -189,10 +189,33 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, const char* saveRes
      "<label for='modem800_pass'>APN пароль (пусто — не менять)</label>\n"
      "<input type='password' id='modem800_pass' name='modem800_pass' value='' placeholder='"
    ));
-   server.sendContent(strlen(getModem800Pass()) > 0 ? "сохранён — пусто не менять" : "не задан");
-   server.sendContent(F("'>\n"
-    "</div>\n"
-    "<div id='m7670box' style='display:none'>\n"
+    server.sendContent(strlen(getModem800Pass()) > 0 ? "сохранён — пусто не менять" : "не задан");
+    server.sendContent(F("'>\n"
+     "<div class='call-settings'>\n"
+     "<label class='chk'><input type='checkbox' name='modem_call_enable' value='1'"
+   ));
+   if (getModemCallEnabled()) server.sendContent(F(" checked"));
+   server.sendContent(F(
+     "> Управление климатом входящим звонком</label>\n"
+     "<div class='hint'>Подключите RING (RI) SIM800 к GPIO38. Первый разрешённый звонок включает климат, следующий выключает; остальные вызовы отклоняются. Русские голосовые фразы загружаются во внутреннюю память модема автоматически.</div>\n"
+   ));
+   for (uint8_t i = 0; i < 5; i++) {
+     server.sendContent(F("<label for='modem_call_num"));
+     server.sendContent(String(i + 1));
+     server.sendContent(F("'>Разрешённый номер "));
+     server.sendContent(String(i + 1));
+     server.sendContent(F("</label><input type='text' inputmode='tel' autocomplete='tel' id='modem_call_num"));
+     server.sendContent(String(i + 1));
+     server.sendContent(F("' name='modem_call_num"));
+     server.sendContent(String(i + 1));
+     server.sendContent(F("' value='"));
+     sendNonEmpty(server, htmlEscapeAttr(getModemCallNumber(i)));
+     server.sendContent(F("' placeholder='+79991234567'>\n"));
+   }
+   server.sendContent(F(
+     "</div>\n"
+     "</div>\n"
+     "<div id='m7670box' style='display:none'>\n"
     "<label for='modem7670_apn'>APN (A7670)</label>\n"
     "<input type='text' id='modem7670_apn' name='modem7670_apn' value='"
   ));
@@ -222,7 +245,7 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, const char* saveRes
   server.sendContent(String(getModemPwrKey()));
   server.sendContent(F(
     "'>\n"
-    "<div class='hint'>Модем подключается к разъёму Uart (GPIO43/44). WiFi имеет приоритет: при пропадании WiFi MQTT уходит через модем, при возврате WiFi модем выключается. SIM800 требует сети 2G. PWRKEY — импульс включения/выключения, укажите пин, к которому он подключён.</div>\n"
+    "<div class='hint'>Модем подключается к UART (GPIO1/2). Wi-Fi имеет приоритет для MQTT. При включённом управлении звонком SIM800 остаётся зарегистрированным в GSM и при наличии Wi-Fi. SIM800 требует сети 2G. PWRKEY — импульс включения/выключения.</div>\n"
     "<button type='submit' class='btn btn-save'>Сохранить и перезагрузить</button>\n"
     "</div>\n"
     "<div class='card'><div class='accent-line'></div><div class='title'>Экономия энергии</div>\n"

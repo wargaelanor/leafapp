@@ -8,6 +8,7 @@
 void setupMQTT();
 void manageMQTT();
 bool mqttIsConnected();
+void mqttDisconnect();
 
 // Status updates
 void mqttUpdateSOC(float soc);

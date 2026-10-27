@@ -9,6 +9,8 @@ enum class ModemState : uint8_t {
   OFF = 0,
   STARTING,
   READY,
+  STANDBY,
+  CALL_ACTIVE,
   FAILED,
   STOPPING
 };

@@ -99,4 +99,10 @@ ConfigStatus setModem7670Pass(const char* value);
 bool getModem7670Gps();
 ConfigStatus setModem7670Gps(bool value);
 
+// SIM800 incoming-call climate control. RI is fixed to GPIO38.
+bool getModemCallEnabled();
+ConfigStatus setModemCallEnabled(bool value);
+const char* getModemCallNumber(uint8_t index);
+ConfigStatus setModemCallNumber(uint8_t index, const char* value);
+
 #endif

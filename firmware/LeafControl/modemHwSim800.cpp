@@ -1,4 +1,5 @@
 #include "modemHw.h"
+#include "callAudio.h"
 
 #include <Client.h>
 
@@ -50,6 +51,32 @@ bool commandOk(const String& command, uint32_t timeoutMs = 2000, String* respons
     Serial.printf("[modem] raw AT response: [%s]\n", printable.c_str());
   }
   if (response) *response = data;
+  return ok;
+}
+
+bool fileHasSize(const String& path, size_t expected) {
+  String response;
+  if (!commandOk("AT+FSFLSIZE=" + path, 2500, &response)) return false;
+  int marker = response.indexOf("+FSFLSIZE:");
+  if (marker < 0) return false;
+  return (size_t)response.substring(marker + 11).toInt() == expected;
+}
+
+bool uploadFile(const String& path, const uint8_t* data, size_t length) {
+  commandOk("AT+FSDEL=" + path, 2500);
+  if (!commandOk("AT+FSCREATE=" + path, 2500)) return false;
+  sendCommand("AT+FSWRITE=" + path + ",0," + String(length) + ",15");
+  if (!awaitText(">", 3000)) return false;
+  simSerial.write(data, length);
+  simSerial.flush();
+  return awaitText("OK", 18000) && fileHasSize(path, length);
+}
+
+bool ensureVoiceFile(const String& path, const uint8_t* data, size_t length) {
+  if (fileHasSize(path, length)) return true;
+  Serial.printf("[call] uploading %s (%u bytes)\n", path.c_str(), (unsigned)length);
+  bool ok = uploadFile(path, data, length);
+  Serial.printf("[call] upload %s\n", ok ? "complete" : "failed");
   return ok;
 }
 
@@ -277,6 +304,86 @@ bool hwGprsDisconnect() {
 }
 
 Client* hwTcpClient() { return &tcpClient; }
+
+bool hwPrepareVoiceCalls() {
+  if (passthroughActive) tcpClient.stop();
+  bool clip = commandOk("AT+CLIP=1", 2000);
+  String response;
+  bool dtam = commandOk("AT+DTAM=?", 2000, &response) && response.indexOf("+DTAM:") >= 0;
+  bool crec = commandOk("AT+CREC=?", 2000, &response) && response.indexOf("+CREC:") >= 0;
+  bool files = false;
+  if (clip && dtam && crec) {
+    commandOk("AT+FSHEX=0", 1500);
+    commandOk("AT+CREC=9,0", 3000); // Ensure C:\User record directory exists.
+    files = ensureVoiceFile("C:\\User\\climate_on.amr", CLIMATE_ON_AMR, CLIMATE_ON_AMR_LEN) &&
+            ensureVoiceFile("C:\\User\\climate_off.amr", CLIMATE_OFF_AMR, CLIMATE_OFF_AMR_LEN);
+  }
+  Serial.printf("[call] SIM800 voice support CLIP=%d DTAM=%d CREC=%d files=%d\n",
+                clip, dtam, crec, files);
+  return clip && dtam && crec && files;
+}
+
+bool hwIncomingCaller(String* number, uint32_t timeoutMs) {
+  if (passthroughActive) tcpClient.stop();
+  commandOk("AT+CLIP=1", 2000);
+  unsigned long started = millis();
+  while (millis() - started < timeoutMs) {
+    String response;
+    if (commandOk("AT+CLCC", 2000, &response)) {
+      int marker = response.indexOf("+CLCC:");
+      int firstQuote = response.indexOf('"', marker);
+      int secondQuote = response.indexOf('"', firstQuote + 1);
+      if (marker >= 0 && firstQuote > marker && secondQuote > firstQuote) {
+        if (number) *number = response.substring(firstQuote + 1, secondQuote);
+        return true;
+      }
+    }
+    delay(350);
+  }
+  return false;
+}
+
+void hwRejectCall() {
+  commandOk("ATH", 3000);
+}
+
+bool hwAnswerAndPlay(uint8_t recordId) {
+  String path = recordId == 1 ? "C:\\User\\climate_on.amr" : "C:\\User\\climate_off.amr";
+  size_t expected = recordId == 1 ? CLIMATE_ON_AMR_LEN : CLIMATE_OFF_AMR_LEN;
+  String response;
+  if (!fileHasSize(path, expected)) {
+    Serial.printf("[call] voice file %s is missing\n", path.c_str());
+    hwRejectCall();
+    return false;
+  }
+  if (!commandOk("ATA", 10000)) {
+    Serial.println("[call] ATA failed");
+    return false;
+  }
+  delay(500);
+  if (!commandOk("AT+DTAM=1", 2000)) {
+    Serial.println("[call] remote audio mode unsupported");
+    hwRejectCall();
+    return false;
+  }
+  if (!commandOk("AT+CREC=4,\"" + path + "\",0,80,0", 3000)) {
+    Serial.println("[call] voice playback failed");
+    hwRejectCall();
+    return false;
+  }
+
+  // Wait for the recording to finish, with a hard cap so a corrupt slot
+  // cannot hold the call indefinitely.
+  unsigned long started = millis();
+  delay(500);
+  while (millis() - started < 12000) {
+    if (commandOk("AT+CREC?", 2000, &response) && response.indexOf("+CREC: 0") >= 0) break;
+    delay(300);
+  }
+  hwRejectCall();
+  return true;
+}
+
 bool hwEnableGps() { return false; }
 bool hwGetGps(float*, float*, float*, float*) { return false; }
 

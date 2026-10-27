@@ -14,6 +14,7 @@ static const uint32_t GPS_POLL_MS = 20000;
 static const uint32_t ATTACH_AT_TIMEOUT_MS = 90000;
 static const uint32_t ATTACH_SIM_TIMEOUT_MS = 15000;
 static const uint32_t ATTACH_NET_TIMEOUT_MS = 120000;
+static const uint8_t SIM800_RI_PIN = 38;
 
 static volatile uint8_t stateVal = (uint8_t)ModemState::OFF;
 static volatile bool taskBusy = false;
@@ -22,6 +23,12 @@ static unsigned long wifiUpSinceMs = 0;
 static unsigned long wifiDownSinceMs = 0;
 static unsigned long failedAtMs = 0;
 static unsigned long lastGpsPollMs = 0;
+static volatile bool callRingPending = false;
+static bool callRequestedStateValid = false;
+static bool callRequestedClimateOn = false;
+static volatile int8_t callCanRequest = 0;
+
+static void IRAM_ATTR callRingIsr() { callRingPending = true; }
 
 static bool gpsHasFix = false;
 static float gpsLat = 0, gpsLon = 0, gpsAlt = 0, gpsSpd = 0;
@@ -59,6 +66,30 @@ static bool hwGprsConnect(const char* apn, const char* u, const char* p) {
 }
 static bool hwGprsDisconnect() { return use7670() ? modem7670::hwGprsDisconnect() : modem800::hwGprsDisconnect(); }
 
+static bool callControlEnabled() {
+  return getModemEnable() && !use7670() && getModemCallEnabled();
+}
+
+static String normalizePhone(const char* value) {
+  String digits;
+  if (value) {
+    for (const char* p = value; *p; p++) if (*p >= '0' && *p <= '9') digits += *p;
+  }
+  if (digits.length() == 10) digits = "7" + digits;
+  else if (digits.length() == 11 && digits[0] == '8') digits[0] = '7';
+  return digits;
+}
+
+static bool callerAllowed(const String& caller) {
+  String normalized = normalizePhone(caller.c_str());
+  if (normalized.length() < 10) return false;
+  for (uint8_t i = 0; i < 5; i++) {
+    String allowed = normalizePhone(getModemCallNumber(i));
+    if (allowed.length() >= 10 && allowed == normalized) return true;
+  }
+  return false;
+}
+
 static void attachFailed(const char* message) {
   Serial.println(message);
   setState(ModemState::FAILED);
@@ -71,7 +102,8 @@ static void attachTask(void*) {
   setState(ModemState::STARTING);
   Serial.printf("[modem] attach start (%s)\n", use7670() ? "A7670" : "SIM800");
 
-  if (strlen(apnFor()) == 0) {
+  bool needData = WiFi.status() != WL_CONNECTED;
+  if (needData && strlen(apnFor()) == 0) {
     attachFailed("[modem] APN empty — cannot attach");
     return;
   }
@@ -125,6 +157,17 @@ static void attachTask(void*) {
     return;
   }
   Serial.printf("[modem] network ok, rssi=%d\n", (int)hwSignal());
+
+  if (callControlEnabled()) modem800::hwPrepareVoiceCalls();
+
+  if (!needData) {
+    setState(ModemState::STANDBY);
+    Serial.println("[modem] GSM standby for incoming calls; MQTT uses WiFi");
+    taskBusy = false;
+    vTaskDelete(NULL);
+    return;
+  }
+
   Serial.printf("[modem] opening GPRS, APN=%s, credentials=%s...\n", apnFor(),
                 strlen(userFor()) > 0 || strlen(passFor()) > 0 ? "set" : "empty");
 
@@ -158,6 +201,47 @@ static void stopTask(void*) {
   vTaskDelete(NULL);
 }
 
+static void standbyTask(void*) {
+  setState(ModemState::STOPPING);
+  Serial.println("[modem] closing GPRS; keeping GSM registered for calls");
+  mqttDisconnect();
+  hwGprsDisconnect();
+  modem800::hwPrepareVoiceCalls();
+  setState(ModemState::STANDBY);
+  wifiUpSinceMs = 0;
+  taskBusy = false;
+  vTaskDelete(NULL);
+}
+
+static void callTask(void*) {
+  setState(ModemState::CALL_ACTIVE);
+
+  String caller;
+  if (!modem800::hwIncomingCaller(&caller, 8000)) {
+    Serial.println("[call] incoming number unavailable; rejecting");
+    modem800::hwRejectCall();
+  } else if (!callerAllowed(caller)) {
+    Serial.printf("[call] rejected unauthorized caller %s\n", caller.c_str());
+    modem800::hwRejectCall();
+  } else if (activeSequence != CanSequence::NONE) {
+    Serial.println("[call] rejected authorized call: CAN sequence busy");
+    modem800::hwRejectCall();
+  } else {
+    bool turnOn = !callRequestedStateValid || !callRequestedClimateOn;
+    Serial.printf("[call] authorized caller %s; climate %s\n", caller.c_str(), turnOn ? "on" : "off");
+    if (modem800::hwAnswerAndPlay(turnOn ? 1 : 2)) {
+      callCanRequest = turnOn ? 1 : -1;
+      callRequestedClimateOn = turnOn;
+      callRequestedStateValid = true;
+    }
+  }
+
+  callRingPending = false;
+  setState(WiFi.status() == WL_CONNECTED ? ModemState::STANDBY : ModemState::READY);
+  taskBusy = false;
+  vTaskDelete(NULL);
+}
+
 static bool startTask(TaskFunction_t fn) {
   if (taskBusy) return false;
   taskBusy = true;
@@ -178,6 +262,11 @@ void modemInit() {
     return;
   }
   Serial.printf("[modem] early init (%s)\n", use7670() ? "A7670" : "SIM800");
+  if (callControlEnabled()) {
+    pinMode(SIM800_RI_PIN, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(SIM800_RI_PIN), callRingIsr, FALLING);
+    Serial.printf("[call] RI armed on GPIO%u\n", SIM800_RI_PIN);
+  }
   modemHwBegin();
   for (uint8_t attempt = 0; attempt < 3; attempt++) {
     if (hwTestAt(1500)) {
@@ -194,8 +283,18 @@ void modemInit() {
 void modemTick() {
   ModemState st = (ModemState)stateVal;
 
+  int8_t requested = callCanRequest;
+  if (requested != 0) {
+    callCanRequest = 0;
+    bool turnOn = requested > 0;
+    Serial.printf("### HVAC %s! (authorized call) ###\n", turnOn ? "ON" : "OFF");
+    if (!startSequence(turnOn ? CanSequence::HVAC_ON : CanSequence::HVAC_OFF, millis())) {
+      Serial.println("[call] climate command rejected: CAN sequence busy");
+    }
+  }
+
   if (!getModemEnable()) {
-    if ((st == ModemState::READY || st == ModemState::FAILED) && !taskBusy) {
+    if ((st == ModemState::READY || st == ModemState::STANDBY || st == ModemState::FAILED) && !taskBusy) {
       startTask(stopTask);
     }
     return;
@@ -204,16 +303,28 @@ void modemTick() {
   bool wifiUp = (WiFi.status() == WL_CONNECTED);
   unsigned long now = millis();
 
+  if (callControlEnabled() && callRingPending &&
+      (st == ModemState::READY || st == ModemState::STANDBY) && !taskBusy) {
+    mqttDisconnect();
+    startTask(callTask);
+    return;
+  }
+
   if (wifiUp) {
     wifiDownSinceMs = 0;
     if (st == ModemState::READY && !taskBusy) {
       if (wifiUpSinceMs == 0) wifiUpSinceMs = now;
-      else if (now - wifiUpSinceMs > WIFI_GRACE_MS) startTask(stopTask);
+      else if (now - wifiUpSinceMs > WIFI_GRACE_MS) {
+        startTask(callControlEnabled() ? standbyTask : stopTask);
+      }
+    }
+    if (callControlEnabled() && (st == ModemState::OFF || st == ModemState::FAILED) && !taskBusy) {
+      if (st != ModemState::FAILED || now - failedAtMs >= RETRY_COOLDOWN_MS) startTask(attachTask);
     }
   } else {
     wifiUpSinceMs = 0;
     if (wifiDownSinceMs == 0) wifiDownSinceMs = now;
-    if ((st == ModemState::OFF || st == ModemState::FAILED) && !taskBusy) {
+    if ((st == ModemState::OFF || st == ModemState::STANDBY || st == ModemState::FAILED) && !taskBusy) {
       if (now - wifiDownSinceMs < WIFI_DROP_ATTACH_MS) return;
       if (st == ModemState::FAILED && now - failedAtMs < RETRY_COOLDOWN_MS) return;
       if (activeSequence != CanSequence::NONE) return;
@@ -250,7 +361,7 @@ void modemPowerOffNow() {
     return;
   }
   ModemState st = (ModemState)stateVal;
-  if (st != ModemState::READY && st != ModemState::FAILED) return;
+  if (st != ModemState::READY && st != ModemState::STANDBY && st != ModemState::FAILED) return;
   Serial.println("[modem] powering off before sleep");
   hwGprsDisconnect();
   pulsePwrKey(false);
@@ -273,6 +384,8 @@ const char* modemGetStateStr() {
   switch ((ModemState)stateVal) {
     case ModemState::STARTING: return "starting";
     case ModemState::READY: return "ready";
+    case ModemState::STANDBY: return "standby";
+    case ModemState::CALL_ACTIVE: return "call";
     case ModemState::FAILED: return "failed";
     case ModemState::STOPPING: return "stopping";
     default: return "off";

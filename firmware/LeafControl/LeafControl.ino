@@ -353,6 +353,13 @@ void handleSettingsSave() {
   int pwr = server.arg("modem_pwrkey").toInt();
   if (pwr >= 0 && pwr <= 48) setModemPwrKey(pwr);
   setModem7670Gps(server.hasArg("modem7670_gps"));
+  setModemCallEnabled(server.hasArg("modem_call_enable"));
+  for (uint8_t i = 0; i < 5; i++) {
+    String key = "modem_call_num" + String(i + 1);
+    String number = server.arg(key);
+    number.trim();
+    setModemCallNumber(i, number.c_str());
+  }
 
   String m800Apn = server.arg("modem800_apn");
   m800Apn.trim();
@@ -992,7 +999,8 @@ void loop() {
 
   // --- Power save: deep sleep after idle period ---
   // Never sleep while charging or running remote climate
-  if (getSleepEnabled() && !otaInProgress && activeSequence == CanSequence::NONE &&
+  bool callControlKeepsAwake = getModemEnable() && getModemType() == 0 && getModemCallEnabled();
+  if (getSleepEnabled() && !callControlKeepsAwake && !otaInProgress && activeSequence == CanSequence::NONE &&
       !isChargingNow && !isHvacOn) {
     static unsigned long lastIdleTickMs = 0;
     unsigned long now = millis();

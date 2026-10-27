@@ -44,6 +44,11 @@ Client* hwTcpClient() {
   return &tcpClient;
 }
 
+bool hwPrepareVoiceCalls() { return false; }
+bool hwIncomingCaller(String*, uint32_t) { return false; }
+void hwRejectCall() {}
+bool hwAnswerAndPlay(uint8_t) { return false; }
+
 bool hwEnableGps() {
   return modem.enableGPS();
 }

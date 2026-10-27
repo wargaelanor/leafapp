@@ -264,6 +264,10 @@ bool mqttIsConnected() {
   return strlen(getMqttServer()) > 0 && mqttClient.connected();
 }
 
+void mqttDisconnect() {
+  if (mqttClient.connected()) mqttClient.disconnect();
+}
+
 void manageMQTT() {
   if (strlen(getMqttServer()) == 0) {
     return; // Don't try to connect if MQTT server is not configured
