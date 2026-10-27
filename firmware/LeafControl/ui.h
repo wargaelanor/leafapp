@@ -163,59 +163,12 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, const char* saveRes
     "<button type='submit' class='btn btn-save'>Сохранить и перезагрузить</button>\n"
     "</div>\n"
     "<div class='card'><div class='accent-line'></div><div class='title'>Мобильный модем</div>\n"
-    "<label class='chk' style='margin-top:0'><input type='checkbox' id='modem_sim800' name='modem_sim800' value='1' onchange=\"mCheck('800')\""
-  ));
-  if (getModemEnable() && getModemType() == 0) server.sendContent(F(" checked"));
-  server.sendContent(F(
-    ">SIM800 (2G, GPRS)</label>\n"
-    "<label class='chk'><input type='checkbox' id='modem_a7670' name='modem_a7670' value='1' onchange=\"mCheck('7670')\""
+    "<label class='chk' style='margin-top:0'><input type='checkbox' id='modem_a7670' name='modem_a7670' value='1'"
   ));
   if (getModemEnable() && getModemType() == 1) server.sendContent(F(" checked"));
   server.sendContent(F(
     ">SIMCOM A7670E (4G + GPS)</label>\n"
-    "<div id='m800box' style='display:none'>\n"
-    "<label for='modem800_apn'>APN (SIM800)</label>\n"
-    "<input type='text' id='modem800_apn' name='modem800_apn' value='"
-  ));
-  sendNonEmpty(server, htmlEscapeAttr(getModem800Apn()));
-  server.sendContent(F(
-    "' placeholder='internet' autocapitalize='off'>\n"
-     "<label for='modem800_user'>APN пользователь (пусто — не менять)</label>\n"
-     "<input type='text' id='modem800_user' name='modem800_user' value='"
-   ));
-   sendNonEmpty(server, htmlEscapeAttr(getModem800User()));
-   server.sendContent(F(
-     "' autocapitalize='off'>\n"
-     "<label for='modem800_pass'>APN пароль (пусто — не менять)</label>\n"
-     "<input type='password' id='modem800_pass' name='modem800_pass' value='' placeholder='"
-   ));
-    server.sendContent(strlen(getModem800Pass()) > 0 ? "сохранён — пусто не менять" : "не задан");
-    server.sendContent(F("'>\n"
-     "<div class='call-settings'>\n"
-     "<label class='chk'><input type='checkbox' name='modem_call_enable' value='1'"
-   ));
-   if (getModemCallEnabled()) server.sendContent(F(" checked"));
-   server.sendContent(F(
-     "> Управление климатом входящим звонком</label>\n"
-     "<div class='hint'>Подключите RING (RI) SIM800 к GPIO38. Первый разрешённый звонок включает климат, следующий выключает; остальные вызовы отклоняются. Русские голосовые фразы загружаются во внутреннюю память модема автоматически.</div>\n"
-   ));
-   for (uint8_t i = 0; i < 5; i++) {
-     server.sendContent(F("<label for='modem_call_num"));
-     server.sendContent(String(i + 1));
-     server.sendContent(F("'>Разрешённый номер "));
-     server.sendContent(String(i + 1));
-     server.sendContent(F("</label><input type='text' inputmode='tel' autocomplete='tel' id='modem_call_num"));
-     server.sendContent(String(i + 1));
-     server.sendContent(F("' name='modem_call_num"));
-     server.sendContent(String(i + 1));
-     server.sendContent(F("' value='"));
-     sendNonEmpty(server, htmlEscapeAttr(getModemCallNumber(i)));
-     server.sendContent(F("' placeholder='+79991234567'>\n"));
-   }
-   server.sendContent(F(
-     "</div>\n"
-     "</div>\n"
-     "<div id='m7670box' style='display:none'>\n"
+     "<div id='m7670box'>\n"
     "<label for='modem7670_apn'>APN (A7670)</label>\n"
     "<input type='text' id='modem7670_apn' name='modem7670_apn' value='"
   ));
@@ -245,7 +198,7 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, const char* saveRes
   server.sendContent(String(getModemPwrKey()));
   server.sendContent(F(
     "'>\n"
-    "<div class='hint'>Модем подключается к UART (GPIO1/2). Wi-Fi имеет приоритет для MQTT. При включённом управлении звонком SIM800 остаётся зарегистрированным в GSM и при наличии Wi-Fi. SIM800 требует сети 2G. PWRKEY — импульс включения/выключения.</div>\n"
+    "<div class='hint'>Модем подключается к UART (GPIO1/2). Wi-Fi имеет приоритет для MQTT; A7670 используется как резервный канал 4G и источник GPS. PWRKEY — импульс включения/выключения.</div>\n"
     "<button type='submit' class='btn btn-save'>Сохранить и перезагрузить</button>\n"
     "</div>\n"
     "<div class='card'><div class='accent-line'></div><div class='title'>Экономия энергии</div>\n"
@@ -275,14 +228,6 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, const char* saveRes
     "<button type='submit' class='btn btn-save'>Сохранить и перезагрузить</button>\n"
     "</form></div>\n"
     "<div style='padding:0 16px'><a href='/' class='btn btn-back'>Назад</a></div>\n"
-    "<script>\n"
-    "function mCheck(w){var a=document.getElementById('modem_sim800'),b=document.getElementById('modem_a7670');"
-    "if(w==='800'&&a.checked)b.checked=false;if(w==='7670'&&b.checked)a.checked=false;mSync();}\n"
-    "function mSync(){var a=document.getElementById('modem_sim800'),b=document.getElementById('modem_a7670');"
-    "document.getElementById('m800box').style.display=a.checked?'block':'none';"
-    "document.getElementById('m7670box').style.display=b.checked?'block':'none';}\n"
-    "mSync();\n"
-    "</script>\n"
     "</div></div></body></html>\n"
   ));
 

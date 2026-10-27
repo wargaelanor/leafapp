@@ -346,20 +346,12 @@ void handleSettingsSave() {
   int wsm = server.arg("wake_slow_min").toInt();
   if (wsm >= 1 && wsm <= 1440) setWakeSlowMinutes(wsm);
 
-  bool m800 = server.hasArg("modem_sim800");
   bool m7670 = server.hasArg("modem_a7670");
-  setModemEnable(m800 || m7670);
-  setModemType(m7670 ? 1 : 0);
+  setModemEnable(m7670);
+  setModemType(1);
   int pwr = server.arg("modem_pwrkey").toInt();
   if (pwr >= 0 && pwr <= 48) setModemPwrKey(pwr);
   setModem7670Gps(server.hasArg("modem7670_gps"));
-  setModemCallEnabled(server.hasArg("modem_call_enable"));
-  for (uint8_t i = 0; i < 5; i++) {
-    String key = "modem_call_num" + String(i + 1);
-    String number = server.arg(key);
-    number.trim();
-    setModemCallNumber(i, number.c_str());
-  }
 
   String m800Apn = server.arg("modem800_apn");
   m800Apn.trim();
@@ -999,8 +991,7 @@ void loop() {
 
   // --- Power save: deep sleep after idle period ---
   // Never sleep while charging or running remote climate
-  bool callControlKeepsAwake = getModemEnable() && getModemType() == 0 && getModemCallEnabled();
-  if (getSleepEnabled() && !callControlKeepsAwake && !otaInProgress && activeSequence == CanSequence::NONE &&
+  if (getSleepEnabled() && !otaInProgress && activeSequence == CanSequence::NONE &&
       !isChargingNow && !isHvacOn) {
     static unsigned long lastIdleTickMs = 0;
     unsigned long now = millis();

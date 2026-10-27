@@ -121,12 +121,6 @@ static ConfigString<64> conf_modem7670_apn("modem7670_apn", "");
 static ConfigString<64> conf_modem7670_user("modem7670_user", "");
 static ConfigString<64> conf_modem7670_pass("modem7670_pass", "");
 static ConfigBool       conf_modem7670_gps("modem7670_gps", true);
-static ConfigBool       conf_call_enable("call_enable", false);
-static ConfigString<24> conf_call_num1("call_num1", "");
-static ConfigString<24> conf_call_num2("call_num2", "");
-static ConfigString<24> conf_call_num3("call_num3", "");
-static ConfigString<24> conf_call_num4("call_num4", "");
-static ConfigString<24> conf_call_num5("call_num5", "");
 
 void initConfiguration() {
     nvsReady = preferences.begin("config", false);
@@ -161,12 +155,6 @@ void initConfiguration() {
     conf_modem7670_user.load();
     conf_modem7670_pass.load();
     conf_modem7670_gps.load();
-    conf_call_enable.load();
-    conf_call_num1.load();
-    conf_call_num2.load();
-    conf_call_num3.load();
-    conf_call_num4.load();
-    conf_call_num5.load();
 }
 
 void factoryReset() {
@@ -306,27 +294,3 @@ ConfigStatus setModem7670Pass(const char* value) { return conf_modem7670_pass.se
 
 bool getModem7670Gps() { return conf_modem7670_gps.get(); }
 ConfigStatus setModem7670Gps(bool value) { return conf_modem7670_gps.set(value); }
-
-bool getModemCallEnabled() { return conf_call_enable.get(); }
-ConfigStatus setModemCallEnabled(bool value) { return conf_call_enable.set(value); }
-
-static ConfigString<24>* callNumberConfig(uint8_t index) {
-    switch (index) {
-        case 0: return &conf_call_num1;
-        case 1: return &conf_call_num2;
-        case 2: return &conf_call_num3;
-        case 3: return &conf_call_num4;
-        case 4: return &conf_call_num5;
-        default: return nullptr;
-    }
-}
-
-const char* getModemCallNumber(uint8_t index) {
-    ConfigString<24>* conf = callNumberConfig(index);
-    return conf ? conf->get() : "";
-}
-
-ConfigStatus setModemCallNumber(uint8_t index, const char* value) {
-    ConfigString<24>* conf = callNumberConfig(index);
-    return conf ? conf->set(value) : ConfigStatus::ERROR_UNKNOWN;
-}
