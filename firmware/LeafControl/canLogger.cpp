@@ -89,6 +89,9 @@ void canLoggerAppend(char bus, char direction, uint32_t id, const uint8_t* data,
 
 bool canLoggerIsRecording() { return recording; }
 bool canLoggerIsFull() { return full; }
+bool canLoggerHasLog() {
+  return mountFs() && FFat.exists("/canlog.bin");
+}
 size_t canLoggerCount() { return recordCount; }
 size_t canLoggerCapacity() {
   mountFs();

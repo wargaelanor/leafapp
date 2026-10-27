@@ -1472,8 +1472,9 @@ $('canlog-details').textContent='Кадров: '+s.frames+' из '+s.capacity;
 $('canlog-start').disabled=s.recording;
 $('canlog-stop').disabled=!s.recording;
 $('canlog-clear').disabled=s.recording||s.frames===0;
-$('canlog-download').style.display=s.frames?'block':'none';
-$('canlog-error').textContent=s.full?'Запись остановлена автоматически. Скачайте журнал.':'';
+$('canlog-download').style.display=s.available?'block':'none';
+$('canlog-error').textContent=s.full?'Запись остановлена автоматически. Скачайте журнал.':
+(!s.recording&&s.available&&s.frames===0?'CAN-кадры не получены. Проверьте подключение к автомобилю и повторите запись.':'');
 }catch(e){ $('canlog-error').textContent='Не удалось получить состояние записи'; }
 }
 async function canLogAction(action){

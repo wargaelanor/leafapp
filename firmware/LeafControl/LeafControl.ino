@@ -287,10 +287,11 @@ void handleDeveloperLogin() {
 
 void handleCanLogStatus() {
   if (!requireDeveloperAuth()) return;
-  char json[160];
+  char json[180];
   snprintf(json, sizeof(json),
-           "{\"recording\":%s,\"full\":%s,\"frames\":%lu,\"capacity\":%lu}",
+           "{\"recording\":%s,\"full\":%s,\"available\":%s,\"frames\":%lu,\"capacity\":%lu}",
            canLoggerIsRecording() ? "true" : "false", canLoggerIsFull() ? "true" : "false",
+           canLoggerHasLog() ? "true" : "false",
            (unsigned long)canLoggerCount(), (unsigned long)canLoggerCapacity());
   server.sendHeader("Cache-Control", "no-store");
   server.send(200, "application/json", json);
