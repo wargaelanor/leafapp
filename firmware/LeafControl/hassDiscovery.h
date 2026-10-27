@@ -29,6 +29,7 @@ struct OvmsMetrics {
   const char* gids = "metric/v/b/gids";
   const char* packVoltage = "metric/v/b/voltage";
   const char* packCurrent = "metric/v/b/current";
+  const char* packPower = "metric/v/b/power";
   const char* ambientTemp = "metric/v/e/ambienttemp";
   const char* vehicleOn = "metric/v/e/on";
   const char* headlights = "metric/v/e/headlights";
@@ -37,6 +38,9 @@ struct OvmsMetrics {
   const char* rangeInstrument = "metric/v/b/range/instrument";
   const char* batteryTemp = "metric/v/b/temp";
   const char* cellDelta = "metric/v/b/c/voltage/dev/max";
+  const char* odometer = "metric/v/p/odometer";
+  const char* vin = "metric/v/vin";
+  const char* hvacTimer = "metric/v/e/hvac/timer";
 };
 extern const OvmsMetrics ovmsMetrics;
 

@@ -289,6 +289,15 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
           <input type="range" id="sp-slider" min="16" max="28" step="0.5" value="21" oninput="spChanged(this.value)">
           <span class="val" id="sp-val">21.0</span>
         </div>
+        <div class="setpoint-row">
+          <label for="hvac-minutes">Длительность</label>
+          <select id="hvac-minutes">
+            <option value="5">5 минут</option><option value="10">10 минут</option>
+            <option value="15" selected>15 минут</option><option value="20">20 минут</option>
+            <option value="30">30 минут</option>
+          </select>
+          <span class="val" id="hvac-left">—</span>
+        </div>
         <div class="remote-pad">
           <div class="rbtn a" id="rb-horn">
             <svg viewBox="0 0 24 24" fill="#333"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0014 7.97v8.05A4.47 4.47 0 0016.5 12zM14 3.23v2.06a7 7 0 010 13.42v2.06a9 9 0 000-17.54z"/></svg>
@@ -361,6 +370,10 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
           <div><div class="vst">Ток</div><div class="vsv" id="s-i">—</div></div>
         </div>
         <div class="vs-cell">
+          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
+          <div><div class="vst">Мощность</div><div class="vsv" id="s-power">—</div></div>
+        </div>
+        <div class="vs-cell">
           <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 14.76V3.5a2.5 2.5 0 00-5 0v11.26a4.5 4.5 0 105 0z"/></svg></div>
           <div><div class="vst">Батарея, °C</div><div class="vsv" id="s-btemp">—</div></div>
         </div>
@@ -391,6 +404,14 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
         <div class="vs-cell">
           <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
           <div><div class="vst">Машина</div><div class="vsv" id="s-on">—</div></div>
+        </div>
+        <div class="vs-cell">
+          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M7 12h10M12 7v10"/></svg></div>
+          <div><div class="vst">Общий пробег</div><div class="vsv" id="s-odo">—</div></div>
+        </div>
+        <div class="vs-cell">
+          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16v16H4zM8 8h8M8 12h8M8 16h5"/></svg></div>
+          <div><div class="vst">VIN</div><div class="vsv" id="s-vin" style="font-size:13px;overflow-wrap:anywhere">—</div></div>
         </div>
       </div>
       <div style="height:16px"></div>
@@ -526,9 +547,9 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
 // ---------- state ----------
 const S = { soc:-1, cabin:-99, charging:false, charger:'', hvac:false, lock:-1,
   setpoint:-1, fan:-1, heat:false, cool:false, vent:-1,
-  soh:-1, gids:-1, v:-1, i:0, packValid:false, amb:-99, on:-1, seq:false, locking:false,
+  soh:-1, gids:-1, v:-1, i:0, power:0, packValid:false, amb:-99, on:-1, seq:false, locking:false,
   isoc:-1, irange:-1, btemp:-99, cdelta:-1,
-  lights:-1, gps:null };
+  odo:0, vin:'', hvacTimer:0, lights:-1, gps:null };
 let mode = 'local'; // 'local' | 'mqtt'
 let onBoard = false; // true only when served from the board itself (local /api/status works)
 let lastUpdate = 0;
@@ -678,6 +699,7 @@ function renderNow(){
   $('rm-updated').textContent = lastUpdate ? 'Обновлено: '+new Date(lastUpdate).toLocaleTimeString('ru-RU') : 'Обновлено: никогда';
   $('rb-climate').classList.toggle('on', S.hvac);
   $('rb-climate-label').textContent = S.hvac ? 'Выкл климат' : 'Климат';
+  $('hvac-left').textContent = S.hvacTimer>0 ? S.hvacTimer+' мин' : '—';
 
   $('s-soc').textContent = (iSoc!=null && soc!=null) ? fmtPct(iSoc)+' / '+fmtPct(soc) : fmtPct(socShown);
   $('s-range').textContent = (iRange!=null && km!=null) ? fmtKm(iRange)+' / '+fmtKm(km) : fmtKm(kmShown);
@@ -685,6 +707,7 @@ function renderNow(){
   $('s-gids').textContent = S.gids>=0 ? S.gids : '—';
   $('s-v').textContent = S.packValid ? S.v.toFixed(1)+' V' : '—';
   $('s-i').textContent = S.packValid ? S.i.toFixed(1)+' A' : '—';
+  $('s-power').textContent = S.packValid ? S.power.toFixed(1)+' кВт' : '—';
   $('s-btemp').textContent = (S.btemp>-30&&S.btemp<70) ? S.btemp.toFixed(1)+' °C' : '—';
   $('s-cdelta').textContent = S.cdelta>=0 ? S.cdelta+' мВ' : '—';
   $('s-amb').textContent = (S.amb>-40&&S.amb<60) ? S.amb.toFixed(1)+' °C' : '—';
@@ -693,6 +716,8 @@ function renderNow(){
   $('s-charge').textContent = S.charging?'Подключено':(S.charger?chargerRu():'—');
   $('s-hvac').textContent = S.hvac ? (S.heat?'Обогрев':(S.cool?'Охлаждение':'Вкл')) : 'Выкл';
   $('s-on').textContent = S.on===1?'Вкл':(S.on===0?'Выкл':'—');
+  $('s-odo').textContent = S.odo>0 ? S.odo.toLocaleString('ru-RU')+' км' : '—';
+  $('s-vin').textContent = S.vin || '—';
   $('f-status-sub').textContent = soc!=null ? 'Батарея '+soc.toFixed(0)+'%' : 'Батарея, климат, двери';
 
   $('seq-banner').classList.toggle('show', !!S.seq);
@@ -730,10 +755,11 @@ async function pollLocal(){
     S.soc=j.soc; S.cabin=j.cabin; S.charging=!!j.charging; S.charger=j.charger||'';
     S.hvac=!!j.hvac; S.lock=j.lock; S.setpoint=j.setpoint; S.fan=j.fan;
     S.heat=!!j.heat; S.cool=!!j.cool; S.vent=j.vent;
-    S.soh=j.soh; S.gids=j.gids; S.v=j.v; S.i=j.i; S.packValid=!!j.pack;
+    S.soh=j.soh; S.gids=j.gids; S.v=j.v; S.i=j.i; S.power=j.power||0; S.packValid=!!j.pack;
     S.amb=j.amb; S.on=j.on; S.seq=!!j.seq; S.locking=!!j.locking;
     S.isoc=(j.isoc===undefined)?-1:j.isoc; S.irange=(j.irange===undefined)?-1:j.irange;
     S.btemp=(j.btemp===undefined)?-99:j.btemp; S.cdelta=(j.cdelta===undefined)?-1:j.cdelta;
+    S.odo=j.odo||0; S.vin=j.vin||''; S.hvacTimer=j.hvac_timer||0;
     S.lights = (j.lights===undefined) ? -1 : (j.lights?1:0);
     if(j.gps && j.gps.lat && j.gps.lon && j.gps.age < 900)
       S.gps = { lat:j.gps.lat, lon:j.gps.lon, spd:(j.gps.spd||0)*1.852, at:Date.now()-j.gps.age*1000 };
@@ -851,9 +877,13 @@ function mqttConnect(){
       case 'v/b/gids': S.gids=num; break;
       case 'v/b/voltage': S.v=num; S.packValid=true; break;
       case 'v/b/current': S.i=num; break;
+      case 'v/b/power': S.power=num; break;
       case 'v/e/ambienttemp': S.amb=num; break;
       case 'v/e/on': S.on=(t==='yes')?1:0; break;
       case 'v/e/headlights': S.lights=(t==='yes')?1:0; break;
+      case 'v/p/odometer': S.odo=Math.round(num); break;
+      case 'v/vin': S.vin=t; break;
+      case 'v/e/hvac/timer': S.hvacTimer=Math.round(num); break;
       case 'v/location/last': try{ const g=JSON.parse(t); if(g.lat&&g.lon) S.gps={lat:g.lat,lon:g.lon,spd:(g.spd||0)*1.852,at:Date.now()}; }catch(e){} break;
       default: return;
     }
@@ -877,9 +907,10 @@ function cmd(type, quiet){
   if(mode==='local'){
     if(S.seq){ if(!quiet) toast('Дождитесь завершения текущей команды'); return Promise.resolve(false); }
     const sp=parseFloat($('sp-slider').value);
+    const mins=parseInt($('hvac-minutes').value,10);
     const map={ charge:'/charge_on', chargeoff:'/charge_off', lock:'/lock', unlock:'/unlock', refresh:'/refresh',
       lights:'/lights', hornlights:'/hornlights', rhloff:'/rhloff',
-      hvac: S.hvac?'/hvac_off':'/hvac_on?setpoint='+sp };
+      hvac: S.hvac?'/hvac_off':'/hvac_on?setpoint='+sp+'&minutes='+mins };
     pressFx(type);
     toast('Команда отправлена');
     return localCmd(map[type]).then(ok=>{
@@ -890,10 +921,11 @@ function cmd(type, quiet){
   if(!client||!client.connected){ toast('Нет подключения к брокеру'); return Promise.resolve(false); }
   const p='ovms/'+cfg.user+'/'+(cfg.vid||'leaf')+'/client/pwa/command/c';
   const sp=parseFloat($('sp-slider').value);
+  const mins=parseInt($('hvac-minutes').value,10);
   const payload={ charge:'charge start', chargeoff:'charge stop', lock:'lock', unlock:'unlock',
     refresh:'server v3 update modified',
     lights:'lights', hornlights:'hornlights', rhloff:'lights off',
-    hvac: S.hvac?'climatecontrol off':'climatecontrol on '+sp }[type];
+    hvac: S.hvac?'climatecontrol off':'climatecontrol on '+sp+' '+mins }[type];
   client.publish(p,payload);
   pressFx(type);
   toast('Команда отправлена');

@@ -39,6 +39,33 @@ bool isHeatingEnabled = false;
 bool isCoolingEnabled = false;
 VentilationMode currentVentilationMode = VentilationMode::UNKNOWN;
 EvBatteryData evData;
+unsigned long hvacTimerEndsMs = 0;
+bool hvacTimerStopPending = false;
+
+bool validHvacMinutes(uint16_t minutes) {
+  return minutes == 0 || minutes == 5 || minutes == 10 || minutes == 15 ||
+         minutes == 20 || minutes == 30;
+}
+
+uint16_t hvacTimerRemainingMinutes() {
+  if (hvacTimerEndsMs == 0) return 0;
+  long remaining = (long)(hvacTimerEndsMs - millis());
+  return remaining > 0 ? (uint16_t)((remaining + 59999L) / 60000L) : 0;
+}
+
+void cancelHvacTimer() {
+  hvacTimerEndsMs = 0;
+  hvacTimerStopPending = false;
+  mqttUpdateHvacTimer(0);
+}
+
+void armHvacTimer(uint16_t minutes) {
+  cancelHvacTimer();
+  if (minutes > 0) {
+    hvacTimerEndsMs = millis() + (unsigned long)minutes * 60000UL;
+    mqttUpdateHvacTimer(minutes);
+  }
+}
 
 // Deep sleep state (RTC memory survives deep sleep)
 struct RtcState {
@@ -55,6 +82,8 @@ struct RtcState {
   int8_t cachedSOH;
   int8_t cachedLock;
   int8_t cachedVehicleOn;
+  uint32_t cachedOdometerKm;
+  char cachedVin[18];
   uint8_t cachedCharger;
   uint8_t cachedFlags;        // bit0 charging, bit1 hvac, bit2 heat, bit3 cool, bit4 packValid
   uint8_t cachedVent;
@@ -68,7 +97,7 @@ void noteCarActivity() {
 
 // Restore cached state after deep sleep wake
 void restoreFromRtc() {
-  if (rtcState.magic != 0xA71EE501) return;
+  if (rtcState.magic != 0xA71EE502) return;
   currentSOC = rtcState.cachedSOC;
   cabinTemp = rtcState.cachedCabin;
   currentSetpoint = rtcState.cachedSetpoint;
@@ -87,6 +116,9 @@ void restoreFromRtc() {
   evData.packDataValid = rtcState.cachedFlags & 0x10;
   evData.ambientTemp = rtcState.cachedAmbient;
   evData.vehicleOn = rtcState.cachedVehicleOn;
+  evData.odometerKm = rtcState.cachedOdometerKm;
+  memcpy(evData.vin, rtcState.cachedVin, sizeof(evData.vin));
+  evData.vin[17] = '\0';
 
   // Push restored values into MQTT dirty flags so reconnect sync republishes them
   if (currentSOC >= 0) mqttUpdateSOC(currentSOC);
@@ -103,11 +135,13 @@ void restoreFromRtc() {
   if (evData.packDataValid) mqttUpdatePackStatus(evData.packVoltage, evData.packCurrent);
   if (evData.ambientTemp > -90) mqttUpdateAmbient(evData.ambientTemp);
   if (evData.vehicleOn >= 0) mqttUpdateVehicleOn(evData.vehicleOn == 1);
+  if (evData.odometerKm > 0) mqttUpdateOdometer(evData.odometerKm);
+  if (strlen(evData.vin) == 17) mqttUpdateVin(evData.vin);
 }
 
 // Save current state to RTC memory
 void saveToRtc() {
-  rtcState.magic = 0xA71EE501;
+  rtcState.magic = 0xA71EE502;
   rtcState.cachedSOC = currentSOC;
   rtcState.cachedCabin = cabinTemp;
   rtcState.cachedSetpoint = currentSetpoint;
@@ -119,6 +153,9 @@ void saveToRtc() {
   rtcState.cachedSOH = evData.soh;
   rtcState.cachedLock = lockState;
   rtcState.cachedVehicleOn = evData.vehicleOn;
+  rtcState.cachedOdometerKm = evData.odometerKm;
+  strncpy(rtcState.cachedVin, evData.vin, sizeof(rtcState.cachedVin) - 1);
+  rtcState.cachedVin[17] = '\0';
   rtcState.cachedCharger = (uint8_t)currentChargerState;
   rtcState.cachedFlags = (isChargingNow ? 0x01 : 0x00)
                        | (isHvacOn ? 0x02 : 0x00)
@@ -179,20 +216,22 @@ void handleApiStatus() {
   float gLat = 0, gLon = 0, gAlt = 0, gSpd = 0;
   uint32_t gAge = 0;
   bool gpsValid = modemGpsFix(&gLat, &gLon, &gAlt, &gSpd, &gAge);
-  char json[900];
+  char json[1050];
   snprintf(json, sizeof(json),
     "{\"soc\":%.1f,\"cabin\":%.1f,\"charging\":%d,\"charger\":\"%s\",\"hvac\":%d,"
     "\"lock\":%d,\"setpoint\":%.1f,\"fan\":%.0f,\"heat\":%d,\"cool\":%d,\"vent\":%d,"
-    "\"soh\":%d,\"gids\":%d,\"v\":%.1f,\"i\":%.1f,\"pack\":%d,\"amb\":%.1f,"
+    "\"soh\":%d,\"gids\":%d,\"v\":%.1f,\"i\":%.1f,\"power\":%.1f,\"pack\":%d,\"amb\":%.1f,"
     "\"isoc\":%.1f,\"irange\":%d,\"btemp\":%.1f,\"cdelta\":%d,"
+    "\"odo\":%lu,\"vin\":\"%s\",\"hvac_timer\":%u,"
     "\"on\":%d,\"seq\":%d,\"locking\":%d,\"lights\":%d,"
     "\"modem\":\"%s\",\"gps\":{\"lat\":%.5f,\"lon\":%.5f,\"age\":%lu}}",
     currentSOC, cabinTemp, isChargingNow ? 1 : 0, chargerStateStr(currentChargerState),
     isHvacOn ? 1 : 0, (int)lockState, currentSetpoint, currentFanSpeed,
     isHeatingEnabled ? 1 : 0, isCoolingEnabled ? 1 : 0, (int)currentVentilationMode,
-    evData.soh, evData.gids, evData.packVoltage, evData.packCurrent,
+    evData.soh, evData.gids, evData.packVoltage, evData.packCurrent, evData.packPower,
     evData.packDataValid ? 1 : 0, evData.ambientTemp,
     evData.instrumentSOC, evData.instrumentRange, evData.batteryTemp, evData.cellDeltaMv,
+    (unsigned long)evData.odometerKm, evData.vin, hvacTimerRemainingMinutes(),
     (int)evData.vehicleOn,
     sequenceActive ? 1 : 0, getLockingEnabled() ? 1 : 0, headlightsState ? 1 : 0,
     modemGetStateStr(), gpsValid ? gLat : 0.0, gpsValid ? gLon : 0.0,
@@ -509,6 +548,7 @@ void handleEvPackStatus(float voltage, float current) {
   static float lastPubbedA = 0.0f;
   evData.packVoltage = voltage;
   evData.packCurrent = current;
+  evData.packPower = voltage * current / 1000.0f;
   evData.packDataValid = true;
   if (voltage == lastPubbedV && current == lastPubbedA) return;
   if (lastPub != 0 && millis() - lastPub < 5000) return;
@@ -516,6 +556,20 @@ void handleEvPackStatus(float voltage, float current) {
   lastPubbedV = voltage;
   lastPubbedA = current;
   mqttUpdatePackStatus(voltage, current);
+}
+
+void handleOdometer(uint32_t km) {
+  if (evData.odometerKm == km) return;
+  evData.odometerKm = km;
+  mqttUpdateOdometer(km);
+}
+
+void handleVin(const char* vin) {
+  if (!vin || strlen(vin) != 17) return;
+  strncpy(evData.vin, vin, sizeof(evData.vin) - 1);
+  evData.vin[17] = '\0';
+  Serial.printf("VIN: %s\n", evData.vin);
+  mqttUpdateVin(evData.vin);
 }
 
 void handleEvAmbient(float ambientTemp) {
@@ -621,9 +675,12 @@ void handleHvacOn() {
     // Reject garbage/out-of-range setpoints from the URL
     if (setpoint != 0.0f && (setpoint < 16.0f || setpoint > 32.0f)) setpoint = 0.0f;
   }
+  uint16_t minutes = server.hasArg("minutes") ? (uint16_t)server.arg("minutes").toInt() : 0;
+  if (!validHvacMinutes(minutes)) { server.send(400, "text/plain", "Invalid HVAC duration"); return; }
   Serial.print("Setpoint: ");
   Serial.println(setpoint);
   if (!startSeqOrBusy(CanSequence::HVAC_ON)) { sendBusyHttp(); return; }
+  armHvacTimer(minutes);
   setHVACTargetTemperature(setpoint);
   if (setpoint > 0.0f) {
       handleHVACSetpoint(setpoint); // Pre-fill the UI/MQTT
@@ -632,11 +689,13 @@ void handleHvacOn() {
   server.send(303);
 }
 
-void handleMqttHvacOn(float setpoint) {
+void handleMqttHvacOn(float setpoint, uint16_t minutes) {
   if (setpoint != 0.0f && (setpoint < 16.0f || setpoint > 32.0f)) setpoint = 0.0f;
+  if (!validHvacMinutes(minutes)) minutes = 0;
   Serial.print("### HVAC ON! (MQTT) Setpoint: ");
   Serial.println(setpoint);
   if (!startSeqOrBusy(CanSequence::HVAC_ON)) { sendBusyMqtt(); return; }
+  armHvacTimer(minutes);
   setHVACTargetTemperature(setpoint);
   if (setpoint > 0.0f) {
       handleHVACSetpoint(setpoint); // Pre-fill the UI/MQTT with the requested setpoint
@@ -646,6 +705,7 @@ void handleMqttHvacOn(float setpoint) {
 void handleHvacOff() {
   Serial.println("### HVAC OFF! ###");
   if (!startSeqOrBusy(CanSequence::HVAC_OFF)) { sendBusyHttp(); return; }
+  cancelHvacTimer();
   server.sendHeader("Location", "/"); 
   server.send(303);
 }
@@ -653,6 +713,7 @@ void handleHvacOff() {
 void handleMqttHvacOff() {
   Serial.println("### HVAC OFF! (MQTT) ###");
   if (!startSeqOrBusy(CanSequence::HVAC_OFF)) { sendBusyMqtt(); return; }
+  cancelHvacTimer();
 }
 
 void handleMqttLock() {
@@ -967,6 +1028,7 @@ server.on("/leaf.png", handleLeafPngLegacy);
 }
 
 void loop() {
+  static uint16_t lastPublishedHvacMinutes = 0;
   // Signed compare handles millis() wraparound; no reboot during OTA upload
   if (rebootPendingAt != 0 && !otaInProgress && (long)(millis() - rebootPendingAt) >= 0) {
     Serial.println("### Rebooting after settings save ###");
@@ -984,6 +1046,7 @@ void loop() {
   if (!otaInProgress) {
     readAndHandleCANMessage();
     manageEvCAN();
+    manageVinQuery(millis());
     CanSeqResult seqRes = manageCANSequence(millis());
     if (seqRes == CanSeqResult::WAKE_SUCCESS) {
         Serial.println("### Car is awake! ###");
@@ -991,6 +1054,21 @@ void loop() {
         Serial.println("### Car wake timeout! ###");
     } else if (seqRes == CanSeqResult::SEQUENCE_FINISHED) {
         Serial.println("### Sequence Complete ###");
+    }
+    if (hvacTimerEndsMs != 0 && (long)(millis() - hvacTimerEndsMs) >= 0) {
+      hvacTimerEndsMs = 0;
+      hvacTimerStopPending = true;
+      mqttUpdateHvacTimer(0);
+    }
+    uint16_t remainingMinutes = hvacTimerRemainingMinutes();
+    if (remainingMinutes != lastPublishedHvacMinutes) {
+      lastPublishedHvacMinutes = remainingMinutes;
+      mqttUpdateHvacTimer(remainingMinutes);
+    }
+    if (hvacTimerStopPending && activeSequence == CanSequence::NONE &&
+        startSequence(CanSequence::HVAC_OFF, millis())) {
+      hvacTimerStopPending = false;
+      Serial.println("### HVAC timer expired: OFF command started ###");
     }
   }
   manageWiFi();

@@ -21,19 +21,26 @@ static void handleEvFrame(uint32_t id, uint8_t len, const uint8_t* data) {
     int soh = (data[4] >> 1) & 0x7F;
     handleEvSOH(soh);
     handleEvGids(gids);
-  } else if (id == 0x1DB && len >= 3) {
-    // LB_Total_Voltage: start bit 23, len 10, 0.5V/bit -> byte2<<2 | byte1>>6
-    int voltRaw = (data[2] << 2) | (data[1] >> 6);
+  } else if (id == 0x1DB && len >= 4) {
+    // LB_Total_Voltage: start bit 23, len 10, 0.5V/bit -> byte2<<2 | byte3>>6
+    int voltRaw = (data[2] << 2) | (data[3] >> 6);
     float voltage = voltRaw * 0.5f;
     // LB_Current: start bit 7, len 11 signed, 0.5A/bit -> byte0<<3 | byte1>>5
     int curRaw = (data[0] << 3) | (data[1] >> 5);
     if (curRaw & 0x400) curRaw -= 0x800; // sign-extend 11 bits
-    float current = curRaw * 0.5f;
+    // OVMS convention: battery output/discharge is positive, charge/regen negative.
+    float current = curRaw * -0.5f;
     handleEvPackStatus(voltage, current);
   } else if (id == 0x54C && len >= 7) {
     // OutsideAmbientTemperature: byte6, 0.5C/bit, offset -40 (OVMS xnl)
     float ambient = data[6] * 0.5f - 40.0f;
     if (data[6] != 0xFF) handleEvAmbient(ambient);
+  } else if (id == 0x5C0 && len >= 3) {
+    // LBC pack temperature, as used by OVMS. Valid when the multiplex bits are 01.
+    if ((data[0] >> 6) == 1) {
+      float temp = data[2] * 0.5f - 40.0f;
+      if (temp >= -40.0f && temp <= 80.0f) handleBatteryTemp(temp);
+    }
   } else if (id == 0x59E && len >= 8) {
     // ZE1 dashboard SOC: byte7 * 0.5 (OVMS patch Apr 2026, samr037).
     // Examples: 0x6E -> 55 %, 0xC8 -> 100 %, 0xAC -> 86 %

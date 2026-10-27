@@ -79,6 +79,9 @@ static bool headlightsDirty = false;
 static bool lastGpsSet = false;
 static float lastGpsLat = 0, lastGpsLon = 0, lastGpsAlt = 0, lastGpsSpd = 0;
 static bool gpsDirty = false;
+static uint32_t lastOdometer = 0;
+static String lastVin;
+static uint16_t lastHvacTimer = 0;
 
 static bool mqttStatusRequested = false;
 static unsigned long statusRequestTime = 0;
@@ -138,10 +141,14 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
         handleMqttUnlock();
       } else if (msg.startsWith(ovmsCmds.hvacOn)) {
         float setpoint = 0.0f;
+        uint16_t minutes = 0;
         if (msg.length() > strlen(ovmsCmds.hvacOn)) {
-            setpoint = atof(msg.c_str() + strlen(ovmsCmds.hvacOn));
+            const char* args = msg.c_str() + strlen(ovmsCmds.hvacOn);
+            setpoint = atof(args);
+            const char* separator = strchr(args + 1, ' ');
+            if (separator) minutes = (uint16_t)atoi(separator + 1);
         }
-        handleMqttHvacOn(setpoint);
+        handleMqttHvacOn(setpoint, minutes);
       } else if (msg.equals(ovmsCmds.hvacOff)) {
         handleMqttHvacOff();
       }
@@ -236,6 +243,9 @@ boolean reconnectMQTT() {
     if (lastVehicleOnSet) { vehicleOnDirty = true; mqttUpdateVehicleOn(lastVehicleOn); }
     if (lastHeadlightsSet) { headlightsDirty = true; mqttUpdateHeadlights(lastHeadlights); }
     if (lastGpsSet) { gpsDirty = true; mqttUpdateGPS(lastGpsLat, lastGpsLon, lastGpsAlt, lastGpsSpd); }
+    if (lastOdometer > 0) mqttUpdateOdometer(lastOdometer);
+    if (lastVin.length() == 17) mqttUpdateVin(lastVin.c_str());
+    mqttUpdateHvacTimer(lastHvacTimer);
     
     return true;
   }
@@ -481,7 +491,23 @@ void mqttUpdatePackStatus(float voltage, float current) {
   lastPackCurrent = current;
   bool ok = mqttPublishMetric(ovmsMetrics.packVoltage, voltage, "%.1f");
   ok &= mqttPublishMetric(ovmsMetrics.packCurrent, current, "%.1f");
+  ok &= mqttPublishMetric(ovmsMetrics.packPower, voltage * current / 1000.0f, "%.1f");
   packDirty = !ok;
+}
+
+void mqttUpdateOdometer(uint32_t km) {
+  lastOdometer = km;
+  mqttPublishMetric(ovmsMetrics.odometer, (float)km, "%.0f");
+}
+
+void mqttUpdateVin(const char* vin) {
+  lastVin = vin ? vin : "";
+  mqttPublishMetricStr(ovmsMetrics.vin, vin);
+}
+
+void mqttUpdateHvacTimer(uint16_t minutes) {
+  lastHvacTimer = minutes;
+  mqttPublishMetric(ovmsMetrics.hvacTimer, (float)minutes, "%.0f");
 }
 
 void mqttUpdateAmbient(float ambientTemp) {

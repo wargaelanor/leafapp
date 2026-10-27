@@ -26,7 +26,8 @@ struct EvBatteryData {
     int soh = -1;                 // % , -1 = no data
     int gids = -1;                // raw GIDS, -1 = no data
     float packVoltage = -1.0f;    // V, <0 = no data
-    float packCurrent = 0.0f;     // A (signed, charge positive)
+    float packCurrent = 0.0f;     // A (discharge positive, charge/regen negative)
+    float packPower = 0.0f;       // kW (discharge positive, charge/regen negative)
     bool packDataValid = false;
     float ambientTemp = -99.0f;   // °C, out of range = no data
     int8_t vehicleOn = -1;        // -1 unknown, 0 off, 1 on
@@ -34,8 +35,10 @@ struct EvBatteryData {
     // ZE1 dashboard / BMS derived values
     float instrumentSOC = -1.0f;  // dashboard SOC %, 0x59E byte7 / 2
     int instrumentRange = -1;     // dashboard range (GOM), km, 0x5A9 / 16
-    float batteryTemp = -99.0f;   // pack temperature °C, 0x5B3 / 0x5C0 byte0 * 0.25
+    float batteryTemp = -99.0f;   // pack temperature °C, EV-CAN 0x5C0 byte2 / 2 - 40
     int cellDeltaMv = -1;         // max-min cell voltage, mV (-1 = not available)
+    uint32_t odometerKm = 0;      // total distance, 0x5C5 bytes 1..3
+    char vin[18] = {0};           // ISO-TP 0x797/0x79A service 0x21 0x81
 };
 
 #endif

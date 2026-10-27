@@ -131,21 +131,43 @@ void handleRangeInstrumentMessage(const uint8_t* data, uint8_t len) {
     }
 }
 
-void handleBatteryTempMessage(const uint8_t* data, uint8_t len) {
-    // BatteryPackTemperature: byte0, 0.25 C/bit (VCM relay of the LBC value).
-    bool allZero = true;
-    for (uint8_t i = 0; i < len && i < 8; i++) {
-        if (data[i] != 0) { allZero = false; break; }
-    }
-    if (allZero) return; // empty/sleeping frame
-    float temp = data[0] * 0.25f;
-    if (temp >= -20.0f && temp <= 70.0f) {
-        static uint8_t lastRaw = 0xFF;
-        if (data[0] != lastRaw) {
-            lastRaw = data[0];
-            Serial.printf("0x5B3 pack temp: raw=%u -> %.2f C\n", data[0], temp);
+static int8_t odometerUnits = -1; // 0 km, 1 miles
+
+void handleOdometerUnitsMessage(const uint8_t* data, uint8_t len) {
+    (void)len;
+    odometerUnits = (data[6] & 0x20) ? 1 : 0;
+}
+
+void handleOdometerMessage(const uint8_t* data, uint8_t len) {
+    (void)len;
+    if (odometerUnits < 0) return;
+    uint32_t raw = ((uint32_t)data[1] << 16) | ((uint32_t)data[2] << 8) | data[3];
+    uint32_t km = odometerUnits == 1 ? (uint32_t)(raw * 1.609344f + 0.5f) : raw;
+    if (km > 0 && km < 2000000UL) handleOdometer(km);
+}
+
+static char vinBuffer[18] = {0};
+static uint8_t vinLength = 0;
+static uint8_t vinNextFrame = 1;
+static bool vinPending = false;
+static unsigned long lastVinRequestMs = 0;
+
+void handleVinResponse(const uint8_t* data, uint8_t len) {
+    if (!vinPending || len < 2) return;
+    if ((data[0] & 0xF0) == 0x10 && len >= 5 && data[2] == 0x61 && data[3] == 0x81) {
+        vinLength = 0;
+        vinNextFrame = 1;
+        for (uint8_t i = 4; i < len && vinLength < 17; i++) vinBuffer[vinLength++] = (char)data[i];
+        const uint8_t flowControl[8] = {0x30, 0x00, 0x00, 0, 0, 0, 0, 0};
+        sendCAN(0x797, flowControl, sizeof(flowControl));
+    } else if ((data[0] & 0xF0) == 0x20 && (data[0] & 0x0F) == (vinNextFrame & 0x0F)) {
+        vinNextFrame++;
+        for (uint8_t i = 1; i < len && vinLength < 17; i++) vinBuffer[vinLength++] = (char)data[i];
+        if (vinLength == 17) {
+            vinBuffer[17] = '\0';
+            vinPending = false;
+            handleVin(vinBuffer);
         }
-        handleBatteryTemp(temp);
     }
 }
 
@@ -159,7 +181,9 @@ static const MessageParser parsers[] = {
     CAN_PARSER(hvac_setpoint_readout, handleHVACSetpointMessage),
     CAN_PARSER(doors_and_locks_readout, handleDoorsAndLocksMessage),
     CAN_PARSER(range_instrument_readout, handleRangeInstrumentMessage),
-    CAN_PARSER(battery_temp_readout, handleBatteryTempMessage),
+    CAN_PARSER(odometer_units_readout, handleOdometerUnitsMessage),
+    CAN_PARSER(odometer_readout, handleOdometerMessage),
+    { 0x79A, 1, handleVinResponse },
 };
 
 // Can message reception handler, to be called when a CAN message is received
@@ -277,12 +301,16 @@ static const SequenceStep seq_lock_doors[] = {
 };
 
 static const SequenceStep seq_lights[] = {
+    MSG_STEP(hvac_init, 8, 100),
     MSG_STEP(lights_data, 20, 100),
+    MSG_STEP(hvac_init, 4, 100),
     MSG_STEP(idle_data, 8, 100)
 };
 
 static const SequenceStep seq_horn_lights[] = {
+    MSG_STEP(hvac_init, 8, 100),
     MSG_STEP(horn_light_data, 20, 100),
+    MSG_STEP(hvac_init, 4, 100),
     MSG_STEP(idle_data, 8, 100)
 };
 
@@ -417,4 +445,17 @@ CanSeqResult manageCANSequence(unsigned long currentTimeMs) {
         }
     }
     return CanSeqResult::PROCESSING;
+}
+
+void manageVinQuery(unsigned long currentTimeMs) {
+    extern uint32_t canFramesB;
+    if (vinBuffer[0] != '\0' || canFramesB == 0 || activeSequence != CanSequence::NONE) return;
+    if (vinPending && currentTimeMs - lastVinRequestMs < 5000) return;
+    if (lastVinRequestMs != 0 && currentTimeMs - lastVinRequestMs < 30000) return;
+    const uint8_t request[8] = {0x02, 0x21, 0x81, 0, 0, 0, 0, 0};
+    if (sendCAN(0x797, request, sizeof(request))) {
+        vinPending = true;
+        lastVinRequestMs = currentTimeMs;
+        Serial.println("VIN request sent on IT-CAN");
+    }
 }

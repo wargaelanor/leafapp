@@ -13,7 +13,8 @@ inline constexpr CANMessage<2> hvac_status_readout = {0x54B};
 inline constexpr CANMessage<5> hvac_setpoint_readout = {0x54A};
 inline constexpr CANMessage<3> doors_and_locks_readout = {0x60D};
 inline constexpr CANMessage<2> range_instrument_readout = {0x5A9};
-inline constexpr CANMessage<1> battery_temp_readout = {0x5B3};
+inline constexpr CANMessage<4> odometer_readout = {0x5C5};
+inline constexpr CANMessage<7> odometer_units_readout = {0x355};
 
 // Leaf can messages
 inline constexpr CANMessage<1> wakeup_data       = {0x68C, {0x00}};                  // Wakeup ping
@@ -74,6 +75,8 @@ void handleLockStatus(bool locked);
 void handleHeadlightsStatus(bool on);
 void handleInstrumentRange(int km);
 void handleBatteryTemp(float temp);
+void handleOdometer(uint32_t km);
+void handleVin(const char* vin);
 
 
 // Sequence State Machine
@@ -104,5 +107,6 @@ void setHVACTargetTemperature(float setpoint);
 // Returns false if another sequence is still active (caller should report "busy")
 bool startSequence(CanSequence seq, unsigned long currentTimeMs);
 CanSeqResult manageCANSequence(unsigned long currentTimeMs);
+void manageVinQuery(unsigned long currentTimeMs);
 
 #endif

@@ -24,6 +24,9 @@ void mqttUpdateLock(bool locked);
 void mqttUpdateSOH(int soh);
 void mqttUpdateGids(int gids);
 void mqttUpdatePackStatus(float voltage, float current);
+void mqttUpdateOdometer(uint32_t km);
+void mqttUpdateVin(const char* vin);
+void mqttUpdateHvacTimer(uint16_t minutes);
 void mqttUpdateAmbient(float ambientTemp);
 void mqttUpdateInstrumentSoc(float soc);
 void mqttUpdateInstrumentRange(int km);
@@ -35,7 +38,7 @@ void mqttUpdateGPS(float lat, float lon, float alt, float speed);
 void mqttPublishStatus(const char* msg);
 
 // Optional callbacks implemented in LeafControl.ino
-extern void handleMqttHvacOn(float setpoint);
+extern void handleMqttHvacOn(float setpoint, uint16_t minutes);
 extern void handleMqttHvacOff();
 extern void handleMqttChargeOn();
 extern void handleMqttChargeOff();

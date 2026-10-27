@@ -18,5 +18,6 @@ void handleEvPackStatus(float voltage, float current);
 void handleEvAmbient(float ambientTemp);
 void handleEvInstrumentSOC(float soc);
 void handleEvVehicleOn(bool on);
+void handleBatteryTemp(float temp);
 
 #endif

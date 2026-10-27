@@ -30,6 +30,7 @@ static volatile int8_t callCanRequest = 0;
 
 // Actual HVAC state decoded from EV-CAN 0x54B in LeafControl.ino.
 extern bool isHvacOn;
+extern void cancelHvacTimer();
 
 static bool gpsHasFix = false;
 static float gpsLat = 0, gpsLon = 0, gpsAlt = 0, gpsSpd = 0;
@@ -277,6 +278,7 @@ void modemTick() {
   if (requested != 0) {
     callCanRequest = 0;
     bool turnOn = requested > 0;
+    if (!turnOn) cancelHvacTimer();
     Serial.printf("### HVAC %s! (authorized call) ###\n", turnOn ? "ON" : "OFF");
     if (!startSequence(turnOn ? CanSequence::HVAC_ON : CanSequence::HVAC_OFF, millis())) {
       Serial.println("[call] climate command rejected: CAN sequence busy");
