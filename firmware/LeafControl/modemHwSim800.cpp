@@ -238,7 +238,8 @@ Sim800Client tcpClient;
 namespace modem800 {
 
 void hwBegin() {
-  simSerial.begin(115200, SERIAL_8N1, 1, 2);
+  // ESP RX <- SIM800 TXD, ESP TX -> SIM800 RXD.
+  simSerial.begin(115200, SERIAL_8N1, 35, 38);
   delay(100);
   flushInput();
   escapeToAt();

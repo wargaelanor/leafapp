@@ -14,7 +14,7 @@ static const uint32_t GPS_POLL_MS = 20000;
 static const uint32_t ATTACH_AT_TIMEOUT_MS = 90000;
 static const uint32_t ATTACH_SIM_TIMEOUT_MS = 15000;
 static const uint32_t ATTACH_NET_TIMEOUT_MS = 120000;
-static const uint8_t SIM800_RI_PIN = 38;
+static const uint8_t SIM800_RI_PIN = 37;
 
 static volatile uint8_t stateVal = (uint8_t)ModemState::OFF;
 static volatile bool taskBusy = false;
