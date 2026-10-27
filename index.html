@@ -146,6 +146,18 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
 .modal .btns button{flex:1;padding:12px;border:none;border-radius:6px;font-size:14px;font-family:inherit;cursor:pointer}
 .modal .btns .save{background:#0077ac;color:#fff}
 .modal .btns .cancel{background:#f1f1f1;color:#333}
+.about-sheet{padding-top:18px!important}
+.about-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:16px}
+.about-head h2{margin:0 0 4px}
+.about-head p{font-size:13px;line-height:1.45;color:#707070}
+.about-close{width:36px;height:36px;flex:0 0 36px;border:0;border-radius:50%;background:#f1f1f1;color:#333;font-size:25px;font-family:inherit;line-height:34px;cursor:pointer}
+.about-section{padding:16px 0;border-top:1px solid #eceef1}
+.about-section h3{font-size:14px;font-weight:600;color:#333;margin-bottom:10px}
+.about-list{list-style:none;display:grid;gap:10px}
+.about-list li{position:relative;padding-left:18px;font-size:13px;line-height:1.45;color:#4a4a4a}
+.about-list li:before{content:'';position:absolute;left:1px;top:7px;width:7px;height:7px;border-radius:50%;background:#0077ac}
+.about-section.planned .about-list li:before{background:#8e8e93}
+.about-note{margin-top:2px;padding:12px 14px;border-left:3px solid #0077ac;background:#f5f8fa;color:#555;font-size:12px;line-height:1.45}
 .settings-groups{margin-top:14px;border:1px solid #eceef1;border-radius:8px;overflow:hidden}
 .settings-group{border-bottom:1px solid #eceef1;background:#fff}
 .settings-group:last-child{border-bottom:0}
@@ -452,7 +464,7 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
         Обновление прошивки
         <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
       </div>
-      <div class="more-item" onclick="toast('Leaf Control — TCU для Nissan Leaf ZE1')">
+      <div class="more-item" onclick="openAbout()">
         <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></div>
         О приложении
         <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
@@ -532,6 +544,53 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
         <button class="cancel" onclick="closeSettings()">Отмена</button>
         <button class="save" onclick="saveSettings()">Сохранить</button>
       </div>
+    </div>
+  </div>
+
+  <!-- О приложении -->
+  <div class="modal" id="about-modal" role="dialog" aria-modal="true" aria-labelledby="about-title" onclick="closeAbout(event)">
+    <div class="sheet about-sheet">
+      <div class="about-head">
+        <div>
+          <h2 id="about-title">О Leaf Control</h2>
+          <p>Телематическая плата для Nissan Leaf ZE1: показывает состояние автомобиля и позволяет управлять основными функциями со смартфона.</p>
+        </div>
+        <button class="about-close" type="button" aria-label="Закрыть" onclick="closeAbout()">×</button>
+      </div>
+
+      <section class="about-section">
+        <h3>Что умеет сейчас</h3>
+        <ul class="about-list">
+          <li><strong>Дистанционное управление.</strong> Включение и выключение климата, запуск и остановка зарядки, открытие и закрытие дверей, включение фар и звукового сигнала.</li>
+          <li><strong>Климат с таймером.</strong> Можно выбрать температуру и время работы: 5, 10, 15, 20 или 30 минут. По окончании таймера климат выключится автоматически.</li>
+          <li><strong>Управление звонком.</strong> В версии с модемом SIM800 звонок с разрешённого номера включает или выключает климат. Можно сохранить до пяти номеров.</li>
+          <li><strong>Состояние автомобиля.</strong> В приложении видны заряд и состояние батареи, запас хода, напряжение, ток и мощность, температуры, пробег, VIN, состояние климата, зарядки и дверей.</li>
+          <li><strong>Местоположение.</strong> При установленном GPS-модуле координаты автомобиля можно открыть в Яндекс Картах или Google Maps.</li>
+          <li><strong>Доступ со смартфона.</strong> Плата работает локально по Wi-Fi и через интернет с помощью MQTT. Приложение можно установить на главный экран телефона.</li>
+          <li><strong>История.</strong> Приложение автоматически сохраняет поездки и сеансы зарядки и показывает основную статистику.</li>
+          <li><strong>Обновление.</strong> Прошивку платы можно обновлять через локальную веб-страницу без разборки устройства.</li>
+        </ul>
+      </section>
+
+      <section class="about-section">
+        <h3>Как это работает</h3>
+        <ul class="about-list">
+          <li>Для защиты от случайного нажатия команды автомобилю выполняются после удержания кнопки.</li>
+          <li>Плата получает данные непосредственно от автомобиля и передаёт их в приложение через выбранное подключение.</li>
+        </ul>
+      </section>
+
+      <section class="about-section planned">
+        <h3>Планируется</h3>
+        <ul class="about-list">
+          <li>Проверка и доработка совместимости функций с разными комплектациями и годами выпуска Leaf ZE1.</li>
+          <li>Расширенная диагностика тяговой батареи и более подробные данные о её состоянии.</li>
+          <li>Уведомления о завершении зарядки, низком заряде и важных событиях автомобиля.</li>
+          <li>Улучшенная история поездок и зарядок, более подробная статистика и удобная работа с сохранёнными данными.</li>
+        </ul>
+      </section>
+
+      <p class="about-note">Набор доступных функций зависит от комплектации автомобиля, установленного модема и способа подключения платы.</p>
     </div>
   </div>
 </div>
@@ -1360,6 +1419,14 @@ function openSettings(){
   $('settings-modal').classList.add('show');
 }
 function closeSettings(){ $('settings-modal').classList.remove('show'); }
+function openAbout(){ $('about-modal').classList.add('show'); }
+function closeAbout(event){
+  if(event && event.target!==$('about-modal')) return;
+  $('about-modal').classList.remove('show');
+}
+document.addEventListener('keydown',event=>{
+  if(event.key==='Escape') closeAbout();
+});
 document.querySelectorAll('.settings-group').forEach(s=>s.addEventListener('toggle',()=>{
   if(!s.open) return;
   document.querySelectorAll('.settings-group[open]').forEach(o=>{ if(o!==s) o.open=false; });
