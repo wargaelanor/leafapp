@@ -90,9 +90,18 @@ struct RtcState {
 };
 RTC_DATA_ATTR RtcState rtcState = {0};
 bool wokeFromTimer = false;
+bool timerRefreshActive = false;
 
 void noteCarActivity() {
+  // A scheduled refresh wakes the CAN buses itself. Do not treat those frames
+  // as user/car activity or the periodic wake would cancel the sleep schedule.
+  if (timerRefreshActive) return;
   rtcState.idleSec = 0;
+}
+
+void noteUserActivity() {
+  timerRefreshActive = false;
+  noteCarActivity();
 }
 
 // Restore cached state after deep sleep wake
@@ -190,7 +199,7 @@ const char* chargerStateStr(ChargerState s) {
 }
 
 void handleRoot() {
-  noteCarActivity();
+  noteUserActivity();
   server.send_P(200, "text/html", INDEX_HTML);
 }
 
@@ -211,7 +220,7 @@ void handleLeafPngLegacy() {
 }
 
 void handleApiStatus() {
-  noteCarActivity();
+  noteUserActivity();
   bool sequenceActive = (activeSequence != CanSequence::NONE);
   float gLat = 0, gLon = 0, gAlt = 0, gSpd = 0;
   uint32_t gAge = 0;
@@ -621,6 +630,8 @@ void handleBatteryTemp(float temp) {
 }
 
 void handleEvVehicleOn(bool on) {
+  // READY is genuine vehicle activity, not merely the scheduled wake burst.
+  if (on) timerRefreshActive = false;
   noteCarActivity();
   int8_t v = on ? 1 : 0;
   if (evData.vehicleOn == v) return;
@@ -638,6 +649,7 @@ void logSequenceStart() {
 // explicitly instead of being silently dropped.
 static bool startSeqOrBusy(CanSequence seq) {
   if (startSequence(seq, millis())) {
+    noteUserActivity();
     logSequenceStart();
     return true;
   }
@@ -985,6 +997,18 @@ void setup() {
   setupMQTT();
   setupCAN();
   setupEvCAN();
+
+  if (wokeFromTimer) {
+    timerRefreshActive = true;
+    if (startSequence(CanSequence::REFRESH, millis())) {
+      resetData();
+      Serial.println("### Timer wake: automatic vehicle refresh started ###");
+      logSequenceStart();
+    } else {
+      timerRefreshActive = false;
+      Serial.println("### Timer wake: automatic vehicle refresh failed to start ###");
+    }
+  }
 
   if (wifiEnabled) {
       server.on("/", handleRoot);
