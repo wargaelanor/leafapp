@@ -26,9 +26,10 @@ static unsigned long failedAtMs = 0;
 static unsigned long lastGpsPollMs = 0;
 static unsigned long lastCallPollMs = 0;
 static String pendingCaller;
-static bool callRequestedStateValid = false;
-static bool callRequestedClimateOn = false;
 static volatile int8_t callCanRequest = 0;
+
+// Actual HVAC state decoded from EV-CAN 0x54B in LeafControl.ino.
+extern bool isHvacOn;
 
 static bool gpsHasFix = false;
 static float gpsLat = 0, gpsLon = 0, gpsAlt = 0, gpsSpd = 0;
@@ -218,12 +219,11 @@ static void callTask(void*) {
     Serial.println("[call] rejected authorized call: CAN sequence busy");
     modem800::hwRejectCall();
   } else {
-    bool turnOn = !callRequestedStateValid || !callRequestedClimateOn;
-    Serial.printf("[call] authorized caller %s; climate %s\n", caller.c_str(), turnOn ? "on" : "off");
+    bool turnOn = !isHvacOn;
+    Serial.printf("[call] authorized caller %s; actual climate=%s, command=%s\n",
+                  caller.c_str(), isHvacOn ? "on" : "off", turnOn ? "on" : "off");
     if (modem800::hwAnswerAndPlay(turnOn ? 1 : 2)) {
       callCanRequest = turnOn ? 1 : -1;
-      callRequestedClimateOn = turnOn;
-      callRequestedStateValid = true;
     }
   }
 
