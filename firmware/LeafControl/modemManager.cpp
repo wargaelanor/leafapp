@@ -15,6 +15,7 @@ static const uint32_t ATTACH_AT_TIMEOUT_MS = 90000;
 static const uint32_t ATTACH_SIM_TIMEOUT_MS = 15000;
 static const uint32_t ATTACH_NET_TIMEOUT_MS = 120000;
 static const uint8_t SIM800_RI_PIN = 37;
+static const uint32_t CALL_POLL_MS = 1000;
 
 static volatile uint8_t stateVal = (uint8_t)ModemState::OFF;
 static volatile bool taskBusy = false;
@@ -23,17 +24,11 @@ static unsigned long wifiUpSinceMs = 0;
 static unsigned long wifiDownSinceMs = 0;
 static unsigned long failedAtMs = 0;
 static unsigned long lastGpsPollMs = 0;
-static volatile bool callRingPending = false;
-static volatile uint32_t callRingCount = 0;
-static uint32_t reportedRingCount = 0;
+static unsigned long lastCallPollMs = 0;
+static String pendingCaller;
 static bool callRequestedStateValid = false;
 static bool callRequestedClimateOn = false;
 static volatile int8_t callCanRequest = 0;
-
-static void IRAM_ATTR callRingIsr() {
-  callRingPending = true;
-  callRingCount++;
-}
 
 static bool gpsHasFix = false;
 static float gpsLat = 0, gpsLon = 0, gpsAlt = 0, gpsSpd = 0;
@@ -211,8 +206,9 @@ static void standbyTask(void*) {
 static void callTask(void*) {
   setState(ModemState::CALL_ACTIVE);
 
-  String caller;
-  if (!modem800::hwIncomingCaller(&caller, 8000)) {
+  String caller = pendingCaller;
+  pendingCaller = "";
+  if (caller.length() == 0) {
     Serial.println("[call] incoming number unavailable; rejecting");
     modem800::hwRejectCall();
   } else if (!callerAllowed(caller)) {
@@ -231,7 +227,6 @@ static void callTask(void*) {
     }
   }
 
-  callRingPending = false;
   setState(WiFi.status() == WL_CONNECTED ? ModemState::STANDBY : ModemState::READY);
   taskBusy = false;
   vTaskDelete(NULL);
@@ -259,8 +254,8 @@ void modemInit() {
   Serial.println("[modem] early init (SIM800-only)");
   if (callControlEnabled()) {
     pinMode(SIM800_RI_PIN, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(SIM800_RI_PIN), callRingIsr, FALLING);
-    Serial.printf("[call] RI armed on GPIO%u\n", SIM800_RI_PIN);
+    Serial.printf("[call] incoming calls polled by AT+CLCC; GPIO%u level=%d (RI interrupt disabled)\n",
+                  SIM800_RI_PIN, digitalRead(SIM800_RI_PIN));
   }
   modemHwBegin();
   for (uint8_t attempt = 0; attempt < 3; attempt++) {
@@ -277,13 +272,6 @@ void modemInit() {
 
 void modemTick() {
   ModemState st = (ModemState)stateVal;
-
-  uint32_t rings = callRingCount;
-  if (rings != reportedRingCount) {
-    reportedRingCount = rings;
-    Serial.printf("[call] RI detected on GPIO%u, count=%lu\n",
-                  SIM800_RI_PIN, (unsigned long)rings);
-  }
 
   int8_t requested = callCanRequest;
   if (requested != 0) {
@@ -305,11 +293,17 @@ void modemTick() {
   bool wifiUp = (WiFi.status() == WL_CONNECTED);
   unsigned long now = millis();
 
-  if (callControlEnabled() && callRingPending &&
-      (st == ModemState::READY || st == ModemState::STANDBY) && !taskBusy) {
-    mqttDisconnect();
-    startTask(callTask);
-    return;
+  if (callControlEnabled() && (st == ModemState::READY || st == ModemState::STANDBY) &&
+      !taskBusy && now - lastCallPollMs >= CALL_POLL_MS) {
+    lastCallPollMs = now;
+    String caller;
+    if (modem800::hwIncomingCaller(&caller, 700)) {
+      pendingCaller = caller;
+      Serial.printf("[call] incoming caller %s detected by AT+CLCC\n", caller.c_str());
+      mqttDisconnect();
+      startTask(callTask);
+      return;
+    }
   }
 
   if (wifiUp) {

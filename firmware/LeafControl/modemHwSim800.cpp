@@ -326,20 +326,25 @@ bool hwPrepareVoiceCalls() {
 
 bool hwIncomingCaller(String* number, uint32_t timeoutMs) {
   if (passthroughActive) tcpClient.stop();
-  commandOk("AT+CLIP=1", 2000);
   unsigned long started = millis();
   while (millis() - started < timeoutMs) {
     String response;
-    if (commandOk("AT+CLCC", 2000, &response)) {
+    uint32_t remaining = timeoutMs - (millis() - started);
+    uint32_t commandTimeout = remaining < 600 ? remaining : 600;
+    if (commandOk("AT+CLCC", commandTimeout, &response)) {
       int marker = response.indexOf("+CLCC:");
+      int firstComma = response.indexOf(',', marker);
+      int secondComma = response.indexOf(',', firstComma + 1);
+      int thirdComma = response.indexOf(',', secondComma + 1);
       int firstQuote = response.indexOf('"', marker);
       int secondQuote = response.indexOf('"', firstQuote + 1);
-      if (marker >= 0 && firstQuote > marker && secondQuote > firstQuote) {
+      int state = secondComma > firstComma ? response.substring(secondComma + 1, thirdComma).toInt() : -1;
+      if (marker >= 0 && state == 4 && firstQuote > marker && secondQuote > firstQuote) {
         if (number) *number = response.substring(firstQuote + 1, secondQuote);
         return true;
       }
     }
-    delay(350);
+    delay(100);
   }
   return false;
 }
@@ -357,9 +362,13 @@ bool hwAnswerAndPlay(uint8_t recordId) {
     hwRejectCall();
     return false;
   }
-  if (!commandOk("ATA", 10000)) {
-    Serial.println("[call] ATA failed");
-    return false;
+  if (!commandOk("ATA", 5000)) {
+    String caller;
+    if (!hwIncomingCaller(&caller, 1200) || !commandOk("ATA", 5000)) {
+      Serial.println("[call] ATA failed");
+      hwRejectCall();
+      return false;
+    }
   }
   delay(500);
   if (!commandOk("AT+DTAM=1", 2000)) {
