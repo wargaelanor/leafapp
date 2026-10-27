@@ -347,9 +347,8 @@ void handleSettingsSave() {
   if (wsm >= 1 && wsm <= 1440) setWakeSlowMinutes(wsm);
 
   bool m800 = server.hasArg("modem_sim800");
-  bool m7670 = server.hasArg("modem_a7670");
-  setModemEnable(m800 || m7670);
-  setModemType(m7670 ? 1 : 0);
+  setModemEnable(m800);
+  setModemType(0);
   int pwr = server.arg("modem_pwrkey").toInt();
   if (pwr >= 0 && pwr <= 48) setModemPwrKey(pwr);
   setModem7670Gps(server.hasArg("modem7670_gps"));
@@ -999,7 +998,7 @@ void loop() {
 
   // --- Power save: deep sleep after idle period ---
   // Never sleep while charging or running remote climate
-  bool callControlKeepsAwake = getModemEnable() && getModemType() == 0 && getModemCallEnabled();
+  bool callControlKeepsAwake = getModemEnable() && getModemCallEnabled();
   if (getSleepEnabled() && !callControlKeepsAwake && !otaInProgress && activeSequence == CanSequence::NONE &&
       !isChargingNow && !isHvacOn) {
     static unsigned long lastIdleTickMs = 0;

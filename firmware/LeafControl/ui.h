@@ -163,17 +163,12 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, const char* saveRes
     "<button type='submit' class='btn btn-save'>Сохранить и перезагрузить</button>\n"
     "</div>\n"
     "<div class='card'><div class='accent-line'></div><div class='title'>Мобильный модем</div>\n"
-    "<label class='chk' style='margin-top:0'><input type='checkbox' id='modem_sim800' name='modem_sim800' value='1' onchange=\"mCheck('800')\""
+    "<label class='chk' style='margin-top:0'><input type='checkbox' id='modem_sim800' name='modem_sim800' value='1'"
   ));
   if (getModemEnable() && getModemType() == 0) server.sendContent(F(" checked"));
   server.sendContent(F(
-    ">SIM800 (2G, GPRS)</label>\n"
-    "<label class='chk'><input type='checkbox' id='modem_a7670' name='modem_a7670' value='1' onchange=\"mCheck('7670')\""
-  ));
-  if (getModemEnable() && getModemType() == 1) server.sendContent(F(" checked"));
-  server.sendContent(F(
-    ">SIMCOM A7670E (4G + GPS)</label>\n"
-    "<div id='m800box' style='display:none'>\n"
+     ">SIM800 (2G, GPRS)</label>\n"
+    "<div id='m800box'>\n"
     "<label for='modem800_apn'>APN (SIM800)</label>\n"
     "<input type='text' id='modem800_apn' name='modem800_apn' value='"
   ));
@@ -215,30 +210,6 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, const char* saveRes
    server.sendContent(F(
      "</div>\n"
      "</div>\n"
-     "<div id='m7670box' style='display:none'>\n"
-    "<label for='modem7670_apn'>APN (A7670)</label>\n"
-    "<input type='text' id='modem7670_apn' name='modem7670_apn' value='"
-  ));
-  sendNonEmpty(server, htmlEscapeAttr(getModem7670Apn()));
-  server.sendContent(F(
-    "' placeholder='internet' autocapitalize='off'>\n"
-     "<label for='modem7670_user'>APN пользователь (пусто — не менять)</label>\n"
-     "<input type='text' id='modem7670_user' name='modem7670_user' value='"
-   ));
-   sendNonEmpty(server, htmlEscapeAttr(getModem7670User()));
-   server.sendContent(F(
-     "' autocapitalize='off'>\n"
-     "<label for='modem7670_pass'>APN пароль (пусто — не менять)</label>\n"
-     "<input type='password' id='modem7670_pass' name='modem7670_pass' value='' placeholder='"
-   ));
-   server.sendContent(strlen(getModem7670Pass()) > 0 ? "сохранён — пусто не менять" : "не задан");
-   server.sendContent(F("'>\n"
-    "<label class='chk'><input type='checkbox' name='modem7670_gps' value='1'"
-  ));
-  if (getModem7670Gps()) server.sendContent(F(" checked"));
-  server.sendContent(F(
-    "> GPS включать при активном модеме</label>\n"
-    "</div>\n"
     "<label for='modem_pwrkey'>GPIO PWRKEY (0 — питание не управляется)</label>\n"
     "<input type='number' id='modem_pwrkey' name='modem_pwrkey' min='0' max='48' value='"
   ));
@@ -275,14 +246,6 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, const char* saveRes
     "<button type='submit' class='btn btn-save'>Сохранить и перезагрузить</button>\n"
     "</form></div>\n"
     "<div style='padding:0 16px'><a href='/' class='btn btn-back'>Назад</a></div>\n"
-    "<script>\n"
-    "function mCheck(w){var a=document.getElementById('modem_sim800'),b=document.getElementById('modem_a7670');"
-    "if(w==='800'&&a.checked)b.checked=false;if(w==='7670'&&b.checked)a.checked=false;mSync();}\n"
-    "function mSync(){var a=document.getElementById('modem_sim800'),b=document.getElementById('modem_a7670');"
-    "document.getElementById('m800box').style.display=a.checked?'block':'none';"
-    "document.getElementById('m7670box').style.display=b.checked?'block':'none';}\n"
-    "mSync();\n"
-    "</script>\n"
     "</div></div></body></html>\n"
   ));
 

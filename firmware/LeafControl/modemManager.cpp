@@ -24,50 +24,51 @@ static unsigned long wifiDownSinceMs = 0;
 static unsigned long failedAtMs = 0;
 static unsigned long lastGpsPollMs = 0;
 static volatile bool callRingPending = false;
+static volatile uint32_t callRingCount = 0;
+static uint32_t reportedRingCount = 0;
 static bool callRequestedStateValid = false;
 static bool callRequestedClimateOn = false;
 static volatile int8_t callCanRequest = 0;
 
-static void IRAM_ATTR callRingIsr() { callRingPending = true; }
+static void IRAM_ATTR callRingIsr() {
+  callRingPending = true;
+  callRingCount++;
+}
 
 static bool gpsHasFix = false;
 static float gpsLat = 0, gpsLon = 0, gpsAlt = 0, gpsSpd = 0;
 static unsigned long gpsFixMs = 0;
 
-static bool use7670() { return getModemType() == 1; }
-
 static void setState(ModemState s) { stateVal = (uint8_t)s; }
 
-static const char* apnFor() { return use7670() ? getModem7670Apn() : getModem800Apn(); }
-static const char* userFor() { return use7670() ? getModem7670User() : getModem800User(); }
-static const char* passFor() { return use7670() ? getModem7670Pass() : getModem800Pass(); }
+static const char* apnFor() { return getModem800Apn(); }
+static const char* userFor() { return getModem800User(); }
+static const char* passFor() { return getModem800Pass(); }
 
 static void pulsePwrKey(bool powerOn) {
   int pin = getModemPwrKey();
   if (pin <= 0) return;
-  if (use7670()) modem7670::hwPulsePwrKey(pin, powerOn);
-  else modem800::hwPulsePwrKey(pin, powerOn);
+  modem800::hwPulsePwrKey(pin, powerOn);
 }
 
 static void modemHwBegin() {
-  if (use7670()) modem7670::hwBegin();
-  else modem800::hwBegin();
+  modem800::hwBegin();
 }
 
-static bool hwTestAt(uint32_t ms) { return use7670() ? modem7670::hwTestAt(ms) : modem800::hwTestAt(ms); }
-static bool hwSimReady() { return use7670() ? modem7670::hwSimReady() : modem800::hwSimReady(); }
+static bool hwTestAt(uint32_t ms) { return modem800::hwTestAt(ms); }
+static bool hwSimReady() { return modem800::hwSimReady(); }
 static bool hwSelectNetwork(const char* apn, const char* user) {
-  return use7670() ? modem7670::hwSelectNetwork(apn, user) : modem800::hwSelectNetwork(apn, user);
+  return modem800::hwSelectNetwork(apn, user);
 }
-static bool hwNetworkConnected() { return use7670() ? modem7670::hwNetworkConnected() : modem800::hwNetworkConnected(); }
-static int16_t hwSignal() { return use7670() ? modem7670::hwSignal() : modem800::hwSignal(); }
+static bool hwNetworkConnected() { return modem800::hwNetworkConnected(); }
+static int16_t hwSignal() { return modem800::hwSignal(); }
 static bool hwGprsConnect(const char* apn, const char* u, const char* p) {
-  return use7670() ? modem7670::hwGprsConnect(apn, u, p) : modem800::hwGprsConnect(apn, u, p);
+  return modem800::hwGprsConnect(apn, u, p);
 }
-static bool hwGprsDisconnect() { return use7670() ? modem7670::hwGprsDisconnect() : modem800::hwGprsDisconnect(); }
+static bool hwGprsDisconnect() { return modem800::hwGprsDisconnect(); }
 
 static bool callControlEnabled() {
-  return getModemEnable() && !use7670() && getModemCallEnabled();
+  return getModemEnable() && getModemCallEnabled();
 }
 
 static String normalizePhone(const char* value) {
@@ -100,7 +101,7 @@ static void attachFailed(const char* message) {
 
 static void attachTask(void*) {
   setState(ModemState::STARTING);
-  Serial.printf("[modem] attach start (%s)\n", use7670() ? "A7670" : "SIM800");
+  Serial.println("[modem] attach start (SIM800)");
 
   bool needData = WiFi.status() != WL_CONNECTED;
   if (needData && strlen(apnFor()) == 0) {
@@ -177,11 +178,6 @@ static void attachTask(void*) {
   }
   Serial.println("[modem] GPRS up");
 
-  if (use7670() && getModem7670Gps()) {
-    if (modem7670::hwEnableGps()) Serial.println("[modem] GPS enabled");
-    else Serial.println("[modem] GPS enable failed");
-  }
-
   setState(ModemState::READY);
   Serial.println("[modem] READY");
   taskBusy = false;
@@ -192,7 +188,6 @@ static void stopTask(void*) {
   setState(ModemState::STOPPING);
   Serial.println("[modem] stopping...");
   hwGprsDisconnect();
-  if (use7670()) modem7670::hwEnableGps();
   pulsePwrKey(false);
   setState(ModemState::OFF);
   wifiUpSinceMs = 0;
@@ -261,7 +256,7 @@ void modemInit() {
     Serial.println("[modem] disabled");
     return;
   }
-  Serial.printf("[modem] early init (%s)\n", use7670() ? "A7670" : "SIM800");
+  Serial.println("[modem] early init (SIM800-only)");
   if (callControlEnabled()) {
     pinMode(SIM800_RI_PIN, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(SIM800_RI_PIN), callRingIsr, FALLING);
@@ -282,6 +277,13 @@ void modemInit() {
 
 void modemTick() {
   ModemState st = (ModemState)stateVal;
+
+  uint32_t rings = callRingCount;
+  if (rings != reportedRingCount) {
+    reportedRingCount = rings;
+    Serial.printf("[call] RI detected on GPIO%u, count=%lu\n",
+                  SIM800_RI_PIN, (unsigned long)rings);
+  }
 
   int8_t requested = callCanRequest;
   if (requested != 0) {
@@ -332,18 +334,6 @@ void modemTick() {
     }
   }
 
-  if (st == ModemState::READY && use7670() && getModem7670Gps() &&
-      !taskBusy && now - lastGpsPollMs >= GPS_POLL_MS) {
-    lastGpsPollMs = now;
-    float lat = 0, lon = 0, alt = 0, spd = 0;
-    if (modem7670::hwGetGps(&lat, &lon, &alt, &spd) && lat != 0.0f && lon != 0.0f) {
-      gpsHasFix = true;
-      gpsLat = lat; gpsLon = lon; gpsAlt = alt; gpsSpd = spd;
-      gpsFixMs = now;
-      Serial.printf("[modem] GPS %.5f,%.5f alt=%.0f spd=%.1f\n", lat, lon, alt, spd);
-      mqttUpdateGPS(lat, lon, alt, spd);
-    }
-  }
 }
 
 bool modemMqttReady() {
@@ -352,7 +342,7 @@ bool modemMqttReady() {
 
 Client* modemTcpClient() {
   if (!modemMqttReady()) return nullptr;
-  return use7670() ? modem7670::hwTcpClient() : modem800::hwTcpClient();
+  return modem800::hwTcpClient();
 }
 
 void modemPowerOffNow() {
