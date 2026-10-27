@@ -226,12 +226,16 @@ static const SequenceStep seq_refresh[] = {
 };
 
 static const SequenceStep seq_hvac_on[] = {
-    MSG_STEP(hvac_init, 20, 100),
-    MSG_MOD_STEP(hvac_on_data, 25, 100, hvacPayloadModifier),
+    // Shorter burst than before: the old sequence blasted 136 frames (~14 s)
+    // and the cluster kept doing tell-tale self-tests (parking-brake lamp
+    // blinking). OVMS sends the enable 24x/100 ms and one AUTO_DISABLE 1 s
+    // later, so we keep that shape and only a short release tail.
+    MSG_STEP(hvac_init, 8, 100),
+    MSG_MOD_STEP(hvac_on_data, 24, 100, hvacPayloadModifier),
     MSG_WAIT_STEP(1000),                               // Leaf-ZE1-ESP32 field fix: pause ~1s after ENABLE repeats
     MSG_STEP(hvac_close_data, 1, 100),                 // AUTO_DISABLE closing frame, prevents BCM climate restart ~30min
-    MSG_MOD_STEP(hvac_on_idle, 40, 100, hvacPayloadModifier),
-    MSG_MOD_STEP(idle_data, 50, 100, hvacPayloadModifier)
+    MSG_MOD_STEP(hvac_on_idle, 4, 100, hvacPayloadModifier),
+    MSG_MOD_STEP(idle_data, 8, 100, hvacPayloadModifier)
 };
 
 static const SequenceStep seq_hvac_off[] = {
