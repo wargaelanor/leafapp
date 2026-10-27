@@ -30,9 +30,14 @@ static void handleEvFrame(uint32_t id, uint8_t len, const uint8_t* data) {
     float current = curRaw * 0.5f;
     handleEvPackStatus(voltage, current);
   } else if (id == 0x54C && len >= 7) {
-    // Ambient temperature: byte6, 0.5C/bit - 40.5
-    float ambient = data[6] * 0.5f - 40.5f;
-    handleEvAmbient(ambient);
+    // OutsideAmbientTemperature: byte6, 0.5C/bit, offset -40 (OVMS xnl)
+    float ambient = data[6] * 0.5f - 40.0f;
+    if (data[6] != 0xFF) handleEvAmbient(ambient);
+  } else if (id == 0x59E && len >= 8) {
+    // ZE1 dashboard SOC: byte7 * 0.5 (OVMS patch Apr 2026, samr037).
+    // Examples: 0x6E -> 55 %, 0xC8 -> 100 %, 0xAC -> 86 %
+    float soc = data[7] * 0.5f;
+    if (soc > 0.0f && soc <= 100.0f) handleEvInstrumentSOC(soc);
   } else if (id == 0x11A && len >= 2) {
     // CarOnOffStatus: 4-bit field at bits12-15 (intel), byte1 bits4-7.
     // The old 3-bit extraction could never produce the compared value 8,

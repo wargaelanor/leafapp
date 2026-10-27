@@ -16,6 +16,7 @@ void handleEvSOH(int sohPercent);
 void handleEvGids(int gids);
 void handleEvPackStatus(float voltage, float current);
 void handleEvAmbient(float ambientTemp);
+void handleEvInstrumentSOC(float soc);
 void handleEvVehicleOn(bool on);
 
 #endif

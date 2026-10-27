@@ -33,6 +33,10 @@ struct OvmsMetrics {
   const char* vehicleOn = "metric/v/e/on";
   const char* headlights = "metric/v/e/headlights";
   const char* location = "metric/v/location/last";
+  const char* socInstrument = "metric/v/b/soc/instrument";
+  const char* rangeInstrument = "metric/v/b/range/instrument";
+  const char* batteryTemp = "metric/v/b/temp";
+  const char* cellDelta = "metric/v/b/c/voltage/dev/max";
 };
 extern const OvmsMetrics ovmsMetrics;
 

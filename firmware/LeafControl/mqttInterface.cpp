@@ -171,6 +171,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 }
 
 boolean reconnectMQTT() {
+  Serial.printf("[mqtt] reconnect via %s:%u\n", getMqttServer(), getMqttPort());
   // Transport: WiFi (TLS optional) when associated, else cellular modem (plain TCP)
   if (WiFi.status() == WL_CONNECTED) {
     if (getMqttTls()) mqttClient.setClient(espClientSecure);
@@ -238,6 +239,7 @@ boolean reconnectMQTT() {
     
     return true;
   }
+  Serial.printf("[mqtt] broker connect failed, state=%d\n", mqttClient.state());
   return false;
 }
 
@@ -482,6 +484,34 @@ void mqttUpdateAmbient(float ambientTemp) {
   if (lastAmbient == ambientTemp && !ambientDirty) return;
   lastAmbient = ambientTemp;
   ambientDirty = !mqttPublishMetric(ovmsMetrics.ambientTemp, ambientTemp, "%.1f");
+}
+
+void mqttUpdateInstrumentSoc(float soc) {
+  static float last = -1.0f;
+  if (soc == last) return;
+  last = soc;
+  mqttPublishMetric(ovmsMetrics.socInstrument, soc, "%.1f");
+}
+
+void mqttUpdateInstrumentRange(int km) {
+  static int last = -1;
+  if (km == last) return;
+  last = km;
+  mqttPublishMetric(ovmsMetrics.rangeInstrument, (float)km, "%.0f");
+}
+
+void mqttUpdateBatteryTemp(float temp) {
+  static float last = -99.0f;
+  if (temp == last) return;
+  last = temp;
+  mqttPublishMetric(ovmsMetrics.batteryTemp, temp, "%.1f");
+}
+
+void mqttUpdateCellDelta(int mv) {
+  static int last = -1;
+  if (mv == last) return;
+  last = mv;
+  mqttPublishMetric(ovmsMetrics.cellDelta, (float)mv, "%.0f");
 }
 
 void mqttUpdateVehicleOn(bool on) {

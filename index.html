@@ -23,6 +23,7 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
 .conn i{width:8px;height:8px;border-radius:50%;background:#c1c1c1;display:block}
 .conn.on i{background:#34c759}
 .conn.off i{background:#ff3b30}
+.conn.warn i{background:#ff9500}
 .screens{flex:1;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .screens::-webkit-scrollbar{display:none}
 .screen{display:none;min-height:100%;padding-bottom:72px}
@@ -37,7 +38,7 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
 .card-header .accent-line{width:26px;height:1px;background:#40a0da;margin-bottom:8px}
 .card-header .title{font-size:16px;color:#333;font-weight:400}
 .vehicle-hero{padding:12px 16px 4px;text-align:center}
-.vehicle-hero img{width:100%;max-width:290px;object-fit:contain;display:block;margin:0 auto}
+.vehicle-hero img,.vehicle-hero svg{width:100%;max-width:290px;object-fit:contain;display:block;margin:0 auto}
 .vehicle-hero .name{font-size:17px;text-transform:uppercase;color:#13172c;letter-spacing:1px;margin-top:4px}
 .soc-body{padding:16px}
 .soc-mileage{font-size:57px;font-weight:300;color:#333;line-height:1;margin:0 0 14px}
@@ -178,7 +179,11 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
     <section class="screen active" id="screen-garage">
       <div class="card" style="margin-top:8px;padding-bottom:8px">
         <div class="vehicle-hero">
-          <img src="leaf.png" alt="Nissan Leaf">
+          <svg viewBox="0 0 200 80" fill="none" stroke="#333" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" aria-label="Nissan Leaf">
+            <path d="M9 57c0-4 3-6 7-7l13-3 12-11c4-3 9-5 14-5h44c7 0 13 2 19 6l16 12 29 3c6 1 9 3 9 7v5c0 2-2 4-4 4h-9c-1-8-7-14-15-14s-14 6-15 14H72c-1-8-7-14-15-14s-14 6-15 14H13c-2 0-4-2-4-4v-8z"/>
+            <path d="M52 42l10-9c2-2 5-3 8-3h22v12H52zM100 30h19c4 0 7 1 10 3l10 9h-39V30z"/>
+            <circle cx="57" cy="62" r="8"/><circle cx="143" cy="62" r="8"/>
+          </svg>
           <div class="name">Nissan Leaf</div>
         </div>
       </div>
@@ -253,7 +258,11 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
     <!-- ДИСТАНЦИОННЫЕ УСЛУГИ -->
     <section class="screen" id="screen-remote">
       <div style="padding:12px 16px 0;text-align:center">
-        <img src="leaf.png" alt="" style="width:200px;object-fit:contain;max-height:110px">
+        <svg viewBox="0 0 200 80" fill="none" stroke="#333" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" style="width:200px;max-height:110px">
+          <path d="M9 57c0-4 3-6 7-7l13-3 12-11c4-3 9-5 14-5h44c7 0 13 2 19 6l16 12 29 3c6 1 9 3 9 7v5c0 2-2 4-4 4h-9c-1-8-7-14-15-14s-14 6-15 14H72c-1-8-7-14-15-14s-14 6-15 14H13c-2 0-4-2-4-4v-8z"/>
+          <path d="M52 42l10-9c2-2 5-3 8-3h22v12H52zM100 30h19c4 0 7 1 10 3l10 9h-39V30z"/>
+          <circle cx="57" cy="62" r="8"/><circle cx="143" cy="62" r="8"/>
+        </svg>
         <div style="font-size:15px;text-transform:uppercase;color:#13172c;letter-spacing:1px;margin-top:4px">Nissan Leaf</div>
       </div>
       <div class="remote-wrap">
@@ -268,7 +277,7 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
             <svg viewBox="0 0 24 24" fill="#333"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0014 7.97v8.05A4.47 4.47 0 0016.5 12zM14 3.23v2.06a7 7 0 010 13.42v2.06a9 9 0 000-17.54z"/></svg>
             <span>Сигнал и фары</span>
           </div>
-          <div class="rbtn b" id="rb-lock" onclick="cmd('lock')">
+          <div class="rbtn b" id="rb-lock" onclick="sendLockCmd(1)">
             <svg viewBox="0 0 26 30" fill="none"><path d="M23.13 11.1h-1.85l-.01-2.7A8.33 8.33 0 104.63 8.33l0 2.77H2.78A2.78 2.78 0 000 13.88v12.95a2.78 2.78 0 002.78 2.77h20.35A2.78 2.78 0 0025.9 26.83V13.88a2.78 2.78 0 00-2.77-2.78zM7.4 8.33a5.55 5.55 0 0111.1 0v2.77H7.4V8.33zm15.73 18.5H2.78V13.88h20.35v12.95z" fill="#333"/></svg>
             <span>Закрыть</span>
           </div>
@@ -281,7 +290,7 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
             <svg viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="1.5"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-4 10.5c.6.55 1 1.25 1 2v.5h6v-.5c0-.75.4-1.45 1-2A6 6 0 0012 3z"/></svg>
             <span>Фары</span>
           </div>
-          <div class="rbtn d" id="rb-unlock" onclick="cmd('unlock')">
+          <div class="rbtn d" id="rb-unlock" onclick="sendLockCmd(0)">
             <svg viewBox="0 0 26 30" fill="none"><path d="M23.13 29.6H2.78A2.78 2.78 0 010 26.83V13.88A2.78 2.78 0 012.78 11.1h1.85V8.33A8.34 8.34 0 0112.95 0h.02a8.28 8.28 0 015.26 1.91 8.47 8.47 0 012.85 4.72h-2.85a5.62 5.62 0 00-1.99-2.77 5.5 5.5 0 00-3.3-1.09A5.56 5.56 0 007.4 8.33V11.1h10.05v.03h5V11.1h.68A2.78 2.78 0 0125.9 13.88v12.95a2.78 2.78 0 01-2.77 2.77zM2.78 13.88v12.95h20.35V13.88H2.78z" fill="#333"/></svg>
             <span>Открыть</span>
           </div>
@@ -312,11 +321,11 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
       <div class="vs-grid" style="margin-top:12px">
         <div class="vs-cell">
           <div class="vsi"><svg viewBox="0 0 24 25" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13.63.51L4.24 13.11c-.6.85 0 2.06 1.03 2.06h4.66l-1.63 8.12c-.24 1.33 1.45 2.12 2.3 1.03l9.39-12.6c.6-.85 0-2.06-1.03-2.06h-4.66l1.63-8.12c.24-1.33-1.45-2.12-2.3-1.03z"/></svg></div>
-          <div><div class="vst">Батарея</div><div class="vsv" id="s-soc">—</div></div>
+          <div><div class="vst">Батарея (прибор / расч.)</div><div class="vsv" id="s-soc">—</div></div>
         </div>
         <div class="vs-cell">
           <div class="vsi"><svg viewBox="0 0 25 20" fill="currentColor"><path d="M5.44 19.77c-.22-.22-5.44-5.54-5.44-10.41a5.68 5.68 0 015.66-5.66 5.66 5.66 0 015.66 5.66c0 4.84-5.22 10.19-5.44 10.41a.29.29 0 01-.22.1.28.28 0 01-.22-.1zM2.8 9.36a2.87 2.87 0 002.86 2.86 2.87 2.87 0 002.87-2.86A2.87 2.87 0 005.66 6.5a2.87 2.87 0 00-2.86 2.86zm18.57.46c-.14-.14-3.32-3.41-3.32-6.37a3.45 3.45 0 013.46-3.46 3.45 3.45 0 013.45 3.46c0 2.99-3.17 6.23-3.31 6.37a.33.33 0 01-.14.05.17.17 0 01-.14-.05zM19.76 3.45a1.76 1.76 0 001.75 1.75 1.76 1.76 0 001.75-1.75 1.76 1.76 0 00-1.75-1.75 1.76 1.76 0 00-1.75 1.75z"/></svg></div>
-          <div><div class="vst">Запас хода</div><div class="vsv" id="s-range">—</div></div>
+          <div><div class="vst">Запас хода (прибор / расч.)</div><div class="vsv" id="s-range">—</div></div>
         </div>
         <div class="vs-cell">
           <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 7h-9M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg></div>
@@ -333,6 +342,14 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
         <div class="vs-cell">
           <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2v6M12 16v6M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M2 12h6M16 12h6M4.93 19.07l4.24-4.24M14.83 9.17l4.24-4.24"/></svg></div>
           <div><div class="vst">Ток</div><div class="vsv" id="s-i">—</div></div>
+        </div>
+        <div class="vs-cell">
+          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 14.76V3.5a2.5 2.5 0 00-5 0v11.26a4.5 4.5 0 105 0z"/></svg></div>
+          <div><div class="vst">Батарея, °C</div><div class="vsv" id="s-btemp">—</div></div>
+        </div>
+        <div class="vs-cell">
+          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></div>
+          <div><div class="vst">Разброс ячеек</div><div class="vsv" id="s-cdelta">—</div></div>
         </div>
         <div class="vs-cell">
           <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 14.76V3.5a2.5 2.5 0 00-5 0v11.26a4.5 4.5 0 105 0z"/></svg></div>
@@ -471,6 +488,7 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
 const S = { soc:-1, cabin:-99, charging:false, charger:'', hvac:false, lock:-1,
   setpoint:-1, fan:-1, heat:false, cool:false, vent:-1,
   soh:-1, gids:-1, v:-1, i:0, packValid:false, amb:-99, on:-1, seq:false, locking:false,
+  isoc:-1, irange:-1, btemp:-99, cdelta:-1,
   lights:-1, gps:null };
 let mode = 'local'; // 'local' | 'mqtt'
 let onBoard = false; // true only when served from the board itself (local /api/status works)
@@ -502,6 +520,11 @@ function rangeKm(){
   if(S.soc>=0) return Math.round(S.soc/100*300);
   return null;
 }
+// Dashboard (instrument) values from 0x59E / 0x5A9; fall back to the estimates
+function socInstr(){ return (S.isoc!=null && S.isoc>=0) ? S.isoc : null; }
+function rangeInstr(){ return (S.irange!=null && S.irange>0) ? S.irange : null; }
+function fmtPct(v){ return (v!=null && v>=0) ? v.toFixed(0)+' %' : '—'; }
+function fmtKm(v){ return (v!=null && v>0) ? v+' км' : '—'; }
 function chargerRu(){
   return {charging:'Заряжается',done:'Завершено',stopped:'Прервано',wait:'Ожидание','':'Не подключено'}[S.charger]||'—';
 }
@@ -517,11 +540,16 @@ function render(){
 function renderNow(){
   const soc = S.soc>=0 ? S.soc : null;
   const km = rangeKm();
-  $('g-soc').textContent = soc!=null ? soc.toFixed(0) : '—';
-  $('g-range').textContent = km!=null ? km : '—';
-  $('rm-range').textContent = km!=null ? km : '—';
+  const iSoc = socInstr();
+  const iRange = rangeInstr();
+  // Garage mirrors the dashboard (as requested), estimates as fallback
+  const socShown = iSoc!=null ? iSoc : soc;
+  const kmShown = iRange!=null ? iRange : km;
+  $('g-soc').textContent = socShown!=null ? socShown.toFixed(0) : '—';
+  $('g-range').textContent = kmShown!=null ? kmShown : '—';
+  $('rm-range').textContent = kmShown!=null ? kmShown : '—';
   const bar = $('g-bar');
-  const pct = soc!=null ? soc : 0;
+  const pct = socShown!=null ? socShown : 0;
   bar.style.width = pct+'%';
   bar.className = 'fill' + (pct>20?'':' crit') + (pct>20&&pct<=40?' low':'');
   $('g-charge-state').textContent = S.charging ? 'Заряжается' : (S.charger?chargerRu():'—');
@@ -552,12 +580,14 @@ function renderNow(){
   $('rb-climate').classList.toggle('on', S.hvac);
   $('rb-climate-label').textContent = S.hvac ? 'Выкл климат' : 'Климат';
 
-  $('s-soc').textContent = soc!=null ? soc.toFixed(0)+' %' : '—';
-  $('s-range').textContent = km!=null ? km+' км' : '—';
+  $('s-soc').textContent = (iSoc!=null && soc!=null) ? fmtPct(iSoc)+' / '+fmtPct(soc) : fmtPct(socShown);
+  $('s-range').textContent = (iRange!=null && km!=null) ? fmtKm(iRange)+' / '+fmtKm(km) : fmtKm(kmShown);
   $('s-soh').textContent = S.soh>=0 ? S.soh+' %' : '—';
   $('s-gids').textContent = S.gids>=0 ? S.gids : '—';
   $('s-v').textContent = S.packValid ? S.v.toFixed(1)+' V' : '—';
   $('s-i').textContent = S.packValid ? S.i.toFixed(1)+' A' : '—';
+  $('s-btemp').textContent = (S.btemp>-30&&S.btemp<70) ? S.btemp.toFixed(1)+' °C' : '—';
+  $('s-cdelta').textContent = S.cdelta>=0 ? S.cdelta+' мВ' : '—';
   $('s-amb').textContent = (S.amb>-40&&S.amb<60) ? S.amb.toFixed(1)+' °C' : '—';
   $('s-cabin').textContent = (S.cabin>-30&&S.cabin<80) ? S.cabin.toFixed(1)+' °C' : '—';
   $('s-lock').textContent = S.lock===1?'Заблокировано':(S.lock===0?'Открыто':'—');
@@ -603,15 +633,17 @@ async function pollLocal(){
     S.heat=!!j.heat; S.cool=!!j.cool; S.vent=j.vent;
     S.soh=j.soh; S.gids=j.gids; S.v=j.v; S.i=j.i; S.packValid=!!j.pack;
     S.amb=j.amb; S.on=j.on; S.seq=!!j.seq; S.locking=!!j.locking;
+    S.isoc=(j.isoc===undefined)?-1:j.isoc; S.irange=(j.irange===undefined)?-1:j.irange;
+    S.btemp=(j.btemp===undefined)?-99:j.btemp; S.cdelta=(j.cdelta===undefined)?-1:j.cdelta;
     S.lights = (j.lights===undefined) ? -1 : (j.lights?1:0);
     if(j.gps && j.gps.lat && j.gps.lon && j.gps.age < 900)
       S.gps = { lat:j.gps.lat, lon:j.gps.lon, spd:(j.gps.spd||0)*1.852, at:Date.now()-j.gps.age*1000 };
     lastUpdate = Date.now();
-    setConn(true, 'LOCAL');
+    updateBadge();
     tripTick();
     chargeTick();
     render();
-  }catch(e){ setConn(false,'LOCAL'); }
+  }catch(e){ updateBadge(); }
   finally{ pollBusy = false; }
 }
 async function localCmd(path){
@@ -628,11 +660,41 @@ async function localCmd(path){
 
 // ---------- mqtt mode ----------
 function loadCfg(){ try{ return JSON.parse(localStorage.getItem('leafcfg')); }catch(e){ return null; } }
-function setConn(on, label){
+function setConn(state, label){
   const b=$('conn-badge');
-  b.classList.toggle('on',on); b.classList.toggle('off',!on);
-  $('conn-text').textContent = label || (on?'Онлайн':'Оффлайн');
+  b.classList.toggle('on',state==='on');
+  b.classList.toggle('warn',state==='warn');
+  b.classList.toggle('off',state==='off');
+  $('conn-text').textContent = label;
 }
+function netTypeLabel(){
+  const c=navigator.connection;
+  if(!c) return 'Net';
+  const e=c.effectiveType||'';
+  if(c.type==='wifi') return 'Wi-Fi';
+  if(c.type==='ethernet') return 'Ethernet';
+  if(c.type==='wimax') return 'WiMAX';
+  if(c.type==='bluetooth') return 'Bluetooth';
+  if(c.type==='cellular'){
+    if(e==='4g') return '4G';
+    if(e==='3g') return '3G';
+    return 'GSM';
+  }
+  if(e==='4g') return '4G';
+  if(e==='3g') return '3G';
+  if(e==='2g'||e==='slow-2g') return 'GSM';
+  return 'Net';
+}
+function updateBadge(){
+  if(client && client.connected){ setConn('on','Online'); return; }
+  if(onBoard && lastUpdate && Date.now()-lastUpdate < 10000){ setConn('on','Online'); return; }
+  if(navigator.onLine){ setConn('warn',netTypeLabel()); return; }
+  setConn('off','Offline');
+}
+window.addEventListener('online',updateBadge);
+window.addEventListener('offline',updateBadge);
+if(navigator.connection && navigator.connection.addEventListener)
+  navigator.connection.addEventListener('change',updateBadge);
 function mqttConnect(){
   cfg = loadCfg();
   if(!cfg){ mode='local'; return; }
@@ -640,7 +702,7 @@ function mqttConnect(){
     const s=document.createElement('script');
     s.src='https://unpkg.com/mqtt@5.3.5/dist/mqtt.min.js';
     s.onload=()=>mqttConnect();
-    s.onerror=()=>{ setConn(false,'ОШИБКА'); toast('Не удалось загрузить MQTT-клиент'); };
+    s.onerror=()=>{ updateBadge(); toast('Не удалось загрузить MQTT-клиент'); };
     document.head.appendChild(s);
     return;
   }
@@ -651,14 +713,14 @@ function mqttConnect(){
     clientId:'leafpwa-'+Math.random().toString(16).slice(2,8), reconnectPeriod:4000 });
   const myClient = client;
   client.on('connect',()=>{
-    setConn(true,'ОНЛАЙН');
+    updateBadge();
     $('more-mode').textContent='MQTT · '+cfg.host;
     const p='ovms/'+cfg.user+'/'+(cfg.vid||'leaf')+'/';
     client.subscribe(p+'metric/#');
     client.subscribe(p+'client/pwa/response/#');
   });
-  client.on('close',()=>{ if(myClient===client) setConn(false,'ОФФЛАЙН'); });
-  client.on('error',()=>{ if(myClient===client) setConn(false,'ОШИБКА'); });
+  client.on('close',()=>{ if(myClient===client) updateBadge(); });
+  client.on('error',()=>{ if(myClient===client) updateBadge(); });
   client.on('message',(topic,payload)=>{
     if(myClient!==client) return; // stale connection from a previous session
     const t=payload.toString();
@@ -672,6 +734,10 @@ function mqttConnect(){
     const num=parseFloat(t);
     switch(m){
       case 'v/b/soc': S.soc=num; break;
+      case 'v/b/soc/instrument': S.isoc=num; break;
+      case 'v/b/range/instrument': S.irange=num; break;
+      case 'v/b/temp': S.btemp=num; break;
+      case 'v/b/c/voltage/dev/max': S.cdelta=Math.round(num*1000); break;
       case 'v/e/cabintemp': S.cabin=num; break;
       case 'v/c/charging': S.charging=(t==='yes'); break;
       case 'v/c/state': S.charger=t; if(chg) chg.endState=t; break;
@@ -752,7 +818,22 @@ function toggleCharge(){ cmd(S.charging ? 'chargeoff' : 'charge'); }
 function actLights(){ cmd(S.lights===1 ? 'rhloff' : 'lights'); }
 function actDoors(){
   if(mode==='local' && !S.locking){ toast('Блокировка выключена в настройках платы'); return; }
-  cmd(S.lock===1 ? 'unlock' : 'lock');
+  if(S.lock===1) sendLockCmd(0);
+  else if(S.lock===0) sendLockCmd(1);
+  else {
+    // State unknown (no 0x60D yet): let the user pick instead of guessing
+    const open = confirm('Состояние замков неизвестно.\nOK — открыть двери, Отмена — закрыть.');
+    sendLockCmd(open?0:1);
+  }
+}
+// Send lock/unlock and tell the user if the car never reported the new state
+function sendLockCmd(expect){
+  const res = cmd(expect===1?'lock':'unlock');
+  if(!res || !res.then) return;
+  res.then(ok=>{
+    if(!ok) return;
+    setTimeout(()=>{ if(S.lock!==expect) toast('Замки не отреагировали — повторите'); }, 10000);
+  });
 }
 function actClimate(){ cmd('hvac'); }
 function spChanged(v){
@@ -1162,7 +1243,7 @@ async function boot(){
     .then(()=>refreshTripsScreen()).catch(()=>{});
   chargeOpenDB().then(db=>{ chgDB=db; return chargeCleanupOrphans(); })
     .then(()=>refreshChargesScreen()).catch(()=>{});
-  setInterval(()=>{ tripTick(); chargeTick(); }, 15000); // stale/idle check even when no messages arrive
+  setInterval(()=>{ tripTick(); chargeTick(); updateBadge(); }, 15000); // stale/idle check even when no messages arrive
   if('serviceWorker' in navigator && location.protocol==='https:'){
     navigator.serviceWorker.register('sw.js').catch(()=>{});
   }
@@ -1178,7 +1259,7 @@ async function boot(){
       return; }
   }catch(e){}
   if(loadCfg()){ mqttConnect(); $('more-mode').textContent='MQTT'; }
-  else { setConn(false,'НЕТ ДАННЫХ'); $('more-mode').textContent='Не настроено — нажмите Настройки'; openSettings(); }
+  else { updateBadge(); $('more-mode').textContent='Не настроено — нажмите Настройки'; openSettings(); }
 }
 boot();
 </script>

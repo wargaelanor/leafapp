@@ -17,6 +17,7 @@ static const uint32_t ATTACH_NET_TIMEOUT_MS = 120000;
 
 static volatile uint8_t stateVal = (uint8_t)ModemState::OFF;
 static volatile bool taskBusy = false;
+static bool modemPrepared = false;
 static unsigned long wifiUpSinceMs = 0;
 static unsigned long wifiDownSinceMs = 0;
 static unsigned long failedAtMs = 0;
@@ -48,6 +49,9 @@ static void modemHwBegin() {
 
 static bool hwTestAt(uint32_t ms) { return use7670() ? modem7670::hwTestAt(ms) : modem800::hwTestAt(ms); }
 static bool hwSimReady() { return use7670() ? modem7670::hwSimReady() : modem800::hwSimReady(); }
+static bool hwSelectNetwork(const char* apn, const char* user) {
+  return use7670() ? modem7670::hwSelectNetwork(apn, user) : modem800::hwSelectNetwork(apn, user);
+}
 static bool hwNetworkConnected() { return use7670() ? modem7670::hwNetworkConnected() : modem800::hwNetworkConnected(); }
 static int16_t hwSignal() { return use7670() ? modem7670::hwSignal() : modem800::hwSignal(); }
 static bool hwGprsConnect(const char* apn, const char* u, const char* p) {
@@ -55,21 +59,27 @@ static bool hwGprsConnect(const char* apn, const char* u, const char* p) {
 }
 static bool hwGprsDisconnect() { return use7670() ? modem7670::hwGprsDisconnect() : modem800::hwGprsDisconnect(); }
 
+static void attachFailed(const char* message) {
+  Serial.println(message);
+  setState(ModemState::FAILED);
+  failedAtMs = millis();
+  taskBusy = false;
+  vTaskDelete(NULL);
+}
+
 static void attachTask(void*) {
   setState(ModemState::STARTING);
   Serial.printf("[modem] attach start (%s)\n", use7670() ? "A7670" : "SIM800");
 
   if (strlen(apnFor()) == 0) {
-    Serial.println("[modem] APN empty — cannot attach");
-    setState(ModemState::FAILED);
-    failedAtMs = millis();
-    taskBusy = false;
-    vTaskDelete(NULL);
+    attachFailed("[modem] APN empty — cannot attach");
     return;
   }
 
-  modemHwBegin();
-  pulsePwrKey(true);
+  if (!modemPrepared) {
+    modemHwBegin();
+    pulsePwrKey(true);
+  }
 
   bool atOk = false;
   unsigned long start = millis();
@@ -78,14 +88,12 @@ static void attachTask(void*) {
     vTaskDelay(1000);
   }
   if (!atOk) {
-    Serial.println("[modem] no AT response (boot timeout)");
-    setState(ModemState::FAILED);
-    failedAtMs = millis();
-    taskBusy = false;
-    vTaskDelete(NULL);
+    modemPrepared = false;
+    attachFailed("[modem] no AT response (boot timeout)");
     return;
   }
   Serial.println("[modem] AT sync ok");
+  modemPrepared = true;
 
   start = millis();
   bool simOk = false;
@@ -94,14 +102,15 @@ static void attachTask(void*) {
     vTaskDelay(1000);
   }
   if (!simOk) {
-    Serial.println("[modem] SIM not ready");
-    setState(ModemState::FAILED);
-    failedAtMs = millis();
-    taskBusy = false;
-    vTaskDelete(NULL);
+    attachFailed("[modem] SIM not ready");
     return;
   }
   Serial.println("[modem] SIM ready");
+
+  if (!hwSelectNetwork(apnFor(), userFor())) {
+    attachFailed("[modem] operator selection failed");
+    return;
+  }
 
   start = millis();
   uint8_t probe = 0;
@@ -112,21 +121,15 @@ static void attachTask(void*) {
     vTaskDelay(2500);
   }
   if (!netOk) {
-    Serial.println("[modem] network registration timeout");
-    setState(ModemState::FAILED);
-    failedAtMs = millis();
-    taskBusy = false;
-    vTaskDelete(NULL);
+    attachFailed("[modem] network registration timeout");
     return;
   }
-  Serial.printf("[modem] network ok, rssi=%d, opening GPRS...\n", (int)hwSignal());
+  Serial.printf("[modem] network ok, rssi=%d\n", (int)hwSignal());
+  Serial.printf("[modem] opening GPRS, APN=%s, credentials=%s...\n", apnFor(),
+                strlen(userFor()) > 0 || strlen(passFor()) > 0 ? "set" : "empty");
 
   if (!hwGprsConnect(apnFor(), userFor(), passFor())) {
-    Serial.println("[modem] GPRS attach failed");
-    setState(ModemState::FAILED);
-    failedAtMs = millis();
-    taskBusy = false;
-    vTaskDelete(NULL);
+    attachFailed("[modem] GPRS attach failed");
     return;
   }
   Serial.println("[modem] GPRS up");
@@ -159,7 +162,9 @@ static bool startTask(TaskFunction_t fn) {
   if (taskBusy) return false;
   taskBusy = true;
   wifiUpSinceMs = 0;
-  if (xTaskCreatePinnedToCore(fn, "modem", 8192, nullptr, 1, nullptr, 0) != pdPASS) {
+  // TinyGSM can wait for SIM800 responses for tens of seconds. Priority 0 lets
+  // the pinned core's idle task run, preventing the task watchdog from firing.
+  if (xTaskCreatePinnedToCore(fn, "modem", 8192, nullptr, 0, nullptr, 0) != pdPASS) {
     taskBusy = false;
     Serial.println("[modem] task create failed");
     return false;
@@ -172,8 +177,18 @@ void modemInit() {
     Serial.println("[modem] disabled");
     return;
   }
-  Serial.printf("[modem] enabled (%s), will attach when WiFi is down\n",
-                use7670() ? "A7670" : "SIM800");
+  Serial.printf("[modem] early init (%s)\n", use7670() ? "A7670" : "SIM800");
+  modemHwBegin();
+  for (uint8_t attempt = 0; attempt < 3; attempt++) {
+    if (hwTestAt(1500)) {
+      modemPrepared = true;
+      Serial.println("[modem] early init ok; attach deferred until WiFi is down");
+      return;
+    }
+    if (attempt == 0) pulsePwrKey(true);
+    delay(1000);
+  }
+  Serial.println("[modem] early AT failed; will retry on attach");
 }
 
 void modemTick() {

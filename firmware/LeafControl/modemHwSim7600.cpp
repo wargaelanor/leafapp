@@ -3,13 +3,13 @@
 #define TINY_GSM_MODEM_SIM7600
 #include <TinyGsmClient.h>
 
-static TinyGsm modem(Serial1);
+static TinyGsm modem(Serial2);
 static TinyGsmSim7600::GsmClientSim7600 tcpClient(modem, 0);
 
 namespace modem7670 {
 
 void hwBegin() {
-  Serial1.begin(115200, SERIAL_8N1, 44, 43);
+  Serial2.begin(115200, SERIAL_8N1, 1, 2);
 }
 
 bool hwTestAt(uint32_t timeoutMs) {
@@ -18,6 +18,10 @@ bool hwTestAt(uint32_t timeoutMs) {
 
 bool hwSimReady() {
   return modem.getSimStatus() == SIM_READY;
+}
+
+bool hwSelectNetwork(const char*, const char*) {
+  return true;
 }
 
 bool hwNetworkConnected() {

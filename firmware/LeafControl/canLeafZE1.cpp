@@ -113,6 +113,42 @@ void handleDoorsAndLocksMessage(const uint8_t* data, uint8_t len) {
     handleHeadlightsStatus(lightsOn);
 }
 
+void handleRangeInstrumentMessage(const uint8_t* data, uint8_t len) {
+    (void)len;
+    // 0x5A9 RangeInstrument, bits 15..4 (12 bits), same extraction as OVMS.
+    // OVMS divides by 5 (AZE0), but on a ZE1 the raw value is 1/16 km:
+    // observed raw 2045 while the dashboard showed 129 km (2045/16 = 128).
+    uint16_t raw = (data[1] << 4) | (data[2] >> 4);
+    if (raw == 0 || raw == 0xFFF) return;
+    int km = (raw + 8) / 16;
+    if (km > 0 && km <= 400) {
+        static uint16_t lastRaw = 0xFFFF;
+        if (raw != lastRaw) {
+            lastRaw = raw;
+            Serial.printf("0x5A9 range: raw=%u -> %d km\n", raw, km);
+        }
+        handleInstrumentRange(km);
+    }
+}
+
+void handleBatteryTempMessage(const uint8_t* data, uint8_t len) {
+    // BatteryPackTemperature: byte0, 0.25 C/bit (VCM relay of the LBC value).
+    bool allZero = true;
+    for (uint8_t i = 0; i < len && i < 8; i++) {
+        if (data[i] != 0) { allZero = false; break; }
+    }
+    if (allZero) return; // empty/sleeping frame
+    float temp = data[0] * 0.25f;
+    if (temp >= -20.0f && temp <= 70.0f) {
+        static uint8_t lastRaw = 0xFF;
+        if (data[0] != lastRaw) {
+            lastRaw = data[0];
+            Serial.printf("0x5B3 pack temp: raw=%u -> %.2f C\n", data[0], temp);
+        }
+        handleBatteryTemp(temp);
+    }
+}
+
 // Message parser dispatch table
 static const MessageParser parsers[] = {
     CAN_PARSER(raw_soc_readout, handleSOCMessage),
@@ -122,6 +158,8 @@ static const MessageParser parsers[] = {
     CAN_PARSER(hvac_status_readout, handleHVACMessage),
     CAN_PARSER(hvac_setpoint_readout, handleHVACSetpointMessage),
     CAN_PARSER(doors_and_locks_readout, handleDoorsAndLocksMessage),
+    CAN_PARSER(range_instrument_readout, handleRangeInstrumentMessage),
+    CAN_PARSER(battery_temp_readout, handleBatteryTempMessage),
 };
 
 // Can message reception handler, to be called when a CAN message is received
@@ -205,7 +243,7 @@ static const SequenceStep seq_hvac_off[] = {
 };
 
 static const SequenceStep seq_charge_on[] = {
-    MSG_STEP(start_charge_data, 20, 100),
+    MSG_STEP(start_charge_data, 24, 100),   // OVMS: 0x66 0x08 0x12 0x00, 24 repeats
     MSG_STEP(idle_data, 8, 100)
 };
 
@@ -225,12 +263,12 @@ static const SequenceStep seq_rhl_off[] = {
 };
 
 static const SequenceStep seq_unlock_doors[] = {
-    MSG_STEP(unlock_doors_data, 1, 100),
+    MSG_STEP(unlock_doors_data, 24, 100),   // OVMS repeats the command 24x/100ms
     MSG_STEP(idle_data, 8, 100)
 };
 
 static const SequenceStep seq_lock_doors[] = {
-    MSG_STEP(lock_doors_data, 1, 100),
+    MSG_STEP(lock_doors_data, 24, 100),
     MSG_STEP(idle_data, 8, 100)
 };
 
@@ -285,18 +323,18 @@ CanSeqResult manageCANSequence(unsigned long currentTimeMs) {
 
     switch (currentPhase) {
         case SeqPhase::WAKING:
-            if (carIsAwake || wakeAttempts >= 130) {
+            // The car's bus is often asleep: 0x68C wake pings alone do not
+            // prove the car is awake, and OVMS simply follows its wake frames
+            // with 24 repeats of the actual command (RemoteCommandTimer).
+            // So after a short wake burst we send the command regardless —
+            // the vehicle wakes up and accepts one of the repeats.
+            if (carIsAwake || wakeAttempts >= 20) {
                 if (!carIsAwake) {
-                    // Wake timeout: abort instead of blasting ~130 frames at a
-                    // sleeping bus while blocking any new command for 10-15 s.
-                    Serial.println("### Wake timeout: sequence aborted ###");
-                    activeSequence = CanSequence::NONE;
-                    currentPhase = SeqPhase::IDLE;
-                    return CanSeqResult::WAKE_TIMEOUT;
+                    Serial.println("### Wake: no reply, sending command anyway ###");
                 }
                 currentPhase = SeqPhase::WAKE_WAIT;
-                nextCANEventTime = currentTimeMs + 50; 
-                return CanSeqResult::WAKE_SUCCESS;
+                nextCANEventTime = currentTimeMs + (carIsAwake ? 50 : 100);
+                return carIsAwake ? CanSeqResult::WAKE_SUCCESS : CanSeqResult::WAKE_TIMEOUT;
             } else {
                 sendCAN(wakeup_data);
                 wakeAttempts++;

@@ -1,5 +1,6 @@
 #include <WiFi.h>
 #include <WebServer.h>
+#include <DNSServer.h>
 #include <ESPmDNS.h>
 #include <NetBIOS.h>
 #include <Update.h>
@@ -15,6 +16,8 @@
 #include "modemManager.h"
 
 WebServer server(80);
+DNSServer dnsServer;
+bool captivePortalActive = false;
 unsigned long rebootPendingAt = 0;
 
 
@@ -154,30 +157,27 @@ void handleRoot() {
   server.send_P(200, "text/html", INDEX_HTML);
 }
 
-void handleLeafPng() {
-  server.setContentLength(LEAF_PNG_LEN);
-  server.send(200, "image/png", "");
-  server.sendContent_P((const char*)LEAF_PNG, LEAF_PNG_LEN);
-}
-
 void handleApiStatus() {
   noteCarActivity();
   bool sequenceActive = (activeSequence != CanSequence::NONE);
   float gLat = 0, gLon = 0, gAlt = 0, gSpd = 0;
   uint32_t gAge = 0;
   bool gpsValid = modemGpsFix(&gLat, &gLon, &gAlt, &gSpd, &gAge);
-  char json[700];
+  char json[900];
   snprintf(json, sizeof(json),
     "{\"soc\":%.1f,\"cabin\":%.1f,\"charging\":%d,\"charger\":\"%s\",\"hvac\":%d,"
     "\"lock\":%d,\"setpoint\":%.1f,\"fan\":%.0f,\"heat\":%d,\"cool\":%d,\"vent\":%d,"
     "\"soh\":%d,\"gids\":%d,\"v\":%.1f,\"i\":%.1f,\"pack\":%d,\"amb\":%.1f,"
+    "\"isoc\":%.1f,\"irange\":%d,\"btemp\":%.1f,\"cdelta\":%d,"
     "\"on\":%d,\"seq\":%d,\"locking\":%d,\"lights\":%d,"
     "\"modem\":\"%s\",\"gps\":{\"lat\":%.5f,\"lon\":%.5f,\"age\":%lu}}",
     currentSOC, cabinTemp, isChargingNow ? 1 : 0, chargerStateStr(currentChargerState),
     isHvacOn ? 1 : 0, (int)lockState, currentSetpoint, currentFanSpeed,
     isHeatingEnabled ? 1 : 0, isCoolingEnabled ? 1 : 0, (int)currentVentilationMode,
     evData.soh, evData.gids, evData.packVoltage, evData.packCurrent,
-    evData.packDataValid ? 1 : 0, evData.ambientTemp, (int)evData.vehicleOn,
+    evData.packDataValid ? 1 : 0, evData.ambientTemp,
+    evData.instrumentSOC, evData.instrumentRange, evData.batteryTemp, evData.cellDeltaMv,
+    (int)evData.vehicleOn,
     sequenceActive ? 1 : 0, getLockingEnabled() ? 1 : 0, headlightsState ? 1 : 0,
     modemGetStateStr(), gpsValid ? gLat : 0.0, gpsValid ? gLon : 0.0,
     (unsigned long)(gpsValid ? gAge / 1000UL : 0UL));
@@ -343,7 +343,7 @@ void handleSettingsSave() {
   setModem800Apn(m800Apn.c_str());
   String m800User = server.arg("modem800_user");
   m800User.trim();
-  setModem800User(m800User.c_str());
+  if (m800User.length() > 0) setModem800User(m800User.c_str());
   if (server.hasArg("modem800_pass") && server.arg("modem800_pass").length() > 0) {
     setModem800Pass(server.arg("modem800_pass").c_str());
   }
@@ -352,7 +352,7 @@ void handleSettingsSave() {
   setModem7670Apn(m7670Apn.c_str());
   String m7670User = server.arg("modem7670_user");
   m7670User.trim();
-  setModem7670User(m7670User.c_str());
+  if (m7670User.length() > 0) setModem7670User(m7670User.c_str());
   if (server.hasArg("modem7670_pass") && server.arg("modem7670_pass").length() > 0) {
     setModem7670Pass(server.arg("modem7670_pass").c_str());
   }
@@ -506,6 +506,42 @@ void handleEvAmbient(float ambientTemp) {
   lastPub = millis();
   lastPubbed = ambientTemp;
   mqttUpdateAmbient(ambientTemp);
+}
+
+void handleEvInstrumentSOC(float soc) {
+  noteCarActivity();
+  static unsigned long lastPub = 0;
+  static float lastPubbed = -1.0f;
+  evData.instrumentSOC = soc;
+  if (soc == lastPubbed) return;
+  if (lastPub != 0 && millis() - lastPub < 10000) return;
+  lastPub = millis();
+  lastPubbed = soc;
+  mqttUpdateInstrumentSoc(soc);
+}
+
+void handleInstrumentRange(int km) {
+  noteCarActivity();
+  static unsigned long lastPub = 0;
+  static int lastPubbed = -1;
+  evData.instrumentRange = km;
+  if (km == lastPubbed) return;
+  if (lastPub != 0 && millis() - lastPub < 30000) return;
+  lastPub = millis();
+  lastPubbed = km;
+  mqttUpdateInstrumentRange(km);
+}
+
+void handleBatteryTemp(float temp) {
+  noteCarActivity();
+  static unsigned long lastPub = 0;
+  static float lastPubbed = -99.0f;
+  evData.batteryTemp = temp;
+  if (temp == lastPubbed) return;
+  if (lastPub != 0 && millis() - lastPub < 30000) return;
+  lastPub = millis();
+  lastPubbed = temp;
+  mqttUpdateBatteryTemp(temp);
 }
 
 void handleEvVehicleOn(bool on) {
@@ -786,6 +822,7 @@ void setup() {
   Serial.begin(115200);
   WiFi.onEvent(wifiEvent);
   initConfiguration();
+  modemInit();
 
   wokeFromTimer = (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER);
   if (wokeFromTimer) {
@@ -807,11 +844,20 @@ void setup() {
   
   if (staEnabled && apEnabled) {
       WiFi.mode(WIFI_AP_STA);
+      WiFi.setSleep(false);
       if (strlen(getApPassword()) > 0) {
-          WiFi.softAP(getApSSID(), getApPassword());
+          bool apOk = WiFi.softAP(getApSSID(), getApPassword(), 1, false, 4);
+          Serial.printf("softAP(%s)=%s ip=%s mode=%d\n", getApSSID(),
+                        apOk ? "OK" : "FAIL", WiFi.softAPIP().toString().c_str(),
+                        (int)WiFi.getMode());
       } else {
-          WiFi.softAP(getApSSID());
+          bool apOk = WiFi.softAP(getApSSID(), "", 1, false, 4);
+          Serial.printf("softAP(%s)=%s ip=%s mode=%d\n", getApSSID(),
+                        apOk ? "OK" : "FAIL", WiFi.softAPIP().toString().c_str(),
+                        (int)WiFi.getMode());
       }
+      Serial.printf("AP status=%d SSID=%s IP=%s\n", (int)WiFi.softAPgetStationNum(),
+                    getApSSID(), WiFi.softAPIP().toString().c_str());
       WiFi.setAutoReconnect(true);
       WiFi.begin(getWifiSSID(), getWifiPassword());
       WiFi.setSleep(false);
@@ -856,11 +902,9 @@ void setup() {
   setupMQTT();
   setupCAN();
   setupEvCAN();
-  modemInit();
 
   if (wifiEnabled) {
       server.on("/", handleRoot);
-      server.on("/leaf.png", handleLeafPng);
       server.on("/api/status", handleApiStatus);
       server.on("/ota", handleOtaPage);
       server.on("/ota_update", HTTP_POST, handleOtaResult, handleOtaUpload);
@@ -878,7 +922,23 @@ void setup() {
       server.on("/lights", HTTP_POST, handleLights);
       server.on("/hornlights", HTTP_POST, handleHornLights);
       server.on("/rhloff", HTTP_POST, handleRhlOff);
+      server.onNotFound([]() {
+        if (captivePortalActive && server.method() == HTTP_GET) {
+          String host = server.hostHeader();
+          if (host.length() == 0) host = WiFi.softAPIP().toString();
+          server.sendHeader("Location", String("http://") + host + "/", true);
+          server.send(303, "text/plain", "");
+        } else {
+          server.send(404, "text/plain", "Not found");
+        }
+      });
       server.begin();
+      if ((WiFi.getMode() & WIFI_AP) != 0) {
+          dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
+          dnsServer.start(53, "*", WiFi.softAPIP());
+          captivePortalActive = true;
+          Serial.printf("Captive portal DNS active at %s\n", WiFi.softAPIP().toString().c_str());
+      }
   }
 }
 
@@ -890,6 +950,7 @@ void loop() {
     ESP.restart();
   }
   server.handleClient();
+  if (captivePortalActive) dnsServer.processNextRequest();
   manageMQTT();
   modemTick();
   if (wifiEnabled && WiFi.status() == WL_CONNECTED) {

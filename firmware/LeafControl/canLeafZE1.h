@@ -12,15 +12,17 @@ inline constexpr CANMessage<6> charger_status_readout = {0x390};
 inline constexpr CANMessage<2> hvac_status_readout = {0x54B};
 inline constexpr CANMessage<5> hvac_setpoint_readout = {0x54A};
 inline constexpr CANMessage<3> doors_and_locks_readout = {0x60D};
+inline constexpr CANMessage<2> range_instrument_readout = {0x5A9};
+inline constexpr CANMessage<1> battery_temp_readout = {0x5B3};
 
 // Leaf can messages
 inline constexpr CANMessage<1> wakeup_data       = {0x68C, {0x00}};                  // Wakeup ping
 inline constexpr CANMessage<4> hvac_init         = {0x56E, {0x46, 0x08, 0x00, 0x00}}; // HVAC init
 inline constexpr CANMessage<4> hvac_close_data   = {0x56E, {0x46, 0x08, 0x32, 0x00}}; // AUTO_DISABLE closing frame (Leaf-ZE1-ESP32 field fix)
 inline constexpr CANMessage<4> idle_data         = {0x56E, {0x86, 0x00, 0x00, 0x00}}; // Go to sleep
-inline constexpr CANMessage<4> hvac_on_data      = {0x56E, {0x4E, 0x08, 0x00, 0x00}}; // HVAC ON
+inline constexpr CANMessage<4> hvac_on_data      = {0x56E, {0x4E, 0x08, 0x12, 0x00}}; // HVAC ON (OVMS payload)
 inline constexpr CANMessage<4> hvac_on_idle      = {0x56E, {0x8E, 0x00, 0x00, 0x00}}; // Stop HVAC ON
-inline constexpr CANMessage<4> start_charge_data = {0x56E, {0x66, 0x08, 0x00, 0x00}}; // Charging ON
+inline constexpr CANMessage<4> start_charge_data = {0x56E, {0x66, 0x08, 0x12, 0x00}}; // Charging ON (OVMS payload)
 inline constexpr CANMessage<4> interrupt_data    = {0x56E, {0x96, 0x00, 0x00, 0x00}}; // Interrupt action
 inline constexpr CANMessage<4> hvac_off_data     = {0x56E, {0x56, 0x08, 0x00, 0x00}}; // HVAC OFF
 inline constexpr CANMessage<4> unlock_doors_data = {0x56E, {0x11, 0x00, 0x00, 0x00}}; // Unlock doors
@@ -70,6 +72,8 @@ void handleVentilationMode(VentilationMode mode);
 void handleDoorStatus(bool fl, bool fr, bool rl, bool rr, bool trunk);
 void handleLockStatus(bool locked);
 void handleHeadlightsStatus(bool on);
+void handleInstrumentRange(int km);
+void handleBatteryTemp(float temp);
 
 
 // Sequence State Machine

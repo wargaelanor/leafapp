@@ -180,10 +180,17 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, const char* saveRes
   sendNonEmpty(server, htmlEscapeAttr(getModem800Apn()));
   server.sendContent(F(
     "' placeholder='internet' autocapitalize='off'>\n"
-    "<label for='modem800_user'>APN пользователь (пусто — не менять)</label>\n"
-    "<input type='text' id='modem800_user' name='modem800_user' value='' autocapitalize='off'>\n"
-    "<label for='modem800_pass'>APN пароль (пусто — не менять)</label>\n"
-    "<input type='password' id='modem800_pass' name='modem800_pass' value='' placeholder='••••••••'>\n"
+     "<label for='modem800_user'>APN пользователь (пусто — не менять)</label>\n"
+     "<input type='text' id='modem800_user' name='modem800_user' value='"
+   ));
+   sendNonEmpty(server, htmlEscapeAttr(getModem800User()));
+   server.sendContent(F(
+     "' autocapitalize='off'>\n"
+     "<label for='modem800_pass'>APN пароль (пусто — не менять)</label>\n"
+     "<input type='password' id='modem800_pass' name='modem800_pass' value='' placeholder='"
+   ));
+   server.sendContent(strlen(getModem800Pass()) > 0 ? "сохранён — пусто не менять" : "не задан");
+   server.sendContent(F("'>\n"
     "</div>\n"
     "<div id='m7670box' style='display:none'>\n"
     "<label for='modem7670_apn'>APN (A7670)</label>\n"
@@ -192,10 +199,17 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, const char* saveRes
   sendNonEmpty(server, htmlEscapeAttr(getModem7670Apn()));
   server.sendContent(F(
     "' placeholder='internet' autocapitalize='off'>\n"
-    "<label for='modem7670_user'>APN пользователь (пусто — не менять)</label>\n"
-    "<input type='text' id='modem7670_user' name='modem7670_user' value='' autocapitalize='off'>\n"
-    "<label for='modem7670_pass'>APN пароль (пусто — не менять)</label>\n"
-    "<input type='password' id='modem7670_pass' name='modem7670_pass' value='' placeholder='••••••••'>\n"
+     "<label for='modem7670_user'>APN пользователь (пусто — не менять)</label>\n"
+     "<input type='text' id='modem7670_user' name='modem7670_user' value='"
+   ));
+   sendNonEmpty(server, htmlEscapeAttr(getModem7670User()));
+   server.sendContent(F(
+     "' autocapitalize='off'>\n"
+     "<label for='modem7670_pass'>APN пароль (пусто — не менять)</label>\n"
+     "<input type='password' id='modem7670_pass' name='modem7670_pass' value='' placeholder='"
+   ));
+   server.sendContent(strlen(getModem7670Pass()) > 0 ? "сохранён — пусто не менять" : "не задан");
+   server.sendContent(F("'>\n"
     "<label class='chk'><input type='checkbox' name='modem7670_gps' value='1'"
   ));
   if (getModem7670Gps()) server.sendContent(F(" checked"));

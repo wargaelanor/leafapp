@@ -30,8 +30,14 @@ void executeCommand(char* cmd) {
         Serial.printf("  hass_discovery: %s\n", getHassDiscoveryEnabled() ? "true" : "false");
         Serial.printf("  sleep_enable: %s\n", getSleepEnabled() ? "true" : "false");
         Serial.printf("  sleep_after_h: %d\n", getSleepAfterHours());
-        Serial.printf("  wake_fast_min: %d\n", getWakeFastMinutes());
-        Serial.printf("  wake_slow_min: %d\n", getWakeSlowMinutes());
+         Serial.printf("  wake_fast_min: %d\n", getWakeFastMinutes());
+         Serial.printf("  wake_slow_min: %d\n", getWakeSlowMinutes());
+         Serial.printf("  modem_enable: %s\n", getModemEnable() ? "true" : "false");
+         Serial.printf("  modem_type: %d\n", getModemType());
+         Serial.printf("  modem_pwrkey: %d\n", getModemPwrKey());
+         Serial.printf("  modem800_apn: %s\n", getModem800Apn());
+         Serial.printf("  modem800_user: %s\n", getModem800User());
+         Serial.printf("  modem800_pass: %s\n", showSecrets ? getModem800Pass() : "****");
         if (!showSecrets) {
             Serial.println("  (use 'list --secrets' to display secret values)");
         }
@@ -55,7 +61,10 @@ void executeCommand(char* cmd) {
             else if (strcmp(key, "sleep_enable") == 0) Serial.println(getSleepEnabled() ? "true" : "false");
             else if (strcmp(key, "sleep_after_h") == 0) Serial.println(getSleepAfterHours());
             else if (strcmp(key, "wake_fast_min") == 0) Serial.println(getWakeFastMinutes());
-            else if (strcmp(key, "wake_slow_min") == 0) Serial.println(getWakeSlowMinutes());
+             else if (strcmp(key, "wake_slow_min") == 0) Serial.println(getWakeSlowMinutes());
+             else if (strcmp(key, "modem800_apn") == 0) Serial.println(getModem800Apn());
+             else if (strcmp(key, "modem800_user") == 0) Serial.println(getModem800User());
+             else if (strcmp(key, "modem800_pass") == 0) Serial.println("****");
             else Serial.println("Unknown parameter.");
         } else {
             Serial.println("Usage: get <key>");
@@ -141,6 +150,9 @@ void executeCommand(char* cmd) {
                 if (v >= 1 && v <= 1440) status = setWakeSlowMinutes(v);
                 else { Serial.println("Error: Value must be 1-1440 minutes."); return; }
             }
+            else if (strcmp(key, "modem800_apn") == 0) status = setModem800Apn(val);
+            else if (strcmp(key, "modem800_user") == 0) status = setModem800User(val);
+            else if (strcmp(key, "modem800_pass") == 0) status = setModem800Pass(val);
             else {
                 Serial.println("Unknown parameter.");
                 return;

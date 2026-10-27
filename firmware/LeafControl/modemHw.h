@@ -9,6 +9,7 @@ namespace modem800 {
 void hwBegin();
 bool hwTestAt(uint32_t timeoutMs);
 bool hwSimReady();
+bool hwSelectNetwork(const char* apn, const char* user);
 bool hwNetworkConnected();
 int16_t hwSignal();
 bool hwGprsConnect(const char* apn, const char* user, const char* pass);
@@ -23,6 +24,7 @@ namespace modem7670 {
 void hwBegin();
 bool hwTestAt(uint32_t timeoutMs);
 bool hwSimReady();
+bool hwSelectNetwork(const char* apn, const char* user);
 bool hwNetworkConnected();
 int16_t hwSignal();
 bool hwGprsConnect(const char* apn, const char* user, const char* pass);
