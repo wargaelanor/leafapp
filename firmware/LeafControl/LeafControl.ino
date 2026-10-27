@@ -157,6 +157,14 @@ void handleRoot() {
   server.send_P(200, "text/html", INDEX_HTML);
 }
 
+// Vehicle picture for the PWA (also usable from GitHub Pages, where the file
+// is served statically). Kept in PROGMEM, streamed in chunks to save RAM.
+void handleLeafPng() {
+  server.setContentLength(LEAF_PNG_LEN);
+  server.send(200, "image/png", "");
+  server.sendContent_P((const char*)LEAF_PNG, LEAF_PNG_LEN);
+}
+
 void handleApiStatus() {
   noteCarActivity();
   bool sequenceActive = (activeSequence != CanSequence::NONE);
@@ -905,6 +913,7 @@ void setup() {
 
   if (wifiEnabled) {
       server.on("/", handleRoot);
+server.on("/leaf.png", handleLeafPng);
       server.on("/api/status", handleApiStatus);
       server.on("/ota", handleOtaPage);
       server.on("/ota_update", HTTP_POST, handleOtaResult, handleOtaUpload);
