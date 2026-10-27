@@ -47,9 +47,16 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, const char* saveRes
     ".appbar .brand svg{width:28px;height:12px}\n"
     ".appbar .brand span{font-size:15px;color:#333;letter-spacing:.5px}\n"
     ".screens{flex:1;overflow-y:auto;padding-bottom:24px}\n"
-    ".card{background:#fff;border-radius:8px;margin:8px 16px;box-shadow:0 1px 3px rgba(0,0,0,.06);overflow:hidden;padding:16px}\n"
+    ".settings-list{margin:8px 16px;background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.06);overflow:hidden}\n"
+    ".section{background:#fff;border-bottom:1px solid #eceef1}\n"
+    ".section:last-child{border-bottom:0}\n"
+    ".section summary{list-style:none;min-height:54px;padding:0 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:15px;font-weight:500;color:#333;cursor:pointer;user-select:none}\n"
+    ".section summary::-webkit-details-marker{display:none}\n"
+    ".section summary:after{content:'›';font-size:25px;font-weight:300;color:#8e8e93;line-height:1;transform:rotate(0);transition:transform .18s}\n"
+    ".section[open] summary:after{transform:rotate(90deg)}\n"
+    ".section[open] summary{color:#0077ac;border-bottom:1px solid #f0f1f3}\n"
+    ".section-body{padding:2px 16px 16px}\n"
     ".accent-line{width:26px;height:1px;background:#40a0da;margin-bottom:8px}\n"
-    ".title{font-size:16px;color:#333;font-weight:400;margin-bottom:12px}\n"
     ".status-line{display:flex;align-items:center;gap:8px;font-size:13px;color:#707070;margin-bottom:4px}\n"
     ".status-line i{width:8px;height:8px;border-radius:50%;display:block}\n"
     ".status-line .on{background:#34c759}\n"
@@ -59,7 +66,7 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, const char* saveRes
     "input[type=text],input[type=password],input[type=number]{width:100%;padding:11px;font-size:15px;font-family:inherit;border:1px solid #e3e3e3;border-radius:6px;background:#f9f9f9}\n"
     "input:focus{outline:none;border-color:#0077ac;background:#fff}\n"
     "input::placeholder{color:#e67e22;opacity:1;font-style:italic}\n"
-    ".title a{color:#333;text-decoration:underline;text-decoration-style:dashed;text-underline-offset:3px}\n"
+    ".broker-link{display:inline-block;margin-top:12px;color:#0077ac;font-size:13px;text-decoration:none}\n"
     ".hint{font-size:12px;color:#707070;margin-top:10px}\n"
     ".chk{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:14px;color:#333;cursor:pointer}\n"
     ".chk input{width:18px;height:18px;accent-color:#0077ac}\n"
@@ -81,8 +88,8 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, const char* saveRes
     server.sendContent(F("</div>\n"));
   }
 
-  server.sendContent(F("<form action='/settings_save' method='POST'>\n"));
-  server.sendContent(F("<div class='card'><div class='accent-line'></div><div class='title'><a href='https://dash.wqtt.ru/broker/' target='_blank' rel='noopener'>MQTT-брокер</a></div>\n"));
+  server.sendContent(F("<form action='/settings_save' method='POST'><div class='settings-list'>\n"));
+  server.sendContent(F("<details class='section' data-section='mqtt'><summary>MQTT-брокер</summary><div class='section-body'>\n"));
 
   server.sendContent(F("<div class='status-line'>"));
   if (strlen(getMqttServer()) == 0) {
@@ -92,7 +99,7 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, const char* saveRes
   } else {
     server.sendContent(F("<i class='off'></i>Нет подключения"));
   }
-  server.sendContent(F("</div>\n"));
+  server.sendContent(F("</div><a class='broker-link' href='https://dash.wqtt.ru/broker/' target='_blank' rel='noopener'>Открыть панель брокера</a>\n"));
 
   server.sendContent(F(
     "<label for='mqtt_server'>Сервер (IP или имя хоста)</label>\n"
@@ -132,8 +139,8 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, const char* saveRes
   server.sendContent(F(
     "> Автонастройка Home Assistant</label>\n"
     "<button type='submit' class='btn btn-save'>Сохранить и перезагрузить</button>\n"
-    "</div>\n"
-    "<div class='card'><div class='accent-line'></div><div class='title'>Wi-Fi</div>\n"
+    "</div></details>\n"
+    "<details class='section' data-section='wifi'><summary>Wi-Fi</summary><div class='section-body'>\n"
     "<label for='wifi_ssid'>Домашняя сеть (SSID) — пусто = не подключаться</label>\n"
     "<input type='text' id='wifi_ssid' name='wifi_ssid' value='"
   ));
@@ -152,8 +159,8 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, const char* saveRes
     "<input type='password' id='ap_password' name='ap_password' value='' placeholder='••••••••'>\n"
     "<div class='hint'>SSID сети пуст — плата работает только как точка доступа. Пароли не отображаются и не стираются при пустом поле.</div>\n"
     "<button type='submit' class='btn btn-save'>Сохранить и перезагрузить</button>\n"
-    "</div>\n"
-    "<div class='card'><div class='accent-line'></div><div class='title'>Блокировка дверей</div>\n"
+    "</div></details>\n"
+    "<details class='section' data-section='security'><summary>Безопасность</summary><div class='section-body'>\n"
     "<label class='chk' style='margin-top:0'><input type='checkbox' name='locking_enabled' value='1'"
   ));
   if (getLockingEnabled()) server.sendContent(F(" checked"));
@@ -161,8 +168,8 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, const char* saveRes
     "> Разрешить удалённую блокировку/разблокировку</label>\n"
     "<div class='hint'>Команды lock/unlock работают только при включённом пункте. Не включайте, если в салоне могут оставаться дети или животные: плата сможет закрыть двери дистанционно.</div>\n"
     "<button type='submit' class='btn btn-save'>Сохранить и перезагрузить</button>\n"
-    "</div>\n"
-    "<div class='card'><div class='accent-line'></div><div class='title'>Мобильный модем</div>\n"
+    "</div></details>\n"
+    "<details class='section' data-section='modem'><summary>Мобильный модем</summary><div class='section-body'>\n"
     "<label class='chk' style='margin-top:0'><input type='checkbox' id='modem_a7670' name='modem_a7670' value='1'"
   ));
   if (getModemEnable() && getModemType() == 1) server.sendContent(F(" checked"));
@@ -200,8 +207,8 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, const char* saveRes
     "'>\n"
     "<div class='hint'>Модем подключается к UART (GPIO1/2). Wi-Fi имеет приоритет для MQTT; A7670 используется как резервный канал 4G и источник GPS. PWRKEY — импульс включения/выключения.</div>\n"
     "<button type='submit' class='btn btn-save'>Сохранить и перезагрузить</button>\n"
-    "</div>\n"
-    "<div class='card'><div class='accent-line'></div><div class='title'>Экономия энергии</div>\n"
+    "</div></details>\n"
+    "<details class='section' data-section='power'><summary>Экономия энергии</summary><div class='section-body'>\n"
     "<label class='chk' style='margin-top:0'><input type='checkbox' name='sleep_enable' value='1'"
   ));
   if (getSleepEnabled()) server.sendContent(F(" checked"));
@@ -226,8 +233,9 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, const char* saveRes
   server.sendContent(F(
     "'>\n"
     "<button type='submit' class='btn btn-save'>Сохранить и перезагрузить</button>\n"
-    "</form></div>\n"
+    "</div></details></div></form>\n"
     "<div style='padding:0 16px'><a href='/' class='btn btn-back'>Назад</a></div>\n"
+    "<script>document.querySelectorAll('.section').forEach(function(s){s.addEventListener('toggle',function(){if(!s.open)return;document.querySelectorAll('.section[open]').forEach(function(o){if(o!==s)o.open=false});history.replaceState(null,'','#'+s.dataset.section)})});var h=location.hash.slice(1),d=h&&document.querySelector('[data-section=\"'+h+'\"]');if(d)d.open=true;</script>\n"
     "</div></div></body></html>\n"
   ));
 
