@@ -158,11 +158,19 @@ void handleRoot() {
 }
 
 // Vehicle picture for the PWA (also usable from GitHub Pages, where the file
-// is served statically). Kept in PROGMEM, streamed in chunks to save RAM.
-void handleLeafPng() {
-  server.setContentLength(LEAF_PNG_LEN);
-  server.send(200, "image/png", "");
-  server.sendContent_P((const char*)LEAF_PNG, LEAF_PNG_LEN);
+// is served statically). WebP is ~16.9 KB vs 23.5 KB for the PNG; kept in
+// PROGMEM and streamed in chunks to avoid a large RAM buffer.
+void handleLeafImg() {
+  server.setContentLength(LEAF_IMG_LEN);
+  server.sendHeader("Cache-Control", "public, max-age=604800");
+  server.send(200, LEAF_IMG_TYPE, "");
+  server.sendContent_P((const char*)LEAF_IMG, LEAF_IMG_LEN);
+}
+
+// Old name kept alive: stale PWA copies (pre leaf-v13) still ask for /leaf.png.
+void handleLeafPngLegacy() {
+  server.sendHeader("Location", "/leaf.webp", true);
+  server.send(301, "text/plain", "");
 }
 
 void handleApiStatus() {
@@ -913,7 +921,8 @@ void setup() {
 
   if (wifiEnabled) {
       server.on("/", handleRoot);
-server.on("/leaf.png", handleLeafPng);
+server.on("/leaf.webp", handleLeafImg);
+server.on("/leaf.png", handleLeafPngLegacy);
       server.on("/api/status", handleApiStatus);
       server.on("/ota", handleOtaPage);
       server.on("/ota_update", HTTP_POST, handleOtaResult, handleOtaUpload);
