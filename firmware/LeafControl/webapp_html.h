@@ -222,7 +222,7 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
           <span>Двери</span>
         </div>
         <div class="action-btn" id="act-climate">
-          <div class="circle" id="act-climate-ic"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><circle cx="24" cy="7" r="4" fill="currentColor"/><path d="M23 12.5c-2 0-3.6 1.2-4.3 3l-1.5 4c-.4 1.1-1.4 1.8-2.5 1.8h-4.4a2.5 2.5 0 000 5h5.1c2.8 0 5.3-1.7 6.4-4.3l3.4-7.8c.4-.9-.3-1.7-1.2-1.7h-1zM13.8 24l-5.2 6" fill="currentColor" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><path d="M2.5 6h9m0 0L8.3 2.8M11.5 6L8.3 9.2M2.5 13l6 5m0 0l-.5-4.4M8.5 18l-4.4.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <div class="circle" id="act-climate-ic"><svg viewBox="0 0 36 32" fill="none" aria-hidden="true"><circle cx="28" cy="6" r="4.2" fill="currentColor"/><path d="M25 13l-4.5 8H14l-5 7" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 6h13m0 0l-4-3.5M15 6l-4 3.5M2 13l8 6m0 0l-1-5M10 19l-5 .5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
           <span>Климат</span>
         </div>
       </div>
@@ -289,7 +289,7 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
           </div>
           <div class="rbtn start" id="rb-climate">
             <div class="ring"></div>
-            <svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><circle cx="24" cy="7" r="4" fill="currentColor"/><path d="M23 12.5c-2 0-3.6 1.2-4.3 3l-1.5 4c-.4 1.1-1.4 1.8-2.5 1.8h-4.4a2.5 2.5 0 000 5h5.1c2.8 0 5.3-1.7 6.4-4.3l3.4-7.8c.4-.9-.3-1.7-1.2-1.7h-1zM13.8 24l-5.2 6" fill="currentColor" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><path d="M2.5 6h9m0 0L8.3 2.8M11.5 6L8.3 9.2M2.5 13l6 5m0 0l-.5-4.4M8.5 18l-4.4.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <svg viewBox="0 0 36 32" fill="none" aria-hidden="true"><circle cx="28" cy="6" r="4.2" fill="currentColor"/><path d="M25 13l-4.5 8H14l-5 7" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 6h13m0 0l-4-3.5M15 6l-4 3.5M2 13l8 6m0 0l-1-5M10 19l-5 .5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             <span id="rb-climate-label">Климат</span>
           </div>
           <div class="rbtn c" id="rb-lights">
@@ -629,7 +629,9 @@ function renderNow(){
   const dIc = $('act-doors-ic');
   if(dIc.dataset.k !== String(S.lock)){
     dIc.dataset.k = String(S.lock);
+    const holdProgress=dIc.querySelector('.hold-progress');
     dIc.innerHTML = S.lock===1 ? LOCK_CLOSED_SVG : (S.lock===0 ? LOCK_OPEN_SVG : DOOR_SVG);
+    if(holdProgress) dIc.prepend(holdProgress);
     dIc.classList.toggle('unlocked', S.lock===0);
   }
 
