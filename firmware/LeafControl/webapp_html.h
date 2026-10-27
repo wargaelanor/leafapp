@@ -164,6 +164,16 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
 .about-list li:before{content:'';position:absolute;left:1px;top:7px;width:7px;height:7px;border-radius:50%;background:#0077ac}
 .about-section.planned .about-list li:before{background:#8e8e93}
 .about-note{margin-top:2px;padding:12px 14px;border-left:3px solid #0077ac;background:#f5f8fa;color:#555;font-size:12px;line-height:1.45}
+.dev-status{margin:16px 0;padding:14px;background:#f5f8fa;border:1px solid #e2e8ec;border-radius:8px}
+.dev-status strong{display:block;font-size:14px;color:#333;margin-bottom:4px}
+.dev-status span{font-size:12px;color:#707070;line-height:1.4}
+.dev-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
+.dev-actions button{min-height:44px;border:1px solid #d8dde2;border-radius:6px;background:#fff;color:#333;font:14px inherit;cursor:pointer}
+.dev-actions .primary{background:#0077ac;border-color:#0077ac;color:#fff}
+.dev-actions .danger{color:#d93025;border-color:#efc6c3}
+.dev-actions button:disabled{opacity:.45;cursor:default}
+.dev-download{display:block;margin-top:10px;padding:12px;text-align:center;border-radius:6px;background:#f1f1f1;color:#0077ac;text-decoration:none;font-size:14px}
+.dev-error{min-height:18px;margin-top:8px;color:#d93025;font-size:12px}
 .settings-groups{margin-top:14px;border:1px solid #eceef1;border-radius:8px;overflow:hidden}
 .settings-group{border-bottom:1px solid #eceef1;background:#fff}
 .settings-group:last-child{border-bottom:0}
@@ -200,415 +210,432 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
 </head>
 <body>
 <div class="app">
-  <div class="appbar">
-    <div class="brand">
-      <svg viewBox="0 0 60 24" fill="none"><circle cx="30" cy="12" r="10.5" stroke="#333" stroke-width="1.5"/><path d="M14 12h9m14 0h9" stroke="#333" stroke-width="1.5"/><path d="M20 8.5l-3 3.5 3 3.5M40 8.5l3 3.5-3 3.5" stroke="#333" stroke-width="1.2" fill="none"/></svg>
-      <span>Leaf Control</span>
-    </div>
-    <div class="actions">
-      <button class="conn off" id="conn-badge" onclick="openSettings()"><i></i><span id="conn-text">...</span></button>
-    </div>
-  </div>
-  <div class="seq-banner" id="seq-banner">Выполняется команда…</div>
-
-  <div class="screens" id="screens">
-    <!-- ГАРАЖ -->
-    <section class="screen active" id="screen-garage">
-      <div class="card" style="margin-top:8px;padding-bottom:8px">
-        <div class="vehicle-hero">
-          <img src="leaf.webp" alt="Nissan Leaf">
-          <div class="name">Nissan Leaf</div>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-header">
-          <div class="accent-line"></div>
-          <div class="title">Уровень заряда</div>
-        </div>
-        <div class="soc-body">
-          <div class="soc-mileage"><span id="g-range">—</span><small>км</small></div>
-          <div class="battery-bar"><div class="fill" id="g-bar" style="width:0%"></div></div>
-          <div class="soc-labels">
-            <span class="pct"><span id="g-soc">—</span>%</span>
-            <span id="g-charge-state">—</span>
-          </div>
-        </div>
-        <button class="btn-primary" id="g-charge-btn">Начать зарядку</button>
-      </div>
-      <div class="action-buttons">
-        <div class="action-btn" id="act-lights">
-          <div class="circle" id="act-lights-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-4 10.5c.6.55 1 1.25 1 2v.5h6v-.5c0-.75.4-1.45 1-2A6 6 0 0012 3z"/></svg></div>
-          <span>Свет</span>
-        </div>
-        <div class="action-btn" id="act-doors">
-          <div class="circle" id="act-doors-ic"><svg viewBox="0 0 26 30" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M23.13 11.1h-1.85l-.01-2.7A8.33 8.33 0 104.63 8.33l0 2.77H2.78A2.78 2.78 0 000 13.88v12.95a2.78 2.78 0 002.78 2.77h20.35A2.78 2.78 0 0025.9 26.83V13.88a2.78 2.78 0 00-2.77-2.78zM7.4 8.33a5.55 5.55 0 0111.1 0v2.77H7.4V8.33zm15.73 18.5H2.78V13.88h20.35v12.95z" fill="#333"/></svg></div>
-          <span>Двери</span>
-        </div>
-        <div class="action-btn" id="act-climate">
-          <div class="circle" id="act-climate-ic"><svg viewBox="0 0 36 32" fill="none" aria-hidden="true"><circle cx="28" cy="6" r="4.2" fill="currentColor"/><path d="M25 13l-4.5 8H14l-5 7" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 6h13m0 0l-4-3.5M15 6l-4 3.5M2 13l8 6m0 0l-1-5M10 19l-5 .5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-          <span>Климат</span>
-        </div>
-      </div>
-      <div class="section-title">Функции</div>
-      <div class="feature-card" onclick="go('status')">
-        <div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13.63.51L4.24 13.11c-.6.85 0 2.06 1.03 2.06h4.66l-1.63 8.12c-.24 1.33 1.45 2.12 2.3 1.03l9.39-12.6c.6-.85 0-2.06-1.03-2.06h-4.66l1.63-8.12c.24-1.33-1.45-2.12-2.3-1.03z"/></svg></div>
-        <div class="ft"><div class="ft-title">Состояние авто</div><div class="ft-sub" id="f-status-sub">Батарея, климат, двери</div></div>
-        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
-      </div>
-      <div class="feature-card" onclick="go('remote')">
-        <div class="fi"><svg viewBox="0 0 24 25" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13.63.51L4.24 13.11c-.6.85 0 2.06 1.03 2.06h4.66l-1.63 8.12c-.24 1.33 1.45 2.12 2.3 1.03l9.39-12.6c.6-.85 0-2.06-1.03-2.06h-4.66l1.63-8.12c.24-1.33-1.45-2.12-2.3-1.03z"/></svg></div>
-        <div class="ft"><div class="ft-title">Дистанционные услуги</div><div class="ft-sub">Климат, зарядка, двери</div></div>
-        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
-      </div>
-      <div class="feature-card" id="find-car">
-        <div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2a7 7 0 00-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 00-7-7zm0 9.5A2.5 2.5 0 1112 6.5a2.5 2.5 0 010 5z"/></svg></div>
-        <div class="ft"><div class="ft-title">Поиск моей машины</div><div class="ft-sub" id="find-car-sub">Сигнал и фары</div></div>
-        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
-      </div>
-      <div class="gps-row" id="gps-row">
-        <a id="gps-ya" target="_blank" rel="noopener">Яндекс.Карты</a>
-        <a id="gps-go" target="_blank" rel="noopener">Google Maps</a>
-        <span id="gps-age"></span>
-      </div>
-      <div class="feature-card" onclick="toast('Нет подключённых уведомлений')">
-        <div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 22a2.5 2.5 0 002.45-2h-4.9A2.5 2.5 0 0012 22zm7-6v-5a7 7 0 00-5-6.7V3a2 2 0 10-4 0v1.3A7 7 0 005 11v5l-2 2v1h18v-1l-2-2z"/></svg></div>
-        <div class="ft"><div class="ft-title">Уведомления ЭЗ</div><div class="ft-sub">Завершение зарядки и др.</div></div>
-        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
-      </div>
-      <div class="feature-card" onclick="go('charges')">
-        <div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13.63.51L4.24 13.11c-.6.85 0 2.06 1.03 2.06h4.66l-1.63 8.12c-.24 1.33 1.45 2.12 2.3 1.03l9.39-12.6c.6-.85 0-2.06-1.03-2.06h-4.66l1.63-8.12c.24-1.33-1.45-2.12-2.3-1.03z"/></svg></div>
-        <div class="ft"><div class="ft-title">История зарядок</div><div class="ft-sub" id="f-charges-sub">Сеансы и статистика</div></div>
-        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
-      </div>
-      <div class="feature-card" onclick="go('trips')">
-        <div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3.5 18.5l5.57-5.57 3.54 3.53L20.5 8.07V16h-2V10.5L9.6 17.43l-3.54-3.53L4 16.09l-.5 2.41zM2 20h20v2H2v-2z"/></svg></div>
-        <div class="ft"><div class="ft-title">Поездки</div><div class="ft-sub" id="f-trips-sub">Статистика и история</div></div>
-        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
-      </div>
-      <div style="height:16px"></div>
-    </section>
-
-    <!-- ДИСТАНЦИОННЫЕ УСЛУГИ -->
-    <section class="screen" id="screen-remote">
-      <div style="padding:12px 16px 0;text-align:center">
-        <img src="leaf.webp" alt="" style="width:200px;object-fit:contain;max-height:110px">
-        <div style="font-size:15px;text-transform:uppercase;color:#13172c;letter-spacing:1px;margin-top:4px">Nissan Leaf</div>
-      </div>
-      <div class="remote-wrap">
-        <div class="remote-status" id="remote-status">Выберите действие</div>
-        <div class="setpoint-row">
-          <label>Климат, °C</label>
-          <input type="range" id="sp-slider" min="16" max="28" step="0.5" value="21" oninput="spChanged(this.value)">
-          <span class="val" id="sp-val">21.0</span>
-        </div>
-        <div class="setpoint-row">
-          <label for="hvac-minutes">Длительность</label>
-          <select id="hvac-minutes">
-            <option value="5">5 минут</option><option value="10">10 минут</option>
-            <option value="15" selected>15 минут</option><option value="20">20 минут</option>
-            <option value="30">30 минут</option>
-          </select>
-          <span class="val" id="hvac-left">—</span>
-        </div>
-        <div class="remote-pad">
-          <div class="rbtn a" id="rb-horn">
-            <svg viewBox="0 0 24 24" fill="#333"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0014 7.97v8.05A4.47 4.47 0 0016.5 12zM14 3.23v2.06a7 7 0 010 13.42v2.06a9 9 0 000-17.54z"/></svg>
-            <span>Сигнал и фары</span>
-          </div>
-          <div class="rbtn b" id="rb-lock">
-            <svg viewBox="0 0 26 30" fill="none"><path d="M23.13 11.1h-1.85l-.01-2.7A8.33 8.33 0 104.63 8.33l0 2.77H2.78A2.78 2.78 0 000 13.88v12.95a2.78 2.78 0 002.78 2.77h20.35A2.78 2.78 0 0025.9 26.83V13.88a2.78 2.78 0 00-2.77-2.78zM7.4 8.33a5.55 5.55 0 0111.1 0v2.77H7.4V8.33zm15.73 18.5H2.78V13.88h20.35v12.95z" fill="#333"/></svg>
-            <span>Закрыть</span>
-          </div>
-          <div class="rbtn start" id="rb-climate">
-            <div class="ring"></div>
-            <svg viewBox="0 0 36 32" fill="none" aria-hidden="true"><circle cx="28" cy="6" r="4.2" fill="currentColor"/><path d="M25 13l-4.5 8H14l-5 7" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 6h13m0 0l-4-3.5M15 6l-4 3.5M2 13l8 6m0 0l-1-5M10 19l-5 .5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            <span id="rb-climate-label">Климат</span>
-          </div>
-          <div class="rbtn c" id="rb-lights">
-            <svg viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="1.5"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-4 10.5c.6.55 1 1.25 1 2v.5h6v-.5c0-.75.4-1.45 1-2A6 6 0 0012 3z"/></svg>
-            <span>Фары</span>
-          </div>
-          <div class="rbtn d" id="rb-unlock">
-            <svg viewBox="0 0 26 30" fill="none"><path d="M23.13 29.6H2.78A2.78 2.78 0 010 26.83V13.88A2.78 2.78 0 012.78 11.1h1.85V8.33A8.34 8.34 0 0112.95 0h.02a8.28 8.28 0 015.26 1.91 8.47 8.47 0 012.85 4.72h-2.85a5.62 5.62 0 00-1.99-2.77 5.5 5.5 0 00-3.3-1.09A5.56 5.56 0 007.4 8.33V11.1h10.05v.03h5V11.1h.68A2.78 2.78 0 0125.9 13.88v12.95a2.78 2.78 0 01-2.77 2.77zM2.78 13.88v12.95h20.35V13.88H2.78z" fill="#333"/></svg>
-            <span>Открыть</span>
-          </div>
-        </div>
-        <div class="remote-extra">
-          <button class="pill-btn" id="remote-charge"><svg viewBox="0 0 25 25" fill="currentColor"><path d="M14.65 2.17a1.13 1.13 0 00-2.25 0l-.01 4.13h2.25l.01-4.13zM5.63 2.17a1.13 1.13 0 00-2.25 0l-.01 4.13h2.26l0-4.13zm11.65 5.64H.75A.75.75 0 000 8.56v.75c0 .42.34.75.75.75H1.5v3a7.5 7.5 0 006.39 7.4v7.62h2.25V20.46a7.5 7.5 0 006.39-7.4v-3h.75a.75.75 0 00.75-.75v-.75a.75.75 0 00-.75-.75zm-3 5.26a5.26 5.26 0 01-10.52 0v-3h10.52v3z"/></svg>Зарядка</button>
-          <button class="pill-btn" onclick="cmd('refresh')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>Обновить</button>
-        </div>
-        <div class="remote-divider"></div>
-        <div class="remote-meta">
-          <div class="row">
-            <div class="cell">
-              <svg viewBox="0 0 24 25" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M13.63.51L4.24 13.11c-.6.85 0 2.06 1.03 2.06h4.66l-1.63 8.12c-.24 1.33 1.45 2.12 2.3 1.03l9.39-12.6c.6-.85 0-2.06-1.03-2.06h-4.66l1.63-8.12c.24-1.33-1.45-2.12-2.3-1.03z"/></svg>
-              <span><span id="rm-range">—</span> км запас хода</span>
-            </div>
-            <div class="cell">
-              <svg viewBox="0 0 26 30" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M23.13 11.1h-1.85l-.01-2.7A8.33 8.33 0 104.63 8.33l0 2.77H2.78A2.78 2.78 0 000 13.88v12.95a2.78 2.78 0 002.78 2.77h20.35A2.78 2.78 0 0025.9 26.83V13.88a2.78 2.78 0 00-2.77-2.78z"/></svg>
-              <span id="rm-lock">—</span>
-            </div>
-          </div>
-          <div class="updated" id="rm-updated">Обновлено: никогда</div>
-        </div>
-      </div>
-    </section>
-
-    <!-- СОСТОЯНИЕ АВТО -->
-    <section class="screen" id="screen-status">
-      <div class="vs-grid" style="margin-top:12px">
-        <div class="vs-cell">
-          <div class="vsi"><svg viewBox="0 0 24 25" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13.63.51L4.24 13.11c-.6.85 0 2.06 1.03 2.06h4.66l-1.63 8.12c-.24 1.33 1.45 2.12 2.3 1.03l9.39-12.6c.6-.85 0-2.06-1.03-2.06h-4.66l1.63-8.12c.24-1.33-1.45-2.12-2.3-1.03z"/></svg></div>
-          <div><div class="vst">Батарея (прибор / расч.)</div><div class="vsv" id="s-soc">—</div></div>
-        </div>
-        <div class="vs-cell">
-          <div class="vsi"><svg viewBox="0 0 25 20" fill="currentColor"><path d="M5.44 19.77c-.22-.22-5.44-5.54-5.44-10.41a5.68 5.68 0 015.66-5.66 5.66 5.66 0 015.66 5.66c0 4.84-5.22 10.19-5.44 10.41a.29.29 0 01-.22.1.28.28 0 01-.22-.1zM2.8 9.36a2.87 2.87 0 002.86 2.86 2.87 2.87 0 002.87-2.86A2.87 2.87 0 005.66 6.5a2.87 2.87 0 00-2.86 2.86zm18.57.46c-.14-.14-3.32-3.41-3.32-6.37a3.45 3.45 0 013.46-3.46 3.45 3.45 0 013.45 3.46c0 2.99-3.17 6.23-3.31 6.37a.33.33 0 01-.14.05.17.17 0 01-.14-.05zM19.76 3.45a1.76 1.76 0 001.75 1.75 1.76 1.76 0 001.75-1.75 1.76 1.76 0 00-1.75-1.75 1.76 1.76 0 00-1.75 1.75z"/></svg></div>
-          <div><div class="vst">Запас хода (прибор / расч.)</div><div class="vsv" id="s-range">—</div></div>
-        </div>
-        <div class="vs-cell">
-          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 7h-9M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg></div>
-          <div><div class="vst">SOH</div><div class="vsv" id="s-soh">—</div></div>
-        </div>
-        <div class="vs-cell">
-          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="7" width="16" height="10" rx="2"/><path d="M22 11v2"/></svg></div>
-          <div><div class="vst">GIDS</div><div class="vsv" id="s-gids">—</div></div>
-        </div>
-        <div class="vs-cell">
-          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
-          <div><div class="vst">Напряжение</div><div class="vsv" id="s-v">—</div></div>
-        </div>
-        <div class="vs-cell">
-          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2v6M12 16v6M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M2 12h6M16 12h6M4.93 19.07l4.24-4.24M14.83 9.17l4.24-4.24"/></svg></div>
-          <div><div class="vst">Ток</div><div class="vsv" id="s-i">—</div></div>
-        </div>
-        <div class="vs-cell">
-          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
-          <div><div class="vst">Мощность</div><div class="vsv" id="s-power">—</div></div>
-        </div>
-        <div class="vs-cell">
-          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 14.76V3.5a2.5 2.5 0 00-5 0v11.26a4.5 4.5 0 105 0z"/></svg></div>
-          <div><div class="vst">Батарея, °C</div><div class="vsv" id="s-btemp">—</div></div>
-        </div>
-        <div class="vs-cell">
-          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></div>
-          <div><div class="vst">Разброс ячеек</div><div class="vsv" id="s-cdelta" title="Нужен активный опрос BMS; порт A работает только на приём">—</div></div>
-        </div>
-        <div class="vs-cell">
-          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 14.76V3.5a2.5 2.5 0 00-5 0v11.26a4.5 4.5 0 105 0z"/></svg></div>
-          <div><div class="vst">Воздух</div><div class="vsv" id="s-amb">—</div></div>
-        </div>
-        <div class="vs-cell">
-          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 14.76V3.5a2.5 2.5 0 00-5 0v11.26a4.5 4.5 0 105 0z"/></svg></div>
-          <div><div class="vst">Салон</div><div class="vsv" id="s-cabin">—</div></div>
-        </div>
-        <div class="vs-cell">
-          <div class="vsi"><svg viewBox="0 0 26 30" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M23.13 11.1h-1.85l-.01-2.7A8.33 8.33 0 104.63 8.33l0 2.77H2.78A2.78 2.78 0 000 13.88v12.95a2.78 2.78 0 002.78 2.77h20.35A2.78 2.78 0 0025.9 26.83V13.88a2.78 2.78 0 00-2.77-2.78z"/></svg></div>
-          <div><div class="vst">Двери</div><div class="vsv" id="s-lock">—</div></div>
-        </div>
-        <div class="vs-cell">
-          <div class="vsi"><svg viewBox="0 0 25 25" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M14.65 2.17a1.13 1.13 0 00-2.25 0l-.01 4.13h2.25l.01-4.13zM5.63 2.17a1.13 1.13 0 00-2.25 0l-.01 4.13h2.26l0-4.13zm11.65 5.64H.75A.75.75 0 000 8.56v.75c0 .42.34.75.75.75H1.5v3a7.5 7.5 0 006.39 7.4v7.62h2.25V20.46a7.5 7.5 0 006.39-7.4v-3h.75a.75.75 0 00.75-.75v-.75a.75.75 0 00-.75-.75zm-3 5.26a5.26 5.26 0 01-10.52 0v-3h10.52v3z"/></svg></div>
-          <div><div class="vst">Зарядка</div><div class="vsv" id="s-charge">—</div></div>
-        </div>
-        <div class="vs-cell">
-          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg></div>
-          <div><div class="vst">Климат</div><div class="vsv" id="s-hvac">—</div></div>
-        </div>
-        <div class="vs-cell">
-          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
-          <div><div class="vst">Машина</div><div class="vsv" id="s-on">—</div></div>
-        </div>
-        <div class="vs-cell">
-          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M7 12h10M12 7v10"/></svg></div>
-          <div><div class="vst">Общий пробег</div><div class="vsv" id="s-odo">—</div></div>
-        </div>
-        <div class="vs-cell">
-          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16v16H4zM8 8h8M8 12h8M8 16h5"/></svg></div>
-          <div><div class="vst">VIN</div><div class="vsv" id="s-vin" style="font-size:13px;overflow-wrap:anywhere">—</div></div>
-        </div>
-      </div>
-      <div style="height:16px"></div>
-    </section>
-
-    <!-- ЗАРЯДКИ -->
-    <section class="screen" id="screen-charges">
-      <div class="trip-summary">
-        <div class="cell"><div class="num" id="cs-total">0</div><div class="lbl">Сеансов</div></div>
-        <div class="cell"><div class="num" id="cs-kwh">0</div><div class="lbl">кВт·ч</div></div>
-        <div class="cell"><div class="num" id="cs-hours">0</div><div class="lbl">часов</div></div>
-      </div>
-      <div class="trip-active-banner" id="charge-active-banner"><i></i><span>Идёт зарядка…</span></div>
-      <div class="trip-list" id="charge-list"></div>
-      <div class="trip-empty" id="charge-empty">Сеансы зарядки появятся автоматически при подключении зарядного устройства</div>
-      <button class="trip-clear" id="charge-clear" style="display:none" onclick="clearCharges()">Очистить историю</button>
-      <div style="height:16px"></div>
-    </section>
-
-    <!-- ПОЕЗДКИ -->
-    <section class="screen" id="screen-trips">
-      <div class="trip-summary">
-        <div class="cell"><div class="num" id="ts-total">0</div><div class="lbl">Поездок</div></div>
-        <div class="cell"><div class="num" id="ts-km">0</div><div class="lbl">км всего</div></div>
-        <div class="cell"><div class="num" id="ts-kwh">0</div><div class="lbl">кВт·ч</div></div>
-      </div>
-      <div class="trip-active-banner" id="trip-active-banner"><i></i><span>Идёт поездка…</span></div>
-      <div class="trip-list" id="trip-list"></div>
-      <div class="trip-empty" id="trip-empty">Поездки появятся автоматически при движении с включённым зажиганием</div>
-      <button class="trip-clear" id="trip-clear" style="display:none" onclick="clearTrips()">Очистить историю</button>
-      <div style="height:16px"></div>
-    </section>
-
-    <!-- ЕЩЁ -->
-    <section class="screen" id="screen-more">
-      <div class="section-title">Приложение</div>
-      <div class="more-item" onclick="openSettings()">
-        <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-1.42 3.42 2 2 0 01-1.41-.59l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-3.42-1.42 2 2 0 01.59-1.41l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 011.42-3.42 2 2 0 011.41.59l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 013.42 1.42 2 2 0 01-.59 1.41l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></div>
-        <span id="more-settings-label">Настройки подключения</span>
-        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
-      </div>
-      <div class="more-item" id="more-ota" style="display:none" onclick="location.href='/ota'">
-        <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg></div>
-        Обновление прошивки
-        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
-      </div>
-      <div class="more-item" onclick="openAbout()">
-        <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></div>
-        О приложении
-        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
-      </div>
-      <div class="section-title">Режим</div>
-      <div class="more-item" style="border-bottom:none">
-        <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 12.55a11 11 0 0114.08 0M1.42 9a16 16 0 0121.16 0M8.53 16.11a6 6 0 016.95 0M12 20h.01"/></svg></div>
-        <span id="more-mode">—</span>
-      </div>
-      <div style="height:16px"></div>
-    </section>
-  </div>
-
-  <div class="toast" id="toast"></div>
-
-  <div class="tabbar">
-    <div class="tab active" data-screen="garage">
-      <svg viewBox="0 0 19.4 17.2" fill="none"><path d="M8.01 16.71H3.6V9.67l-1.3 1.22L.7 9.14l1.84-1.71 6.74-6.33a.71.71 0 01.09-.06l.28-.27.07-.05 9 8.44-1.59 1.75-1.62-.82v7.08h-4.37v-4.03a1.69 1.69 0 00-3.38 0v4.03z" stroke="currentColor" stroke-width="1"/></svg>
-      <span>Гараж</span>
-    </div>
-    <div class="tab" data-screen="remote">
-      <svg viewBox="0 0 24 25" fill="none"><path d="M13.63.51L4.24 13.11c-.6.85 0 2.06 1.03 2.06h4.66l-1.63 8.12c-.24 1.33 1.45 2.12 2.3 1.03l9.39-12.6c.6-.85 0-2.06-1.03-2.06h-4.66l1.63-8.12c.24-1.33-1.45-2.12-2.3-1.03z" fill="currentColor"/></svg>
-      <span>Дистанция</span>
-    </div>
-    <div class="tab" data-screen="status">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-      <span>Состояние</span>
-    </div>
-    <div class="tab" data-screen="trips">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 19V5m0 14l4-4 4 3 4-6 4 4"/></svg>
-      <span>Поездки</span>
-    </div>
-    <div class="tab" data-screen="more">
-      <svg viewBox="0 0 25 5" fill="currentColor"><circle cx="2.5" cy="2.5" r="2.5"/><circle cx="12.5" cy="2.5" r="2.5"/><circle cx="22.5" cy="2.5" r="2.5"/></svg>
-      <span>Ещё</span>
-    </div>
-  </div>
-
-  <!-- Настройки -->
-  <div class="modal" id="settings-modal">
-    <div class="sheet">
-      <h2>Настройки</h2>
-      <div class="settings-groups">
-        <details class="settings-group" data-pwa-section="mqtt" open>
-          <summary>MQTT-брокер</summary>
-          <div class="settings-group-body">
-            <label>Сервер</label>
-            <input id="cfg-host" placeholder="m5.wqtt.ru">
-            <label>Порт WebSocket TLS</label>
-            <input id="cfg-port" type="number" value="15871">
-            <label>Пользователь</label>
-            <input id="cfg-user" placeholder="u_XXXXXX" autocapitalize="off">
-            <label>Пароль</label>
-            <input id="cfg-pass" type="password">
-            <label>Vehicle ID</label>
-            <input id="cfg-vid" placeholder="leaf">
-          </div>
-        </details>
-        <details class="settings-group" data-pwa-section="wifi">
-          <summary>Wi-Fi</summary>
-          <div class="settings-group-body"><div class="settings-availability"><i></i><span>Настраивается при локальном подключении к плате</span></div></div>
-        </details>
-        <details class="settings-group" data-pwa-section="security">
-          <summary>Безопасность</summary>
-          <div class="settings-group-body"><div class="settings-availability"><i></i><span>Настраивается при локальном подключении к плате</span></div></div>
-        </details>
-        <details class="settings-group" data-pwa-section="modem">
-          <summary>Мобильный модем</summary>
-          <div class="settings-group-body"><div class="settings-availability"><i></i><span>Настраивается при локальном подключении к плате</span></div></div>
-        </details>
-        <details class="settings-group" data-pwa-section="power">
-          <summary>Экономия энергии</summary>
-          <div class="settings-group-body"><div class="settings-availability"><i></i><span>Настраивается при локальном подключении к плате</span></div></div>
-        </details>
-      </div>
-      <div class="btns">
-        <button class="cancel" onclick="closeSettings()">Отмена</button>
-        <button class="save" onclick="saveSettings()">Сохранить</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- О приложении -->
-  <div class="modal" id="about-modal" role="dialog" aria-modal="true" aria-labelledby="about-title" onclick="closeAbout(event)">
-    <div class="sheet about-sheet">
-      <div class="about-head">
-        <div>
-          <h2 id="about-title">О Leaf Control</h2>
-          <p>Телематическая плата для Nissan Leaf ZE1: показывает состояние автомобиля и позволяет управлять основными функциями со смартфона.</p>
-        </div>
-        <button class="about-close" type="button" aria-label="Закрыть" onclick="closeAbout()">×</button>
-      </div>
-
-      <section class="about-section">
-        <h3>Что умеет сейчас</h3>
-        <ul class="about-list">
-          <li><strong>Дистанционное управление.</strong> Включение и выключение климата, запуск и остановка зарядки, открытие и закрытие дверей, включение фар и звукового сигнала.</li>
-          <li><strong>Климат с таймером.</strong> Можно выбрать температуру и время работы: 5, 10, 15, 20 или 30 минут. По окончании таймера климат выключится автоматически.</li>
-          <li><strong>Управление звонком.</strong> В версии с модемом SIM800 звонок с разрешённого номера включает или выключает климат. Можно сохранить до пяти номеров.</li>
-          <li><strong>Состояние автомобиля.</strong> В приложении видны заряд и состояние батареи, запас хода, напряжение, ток и мощность, температуры, пробег, VIN, состояние климата, зарядки и дверей.</li>
-          <li><strong>Местоположение.</strong> При установленном GPS-модуле координаты автомобиля можно открыть в Яндекс Картах или Google Maps.</li>
-          <li><strong>Доступ со смартфона.</strong> Плата работает локально по Wi-Fi и через интернет с помощью MQTT. Приложение можно установить на главный экран телефона.</li>
-          <li><strong>История.</strong> Приложение автоматически сохраняет поездки и сеансы зарядки и показывает основную статистику.</li>
-          <li><strong>Обновление.</strong> Прошивку платы можно обновлять через локальную веб-страницу без разборки устройства.</li>
-        </ul>
-      </section>
-
-      <section class="about-section">
-        <h3>Как это работает</h3>
-        <ul class="about-list">
-          <li>Для защиты от случайного нажатия команды автомобилю выполняются после удержания кнопки.</li>
-          <li>Плата получает данные непосредственно от автомобиля и передаёт их в приложение через выбранное подключение.</li>
-        </ul>
-      </section>
-
-      <section class="about-section planned">
-        <h3>Планируется</h3>
-        <ul class="about-list">
-          <li>Проверка и доработка совместимости функций с разными комплектациями и годами выпуска Leaf ZE1.</li>
-          <li>Расширенная диагностика тяговой батареи и более подробные данные о её состоянии.</li>
-          <li>Уведомления о завершении зарядки, низком заряде и важных событиях автомобиля.</li>
-          <li>Улучшенная история поездок и зарядок, более подробная статистика и удобная работа с сохранёнными данными.</li>
-        </ul>
-      </section>
-
-      <p class="about-note">Набор доступных функций зависит от комплектации автомобиля, установленного модема и способа подключения платы.</p>
-    </div>
-  </div>
+<div class="appbar">
+<div class="brand">
+<svg viewBox="0 0 60 24" fill="none"><circle cx="30" cy="12" r="10.5" stroke="#333" stroke-width="1.5"/><path d="M14 12h9m14 0h9" stroke="#333" stroke-width="1.5"/><path d="M20 8.5l-3 3.5 3 3.5M40 8.5l3 3.5-3 3.5" stroke="#333" stroke-width="1.2" fill="none"/></svg>
+<span>Leaf Control</span>
 </div>
-
+<div class="actions">
+<button class="conn off" id="conn-badge" onclick="openSettings()"><i></i><span id="conn-text">...</span></button>
+</div>
+</div>
+<div class="seq-banner" id="seq-banner">Выполняется команда…</div>
+<div class="screens" id="screens">
+<!-- ГАРАЖ -->
+<section class="screen active" id="screen-garage">
+<div class="card" style="margin-top:8px;padding-bottom:8px">
+<div class="vehicle-hero">
+<img src="leaf.webp" alt="Nissan Leaf">
+<div class="name">Nissan Leaf</div>
+</div>
+</div>
+<div class="card">
+<div class="card-header">
+<div class="accent-line"></div>
+<div class="title">Уровень заряда</div>
+</div>
+<div class="soc-body">
+<div class="soc-mileage"><span id="g-range">—</span><small>км</small></div>
+<div class="battery-bar"><div class="fill" id="g-bar" style="width:0%"></div></div>
+<div class="soc-labels">
+<span class="pct"><span id="g-soc">—</span>%</span>
+<span id="g-charge-state">—</span>
+</div>
+</div>
+<button class="btn-primary" id="g-charge-btn">Начать зарядку</button>
+</div>
+<div class="action-buttons">
+<div class="action-btn" id="act-lights">
+<div class="circle" id="act-lights-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-4 10.5c.6.55 1 1.25 1 2v.5h6v-.5c0-.75.4-1.45 1-2A6 6 0 0012 3z"/></svg></div>
+<span>Свет</span>
+</div>
+<div class="action-btn" id="act-doors">
+<div class="circle" id="act-doors-ic"><svg viewBox="0 0 26 30" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M23.13 11.1h-1.85l-.01-2.7A8.33 8.33 0 104.63 8.33l0 2.77H2.78A2.78 2.78 0 000 13.88v12.95a2.78 2.78 0 002.78 2.77h20.35A2.78 2.78 0 0025.9 26.83V13.88a2.78 2.78 0 00-2.77-2.78zM7.4 8.33a5.55 5.55 0 0111.1 0v2.77H7.4V8.33zm15.73 18.5H2.78V13.88h20.35v12.95z" fill="#333"/></svg></div>
+<span>Двери</span>
+</div>
+<div class="action-btn" id="act-climate">
+<div class="circle" id="act-climate-ic"><svg viewBox="0 0 36 32" fill="none" aria-hidden="true"><circle cx="28" cy="6" r="4.2" fill="currentColor"/><path d="M25 13l-4.5 8H14l-5 7" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 6h13m0 0l-4-3.5M15 6l-4 3.5M2 13l8 6m0 0l-1-5M10 19l-5 .5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+<span>Климат</span>
+</div>
+</div>
+<div class="section-title">Функции</div>
+<div class="feature-card" onclick="go('status')">
+<div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13.63.51L4.24 13.11c-.6.85 0 2.06 1.03 2.06h4.66l-1.63 8.12c-.24 1.33 1.45 2.12 2.3 1.03l9.39-12.6c.6-.85 0-2.06-1.03-2.06h-4.66l1.63-8.12c.24-1.33-1.45-2.12-2.3-1.03z"/></svg></div>
+<div class="ft"><div class="ft-title">Состояние авто</div><div class="ft-sub" id="f-status-sub">Батарея, климат, двери</div></div>
+<div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+</div>
+<div class="feature-card" onclick="go('remote')">
+<div class="fi"><svg viewBox="0 0 24 25" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13.63.51L4.24 13.11c-.6.85 0 2.06 1.03 2.06h4.66l-1.63 8.12c-.24 1.33 1.45 2.12 2.3 1.03l9.39-12.6c.6-.85 0-2.06-1.03-2.06h-4.66l1.63-8.12c.24-1.33-1.45-2.12-2.3-1.03z"/></svg></div>
+<div class="ft"><div class="ft-title">Дистанционные услуги</div><div class="ft-sub">Климат, зарядка, двери</div></div>
+<div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+</div>
+<div class="feature-card" id="find-car">
+<div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2a7 7 0 00-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 00-7-7zm0 9.5A2.5 2.5 0 1112 6.5a2.5 2.5 0 010 5z"/></svg></div>
+<div class="ft"><div class="ft-title">Поиск моей машины</div><div class="ft-sub" id="find-car-sub">Сигнал и фары</div></div>
+<div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+</div>
+<div class="gps-row" id="gps-row">
+<a id="gps-ya" target="_blank" rel="noopener">Яндекс.Карты</a>
+<a id="gps-go" target="_blank" rel="noopener">Google Maps</a>
+<span id="gps-age"></span>
+</div>
+<div class="feature-card" onclick="toast('Нет подключённых уведомлений')">
+<div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 22a2.5 2.5 0 002.45-2h-4.9A2.5 2.5 0 0012 22zm7-6v-5a7 7 0 00-5-6.7V3a2 2 0 10-4 0v1.3A7 7 0 005 11v5l-2 2v1h18v-1l-2-2z"/></svg></div>
+<div class="ft"><div class="ft-title">Уведомления ЭЗ</div><div class="ft-sub">Завершение зарядки и др.</div></div>
+<div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+</div>
+<div class="feature-card" onclick="go('charges')">
+<div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13.63.51L4.24 13.11c-.6.85 0 2.06 1.03 2.06h4.66l-1.63 8.12c-.24 1.33 1.45 2.12 2.3 1.03l9.39-12.6c.6-.85 0-2.06-1.03-2.06h-4.66l1.63-8.12c.24-1.33-1.45-2.12-2.3-1.03z"/></svg></div>
+<div class="ft"><div class="ft-title">История зарядок</div><div class="ft-sub" id="f-charges-sub">Сеансы и статистика</div></div>
+<div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+</div>
+<div class="feature-card" onclick="go('trips')">
+<div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3.5 18.5l5.57-5.57 3.54 3.53L20.5 8.07V16h-2V10.5L9.6 17.43l-3.54-3.53L4 16.09l-.5 2.41zM2 20h20v2H2v-2z"/></svg></div>
+<div class="ft"><div class="ft-title">Поездки</div><div class="ft-sub" id="f-trips-sub">Статистика и история</div></div>
+<div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+</div>
+<div style="height:16px"></div>
+</section>
+<!-- ДИСТАНЦИОННЫЕ УСЛУГИ -->
+<section class="screen" id="screen-remote">
+<div style="padding:12px 16px 0;text-align:center">
+<img src="leaf.webp" alt="" style="width:200px;object-fit:contain;max-height:110px">
+<div style="font-size:15px;text-transform:uppercase;color:#13172c;letter-spacing:1px;margin-top:4px">Nissan Leaf</div>
+</div>
+<div class="remote-wrap">
+<div class="remote-status" id="remote-status">Выберите действие</div>
+<div class="setpoint-row">
+<label>Климат, °C</label>
+<input type="range" id="sp-slider" min="16" max="28" step="0.5" value="21" oninput="spChanged(this.value)">
+<span class="val" id="sp-val">21.0</span>
+</div>
+<div class="setpoint-row">
+<label for="hvac-minutes">Длительность</label>
+<select id="hvac-minutes">
+<option value="5">5 минут</option><option value="10">10 минут</option>
+<option value="15" selected>15 минут</option><option value="20">20 минут</option>
+<option value="30">30 минут</option>
+</select>
+<span class="val" id="hvac-left">—</span>
+</div>
+<div class="remote-pad">
+<div class="rbtn a" id="rb-horn">
+<svg viewBox="0 0 24 24" fill="#333"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0014 7.97v8.05A4.47 4.47 0 0016.5 12zM14 3.23v2.06a7 7 0 010 13.42v2.06a9 9 0 000-17.54z"/></svg>
+<span>Сигнал и фары</span>
+</div>
+<div class="rbtn b" id="rb-lock">
+<svg viewBox="0 0 26 30" fill="none"><path d="M23.13 11.1h-1.85l-.01-2.7A8.33 8.33 0 104.63 8.33l0 2.77H2.78A2.78 2.78 0 000 13.88v12.95a2.78 2.78 0 002.78 2.77h20.35A2.78 2.78 0 0025.9 26.83V13.88a2.78 2.78 0 00-2.77-2.78zM7.4 8.33a5.55 5.55 0 0111.1 0v2.77H7.4V8.33zm15.73 18.5H2.78V13.88h20.35v12.95z" fill="#333"/></svg>
+<span>Закрыть</span>
+</div>
+<div class="rbtn start" id="rb-climate">
+<div class="ring"></div>
+<svg viewBox="0 0 36 32" fill="none" aria-hidden="true"><circle cx="28" cy="6" r="4.2" fill="currentColor"/><path d="M25 13l-4.5 8H14l-5 7" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 6h13m0 0l-4-3.5M15 6l-4 3.5M2 13l8 6m0 0l-1-5M10 19l-5 .5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+<span id="rb-climate-label">Климат</span>
+</div>
+<div class="rbtn c" id="rb-lights">
+<svg viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="1.5"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-4 10.5c.6.55 1 1.25 1 2v.5h6v-.5c0-.75.4-1.45 1-2A6 6 0 0012 3z"/></svg>
+<span>Фары</span>
+</div>
+<div class="rbtn d" id="rb-unlock">
+<svg viewBox="0 0 26 30" fill="none"><path d="M23.13 29.6H2.78A2.78 2.78 0 010 26.83V13.88A2.78 2.78 0 012.78 11.1h1.85V8.33A8.34 8.34 0 0112.95 0h.02a8.28 8.28 0 015.26 1.91 8.47 8.47 0 012.85 4.72h-2.85a5.62 5.62 0 00-1.99-2.77 5.5 5.5 0 00-3.3-1.09A5.56 5.56 0 007.4 8.33V11.1h10.05v.03h5V11.1h.68A2.78 2.78 0 0125.9 13.88v12.95a2.78 2.78 0 01-2.77 2.77zM2.78 13.88v12.95h20.35V13.88H2.78z" fill="#333"/></svg>
+<span>Открыть</span>
+</div>
+</div>
+<div class="remote-extra">
+<button class="pill-btn" id="remote-charge"><svg viewBox="0 0 25 25" fill="currentColor"><path d="M14.65 2.17a1.13 1.13 0 00-2.25 0l-.01 4.13h2.25l.01-4.13zM5.63 2.17a1.13 1.13 0 00-2.25 0l-.01 4.13h2.26l0-4.13zm11.65 5.64H.75A.75.75 0 000 8.56v.75c0 .42.34.75.75.75H1.5v3a7.5 7.5 0 006.39 7.4v7.62h2.25V20.46a7.5 7.5 0 006.39-7.4v-3h.75a.75.75 0 00.75-.75v-.75a.75.75 0 00-.75-.75zm-3 5.26a5.26 5.26 0 01-10.52 0v-3h10.52v3z"/></svg>Зарядка</button>
+<button class="pill-btn" onclick="cmd('refresh')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>Обновить</button>
+</div>
+<div class="remote-divider"></div>
+<div class="remote-meta">
+<div class="row">
+<div class="cell">
+<svg viewBox="0 0 24 25" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M13.63.51L4.24 13.11c-.6.85 0 2.06 1.03 2.06h4.66l-1.63 8.12c-.24 1.33 1.45 2.12 2.3 1.03l9.39-12.6c.6-.85 0-2.06-1.03-2.06h-4.66l1.63-8.12c.24-1.33-1.45-2.12-2.3-1.03z"/></svg>
+<span><span id="rm-range">—</span> км запас хода</span>
+</div>
+<div class="cell">
+<svg viewBox="0 0 26 30" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M23.13 11.1h-1.85l-.01-2.7A8.33 8.33 0 104.63 8.33l0 2.77H2.78A2.78 2.78 0 000 13.88v12.95a2.78 2.78 0 002.78 2.77h20.35A2.78 2.78 0 0025.9 26.83V13.88a2.78 2.78 0 00-2.77-2.78z"/></svg>
+<span id="rm-lock">—</span>
+</div>
+</div>
+<div class="updated" id="rm-updated">Обновлено: никогда</div>
+</div>
+</div>
+</section>
+<!-- СОСТОЯНИЕ АВТО -->
+<section class="screen" id="screen-status">
+<div class="vs-grid" style="margin-top:12px">
+<div class="vs-cell">
+<div class="vsi"><svg viewBox="0 0 24 25" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13.63.51L4.24 13.11c-.6.85 0 2.06 1.03 2.06h4.66l-1.63 8.12c-.24 1.33 1.45 2.12 2.3 1.03l9.39-12.6c.6-.85 0-2.06-1.03-2.06h-4.66l1.63-8.12c.24-1.33-1.45-2.12-2.3-1.03z"/></svg></div>
+<div><div class="vst">Батарея (прибор / расч.)</div><div class="vsv" id="s-soc">—</div></div>
+</div>
+<div class="vs-cell">
+<div class="vsi"><svg viewBox="0 0 25 20" fill="currentColor"><path d="M5.44 19.77c-.22-.22-5.44-5.54-5.44-10.41a5.68 5.68 0 015.66-5.66 5.66 5.66 0 015.66 5.66c0 4.84-5.22 10.19-5.44 10.41a.29.29 0 01-.22.1.28.28 0 01-.22-.1zM2.8 9.36a2.87 2.87 0 002.86 2.86 2.87 2.87 0 002.87-2.86A2.87 2.87 0 005.66 6.5a2.87 2.87 0 00-2.86 2.86zm18.57.46c-.14-.14-3.32-3.41-3.32-6.37a3.45 3.45 0 013.46-3.46 3.45 3.45 0 013.45 3.46c0 2.99-3.17 6.23-3.31 6.37a.33.33 0 01-.14.05.17.17 0 01-.14-.05zM19.76 3.45a1.76 1.76 0 001.75 1.75 1.76 1.76 0 001.75-1.75 1.76 1.76 0 00-1.75-1.75 1.76 1.76 0 00-1.75 1.75z"/></svg></div>
+<div><div class="vst">Запас хода (прибор / расч.)</div><div class="vsv" id="s-range">—</div></div>
+</div>
+<div class="vs-cell">
+<div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 7h-9M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg></div>
+<div><div class="vst">SOH</div><div class="vsv" id="s-soh">—</div></div>
+</div>
+<div class="vs-cell">
+<div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="7" width="16" height="10" rx="2"/><path d="M22 11v2"/></svg></div>
+<div><div class="vst">GIDS</div><div class="vsv" id="s-gids">—</div></div>
+</div>
+<div class="vs-cell">
+<div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
+<div><div class="vst">Напряжение</div><div class="vsv" id="s-v">—</div></div>
+</div>
+<div class="vs-cell">
+<div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2v6M12 16v6M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M2 12h6M16 12h6M4.93 19.07l4.24-4.24M14.83 9.17l4.24-4.24"/></svg></div>
+<div><div class="vst">Ток</div><div class="vsv" id="s-i">—</div></div>
+</div>
+<div class="vs-cell">
+<div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
+<div><div class="vst">Мощность</div><div class="vsv" id="s-power">—</div></div>
+</div>
+<div class="vs-cell">
+<div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 14.76V3.5a2.5 2.5 0 00-5 0v11.26a4.5 4.5 0 105 0z"/></svg></div>
+<div><div class="vst">Батарея, °C</div><div class="vsv" id="s-btemp">—</div></div>
+</div>
+<div class="vs-cell">
+<div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></div>
+<div><div class="vst">Разброс ячеек</div><div class="vsv" id="s-cdelta" title="Нужен активный опрос BMS; порт A работает только на приём">—</div></div>
+</div>
+<div class="vs-cell">
+<div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 14.76V3.5a2.5 2.5 0 00-5 0v11.26a4.5 4.5 0 105 0z"/></svg></div>
+<div><div class="vst">Воздух</div><div class="vsv" id="s-amb">—</div></div>
+</div>
+<div class="vs-cell">
+<div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 14.76V3.5a2.5 2.5 0 00-5 0v11.26a4.5 4.5 0 105 0z"/></svg></div>
+<div><div class="vst">Салон</div><div class="vsv" id="s-cabin">—</div></div>
+</div>
+<div class="vs-cell">
+<div class="vsi"><svg viewBox="0 0 26 30" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M23.13 11.1h-1.85l-.01-2.7A8.33 8.33 0 104.63 8.33l0 2.77H2.78A2.78 2.78 0 000 13.88v12.95a2.78 2.78 0 002.78 2.77h20.35A2.78 2.78 0 0025.9 26.83V13.88a2.78 2.78 0 00-2.77-2.78z"/></svg></div>
+<div><div class="vst">Двери</div><div class="vsv" id="s-lock">—</div></div>
+</div>
+<div class="vs-cell">
+<div class="vsi"><svg viewBox="0 0 25 25" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M14.65 2.17a1.13 1.13 0 00-2.25 0l-.01 4.13h2.25l.01-4.13zM5.63 2.17a1.13 1.13 0 00-2.25 0l-.01 4.13h2.26l0-4.13zm11.65 5.64H.75A.75.75 0 000 8.56v.75c0 .42.34.75.75.75H1.5v3a7.5 7.5 0 006.39 7.4v7.62h2.25V20.46a7.5 7.5 0 006.39-7.4v-3h.75a.75.75 0 00.75-.75v-.75a.75.75 0 00-.75-.75zm-3 5.26a5.26 5.26 0 01-10.52 0v-3h10.52v3z"/></svg></div>
+<div><div class="vst">Зарядка</div><div class="vsv" id="s-charge">—</div></div>
+</div>
+<div class="vs-cell">
+<div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg></div>
+<div><div class="vst">Климат</div><div class="vsv" id="s-hvac">—</div></div>
+</div>
+<div class="vs-cell">
+<div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
+<div><div class="vst">Машина</div><div class="vsv" id="s-on">—</div></div>
+</div>
+<div class="vs-cell">
+<div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M7 12h10M12 7v10"/></svg></div>
+<div><div class="vst">Общий пробег</div><div class="vsv" id="s-odo">—</div></div>
+</div>
+<div class="vs-cell">
+<div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16v16H4zM8 8h8M8 12h8M8 16h5"/></svg></div>
+<div><div class="vst">VIN</div><div class="vsv" id="s-vin" style="font-size:13px;overflow-wrap:anywhere">—</div></div>
+</div>
+</div>
+<div style="height:16px"></div>
+</section>
+<!-- ЗАРЯДКИ -->
+<section class="screen" id="screen-charges">
+<div class="trip-summary">
+<div class="cell"><div class="num" id="cs-total">0</div><div class="lbl">Сеансов</div></div>
+<div class="cell"><div class="num" id="cs-kwh">0</div><div class="lbl">кВт·ч</div></div>
+<div class="cell"><div class="num" id="cs-hours">0</div><div class="lbl">часов</div></div>
+</div>
+<div class="trip-active-banner" id="charge-active-banner"><i></i><span>Идёт зарядка…</span></div>
+<div class="trip-list" id="charge-list"></div>
+<div class="trip-empty" id="charge-empty">Сеансы зарядки появятся автоматически при подключении зарядного устройства</div>
+<button class="trip-clear" id="charge-clear" style="display:none" onclick="clearCharges()">Очистить историю</button>
+<div style="height:16px"></div>
+</section>
+<!-- ПОЕЗДКИ -->
+<section class="screen" id="screen-trips">
+<div class="trip-summary">
+<div class="cell"><div class="num" id="ts-total">0</div><div class="lbl">Поездок</div></div>
+<div class="cell"><div class="num" id="ts-km">0</div><div class="lbl">км всего</div></div>
+<div class="cell"><div class="num" id="ts-kwh">0</div><div class="lbl">кВт·ч</div></div>
+</div>
+<div class="trip-active-banner" id="trip-active-banner"><i></i><span>Идёт поездка…</span></div>
+<div class="trip-list" id="trip-list"></div>
+<div class="trip-empty" id="trip-empty">Поездки появятся автоматически при движении с включённым зажиганием</div>
+<button class="trip-clear" id="trip-clear" style="display:none" onclick="clearTrips()">Очистить историю</button>
+<div style="height:16px"></div>
+</section>
+<!-- ЕЩЁ -->
+<section class="screen" id="screen-more">
+<div class="section-title">Приложение</div>
+<div class="more-item" onclick="openSettings()">
+<div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-1.42 3.42 2 2 0 01-1.41-.59l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-3.42-1.42 2 2 0 01.59-1.41l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 011.42-3.42 2 2 0 011.41.59l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 013.42 1.42 2 2 0 01-.59 1.41l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></div>
+<span id="more-settings-label">Настройки подключения</span>
+<div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+</div>
+<div class="more-item" id="more-ota" style="display:none" onclick="location.href='/ota'">
+<div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg></div>
+Обновление прошивки
+<div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+</div>
+<div class="more-item" id="more-developer" style="display:none" onclick="openDeveloper()">
+<div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 9l-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg></div>
+Для разработчика
+<div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+</div>
+<div class="more-item" onclick="openAbout()">
+<div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></div>
+О приложении
+<div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+</div>
+<div class="section-title">Режим</div>
+<div class="more-item" style="border-bottom:none">
+<div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 12.55a11 11 0 0114.08 0M1.42 9a16 16 0 0121.16 0M8.53 16.11a6 6 0 016.95 0M12 20h.01"/></svg></div>
+<span id="more-mode">—</span>
+</div>
+<div style="height:16px"></div>
+</section>
+</div>
+<div class="toast" id="toast"></div>
+<div class="tabbar">
+<div class="tab active" data-screen="garage">
+<svg viewBox="0 0 19.4 17.2" fill="none"><path d="M8.01 16.71H3.6V9.67l-1.3 1.22L.7 9.14l1.84-1.71 6.74-6.33a.71.71 0 01.09-.06l.28-.27.07-.05 9 8.44-1.59 1.75-1.62-.82v7.08h-4.37v-4.03a1.69 1.69 0 00-3.38 0v4.03z" stroke="currentColor" stroke-width="1"/></svg>
+<span>Гараж</span>
+</div>
+<div class="tab" data-screen="remote">
+<svg viewBox="0 0 24 25" fill="none"><path d="M13.63.51L4.24 13.11c-.6.85 0 2.06 1.03 2.06h4.66l-1.63 8.12c-.24 1.33 1.45 2.12 2.3 1.03l9.39-12.6c.6-.85 0-2.06-1.03-2.06h-4.66l1.63-8.12c.24-1.33-1.45-2.12-2.3-1.03z" fill="currentColor"/></svg>
+<span>Дистанция</span>
+</div>
+<div class="tab" data-screen="status">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+<span>Состояние</span>
+</div>
+<div class="tab" data-screen="trips">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 19V5m0 14l4-4 4 3 4-6 4 4"/></svg>
+<span>Поездки</span>
+</div>
+<div class="tab" data-screen="more">
+<svg viewBox="0 0 25 5" fill="currentColor"><circle cx="2.5" cy="2.5" r="2.5"/><circle cx="12.5" cy="2.5" r="2.5"/><circle cx="22.5" cy="2.5" r="2.5"/></svg>
+<span>Ещё</span>
+</div>
+</div>
+<!-- Настройки -->
+<div class="modal" id="settings-modal">
+<div class="sheet">
+<h2>Настройки</h2>
+<div class="settings-groups">
+<details class="settings-group" data-pwa-section="mqtt" open>
+<summary>MQTT-брокер</summary>
+<div class="settings-group-body">
+<label>Сервер</label>
+<input id="cfg-host" placeholder="m5.wqtt.ru">
+<label>Порт WebSocket TLS</label>
+<input id="cfg-port" type="number" value="15871">
+<label>Пользователь</label>
+<input id="cfg-user" placeholder="u_XXXXXX" autocapitalize="off">
+<label>Пароль</label>
+<input id="cfg-pass" type="password">
+<label>Vehicle ID</label>
+<input id="cfg-vid" placeholder="leaf">
+</div>
+</details>
+<details class="settings-group" data-pwa-section="wifi">
+<summary>Wi-Fi</summary>
+<div class="settings-group-body"><div class="settings-availability"><i></i><span>Настраивается при локальном подключении к плате</span></div></div>
+</details>
+<details class="settings-group" data-pwa-section="security">
+<summary>Безопасность</summary>
+<div class="settings-group-body"><div class="settings-availability"><i></i><span>Настраивается при локальном подключении к плате</span></div></div>
+</details>
+<details class="settings-group" data-pwa-section="modem">
+<summary>Мобильный модем</summary>
+<div class="settings-group-body"><div class="settings-availability"><i></i><span>Настраивается при локальном подключении к плате</span></div></div>
+</details>
+<details class="settings-group" data-pwa-section="power">
+<summary>Экономия энергии</summary>
+<div class="settings-group-body"><div class="settings-availability"><i></i><span>Настраивается при локальном подключении к плате</span></div></div>
+</details>
+</div>
+<div class="btns">
+<button class="cancel" onclick="closeSettings()">Отмена</button>
+<button class="save" onclick="saveSettings()">Сохранить</button>
+</div>
+</div>
+</div>
+<!-- О приложении -->
+<div class="modal" id="about-modal" role="dialog" aria-modal="true" aria-labelledby="about-title" onclick="closeAbout(event)">
+<div class="sheet about-sheet">
+<div class="about-head">
+<div>
+<h2 id="about-title">О Leaf Control</h2>
+<p>Телематическая плата для Nissan Leaf ZE1: показывает состояние автомобиля и позволяет управлять основными функциями со смартфона.</p>
+</div>
+<button class="about-close" type="button" aria-label="Закрыть" onclick="closeAbout()">×</button>
+</div>
+<section class="about-section">
+<h3>Что умеет сейчас</h3>
+<ul class="about-list">
+<li><strong>Дистанционное управление.</strong> Включение и выключение климата, запуск и остановка зарядки, открытие и закрытие дверей, включение фар и звукового сигнала.</li>
+<li><strong>Климат с таймером.</strong> Можно выбрать температуру и время работы: 5, 10, 15, 20 или 30 минут. По окончании таймера климат выключится автоматически.</li>
+<li><strong>Управление звонком.</strong> В версии с модемом SIM800 звонок с разрешённого номера включает или выключает климат. Можно сохранить до пяти номеров.</li>
+<li><strong>Состояние автомобиля.</strong> В приложении видны заряд и состояние батареи, запас хода, напряжение, ток и мощность, температуры, пробег, VIN, состояние климата, зарядки и дверей.</li>
+<li><strong>Местоположение.</strong> При установленном GPS-модуле координаты автомобиля можно открыть в Яндекс Картах или Google Maps.</li>
+<li><strong>Доступ со смартфона.</strong> Плата работает локально по Wi-Fi и через интернет с помощью MQTT. Приложение можно установить на главный экран телефона.</li>
+<li><strong>История.</strong> Приложение автоматически сохраняет поездки и сеансы зарядки и показывает основную статистику.</li>
+<li><strong>Обновление.</strong> Прошивку платы можно обновлять через локальную веб-страницу без разборки устройства.</li>
+</ul>
+</section>
+<section class="about-section">
+<h3>Как это работает</h3>
+<ul class="about-list">
+<li>Для защиты от случайного нажатия команды автомобилю выполняются после удержания кнопки.</li>
+<li>Плата получает данные непосредственно от автомобиля и передаёт их в приложение через выбранное подключение.</li>
+</ul>
+</section>
+<section class="about-section planned">
+<h3>Планируется</h3>
+<ul class="about-list">
+<li>Проверка и доработка совместимости функций с разными комплектациями и годами выпуска Leaf ZE1.</li>
+<li>Расширенная диагностика тяговой батареи и более подробные данные о её состоянии.</li>
+<li>Уведомления о завершении зарядки, низком заряде и важных событиях автомобиля.</li>
+<li>Улучшенная история поездок и зарядок, более подробная статистика и удобная работа с сохранёнными данными.</li>
+</ul>
+</section>
+<p class="about-note">Набор доступных функций зависит от комплектации автомобиля, установленного модема и способа подключения платы.</p>
+</div>
+</div>
+<!-- Для разработчика -->
+<div class="modal" id="developer-modal" role="dialog" aria-modal="true" aria-labelledby="developer-title" onclick="closeDeveloper(event)">
+<div class="sheet">
+<div class="about-head">
+<div><h2 id="developer-title">Для разработчика</h2><p>Запись CAN-журнала автомобиля в диагностическое хранилище платы.</p></div>
+<button class="about-close" type="button" aria-label="Закрыть" onclick="closeDeveloper()">×</button>
+</div>
+<div id="developer-login">
+<label for="developer-password">Пароль</label>
+<input id="developer-password" type="password" inputmode="numeric" autocomplete="off" maxlength="12" onkeydown="if(event.key==='Enter')developerLogin()">
+<div class="dev-error" id="developer-login-error"></div>
+<div class="btns"><button class="save" onclick="developerLogin()">Войти</button></div>
+</div>
+<div id="developer-panel" style="display:none">
+<div class="dev-status"><strong id="canlog-state">Запись выключена</strong><span id="canlog-details">Кадров: 0</span></div>
+<p class="hint">Нажмите «Начать запись», выполните действия штатным ключом, затем остановите запись и скачайте файл. Новая запись удаляет предыдущую.</p>
+<div class="dev-actions">
+<button class="primary" id="canlog-start" onclick="canLogAction('start')">Начать запись</button>
+<button id="canlog-stop" onclick="canLogAction('stop')">Остановить</button>
+<button class="danger" id="canlog-clear" onclick="canLogAction('clear')">Очистить</button>
+<button onclick="refreshCanLogStatus()">Обновить</button>
+</div>
+<a class="dev-download" id="canlog-download" href="/api/developer/canlog/download" download>Скачать журнал</a>
+<div class="dev-error" id="canlog-error"></div>
+</div>
+</div>
+</div>
+</div>
 <script>
 'use strict';
 // ---------- state ----------
 const S = { soc:-1, cabin:-99, charging:false, charger:'', hvac:false, lock:-1,
-  setpoint:-1, fan:-1, heat:false, cool:false, vent:-1,
-  soh:-1, gids:-1, v:-1, i:0, power:0, packValid:false, amb:-99, on:-1, seq:false, locking:false,
-  isoc:-1, irange:-1, btemp:-99, cdelta:-1,
-  odo:0, vin:'', hvacTimer:0, lights:-1, gps:null };
+setpoint:-1, fan:-1, heat:false, cool:false, vent:-1,
+soh:-1, gids:-1, v:-1, i:0, power:0, packValid:false, amb:-99, on:-1, seq:false, locking:false,
+isoc:-1, irange:-1, btemp:-99, cdelta:-1,
+odo:0, vin:'', hvacTimer:0, lights:-1, gps:null };
 let mode = 'local'; // 'local' | 'mqtt'
 let onBoard = false; // true only when served from the board itself (local /api/status works)
 let lastUpdate = 0;
@@ -620,82 +647,79 @@ let findTimer = null;
 const LOCK_CLOSED_SVG = '<svg viewBox="0 0 26 30" fill="none"><path d="M23.13 11.1h-1.85l-.01-2.7A8.33 8.33 0 104.63 8.33l0 2.77H2.78A2.78 2.78 0 000 13.88v12.95a2.78 2.78 0 002.78 2.77h20.35A2.78 2.78 0 0025.9 26.83V13.88a2.78 2.78 0 00-2.77-2.78zM7.4 8.33a5.55 5.55 0 0111.1 0v2.77H7.4V8.33zm15.73 18.5H2.78V13.88h20.35v12.95z" fill="currentColor"/></svg>';
 const LOCK_OPEN_SVG = '<svg viewBox="0 0 26 30" fill="none"><path d="M23.13 29.6H2.78A2.78 2.78 0 010 26.83V13.88A2.78 2.78 0 012.78 11.1h1.85V8.33A8.34 8.34 0 0112.95 0h.02a8.28 8.28 0 015.26 1.91 8.47 8.47 0 012.85 4.72h-2.85a5.62 5.62 0 00-1.99-2.77 5.5 5.5 0 00-3.3-1.09A5.56 5.56 0 007.4 8.33V11.1h10.05v.03h5V11.1h.68A2.78 2.78 0 0125.9 13.88v12.95a2.78 2.78 0 01-2.77 2.77zM2.78 13.88v12.95h20.35V13.88H2.78z" fill="currentColor"/></svg>';
 const DOOR_SVG = '<svg viewBox="0 0 26 30" fill="none"><path d="M23.13 11.1h-1.85l-.01-2.7A8.33 8.33 0 104.63 8.33l0 2.77H2.78A2.78 2.78 0 000 13.88v12.95a2.78 2.78 0 002.78 2.77h20.35A2.78 2.78 0 0025.9 26.83V13.88a2.78 2.78 0 00-2.77-2.78zM7.4 8.33a5.55 5.55 0 0111.1 0v2.77H7.4V8.33zm15.73 18.5H2.78V13.88h20.35v12.95z" fill="currentColor"/></svg>';
-
 // ---------- helpers ----------
 const $ = id => document.getElementById(id);
 function toast(msg){ const el=$('toast'); el.textContent=msg; el.classList.add('show');
-  clearTimeout(el._t); el._t=setTimeout(()=>el.classList.remove('show'),2200); }
-
+clearTimeout(el._t); el._t=setTimeout(()=>el.classList.remove('show'),2200); }
 // Vehicle commands require a deliberate 1.5 s hold. The progress ring/fill
 // gives immediate feedback; releasing, scrolling or moving away cancels it.
 const HOLD_MS=1500, HOLD_MOVE_PX=12;
 function holdButton(el, run, visual){
-  if(!el) return;
-  const host=visual||el;
-  const round=host.classList.contains('circle')||host.classList.contains('rbtn');
-  const progress=document.createElement('span');
-  progress.className='hold-progress '+(round?'hold-ring':'fill');
-  host.classList.add('hold-visual');
-  el.classList.add('hold-target');
-  if(!/^(BUTTON|A)$/.test(el.tagName)){ el.tabIndex=0; el.setAttribute('role','button'); }
-  host.prepend(progress);
-  let started=0, timer=0, raf=0, pointerId=null, x=0, y=0;
-  const paint=()=>{
-    progress.style.setProperty('--hold',Math.min(100,(performance.now()-started)/HOLD_MS*100).toFixed(1));
-    raf=requestAnimationFrame(paint);
-  };
-  const reset=()=>{
-    clearTimeout(timer); cancelAnimationFrame(raf);
-    timer=raf=0; started=0; pointerId=null;
-    el.classList.remove('holding');
-    progress.style.setProperty('--hold',0);
-  };
-  const begin=(id,px,py)=>{
-    if(started||el.disabled||el.getAttribute('aria-disabled')==='true') return;
-    started=performance.now(); pointerId=id; x=px; y=py;
-    el.classList.add('holding'); paint();
-    timer=setTimeout(()=>{
-      reset();
-      if(navigator.vibrate) try{ navigator.vibrate(30); }catch(e){}
-      run();
-    },HOLD_MS);
-  };
-  const end=(quiet=false)=>{
-    if(!started) return;
-    reset();
-    if(!quiet) toast('Удерживайте кнопку 1,5 секунды');
-  };
-  el.addEventListener('pointerdown',e=>{
-    if(e.button!==0) return;
-    begin(e.pointerId,e.clientX,e.clientY);
-    try{ el.setPointerCapture(e.pointerId); }catch(err){}
-  });
-  el.addEventListener('pointermove',e=>{
-    if(started&&e.pointerId===pointerId&&Math.hypot(e.clientX-x,e.clientY-y)>HOLD_MOVE_PX) end(true);
-  });
-  el.addEventListener('pointerup',()=>end(false));
-  el.addEventListener('pointercancel',()=>end(true));
-  el.addEventListener('lostpointercapture',()=>end(true));
-  el.addEventListener('contextmenu',e=>e.preventDefault());
-  el.addEventListener('keydown',e=>{
-    if((e.key==='Enter'||e.key===' ')&&!e.repeat){ e.preventDefault(); begin('key',0,0); }
-  });
-  el.addEventListener('keyup',e=>{ if(e.key==='Enter'||e.key===' ') end(false); });
-  el.addEventListener('blur',()=>end(true));
+if(!el) return;
+const host=visual||el;
+const round=host.classList.contains('circle')||host.classList.contains('rbtn');
+const progress=document.createElement('span');
+progress.className='hold-progress '+(round?'hold-ring':'fill');
+host.classList.add('hold-visual');
+el.classList.add('hold-target');
+if(!/^(BUTTON|A)$/.test(el.tagName)){ el.tabIndex=0; el.setAttribute('role','button'); }
+host.prepend(progress);
+let started=0, timer=0, raf=0, pointerId=null, x=0, y=0;
+const paint=()=>{
+progress.style.setProperty('--hold',Math.min(100,(performance.now()-started)/HOLD_MS*100).toFixed(1));
+raf=requestAnimationFrame(paint);
+};
+const reset=()=>{
+clearTimeout(timer); cancelAnimationFrame(raf);
+timer=raf=0; started=0; pointerId=null;
+el.classList.remove('holding');
+progress.style.setProperty('--hold',0);
+};
+const begin=(id,px,py)=>{
+if(started||el.disabled||el.getAttribute('aria-disabled')==='true') return;
+started=performance.now(); pointerId=id; x=px; y=py;
+el.classList.add('holding'); paint();
+timer=setTimeout(()=>{
+reset();
+if(navigator.vibrate) try{ navigator.vibrate(30); }catch(e){}
+run();
+},HOLD_MS);
+};
+const end=(quiet=false)=>{
+if(!started) return;
+reset();
+if(!quiet) toast('Удерживайте кнопку 1,5 секунды');
+};
+el.addEventListener('pointerdown',e=>{
+if(e.button!==0) return;
+begin(e.pointerId,e.clientX,e.clientY);
+try{ el.setPointerCapture(e.pointerId); }catch(err){}
+});
+el.addEventListener('pointermove',e=>{
+if(started&&e.pointerId===pointerId&&Math.hypot(e.clientX-x,e.clientY-y)>HOLD_MOVE_PX) end(true);
+});
+el.addEventListener('pointerup',()=>end(false));
+el.addEventListener('pointercancel',()=>end(true));
+el.addEventListener('lostpointercapture',()=>end(true));
+el.addEventListener('contextmenu',e=>e.preventDefault());
+el.addEventListener('keydown',e=>{
+if((e.key==='Enter'||e.key===' ')&&!e.repeat){ e.preventDefault(); begin('key',0,0); }
+});
+el.addEventListener('keyup',e=>{ if(e.key==='Enter'||e.key===' ') end(false); });
+el.addEventListener('blur',()=>end(true));
 }
 function go(name){
-  document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('active',s.id==='screen-'+name));
-  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.screen===name));
-  $('screens').scrollTop=0;
-  if(name==='trips') refreshTripsScreen();
-  if(name==='charges') refreshChargesScreen();
+document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('active',s.id==='screen-'+name));
+document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.screen===name));
+$('screens').scrollTop=0;
+if(name==='trips') refreshTripsScreen();
+if(name==='charges') refreshChargesScreen();
 }
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>go(t.dataset.screen)));
-
 function rangeKm(){
-  if(S.gids>=0) return Math.round(S.gids*0.6);
-  if(S.soc>=0) return Math.round(S.soc/100*300);
-  return null;
+if(S.gids>=0) return Math.round(S.gids*0.6);
+if(S.soc>=0) return Math.round(S.soc/100*300);
+return null;
 }
 // Dashboard (instrument) values from 0x59E / 0x5A9; fall back to the estimates
 function socInstr(){ return (S.isoc!=null && S.isoc>=0) ? S.isoc : null; }
@@ -703,303 +727,292 @@ function rangeInstr(){ return (S.irange!=null && S.irange>0) ? S.irange : null; 
 function fmtPct(v){ return (v!=null && v>=0) ? v.toFixed(0)+' %' : '—'; }
 function fmtKm(v){ return (v!=null && v>0) ? v+' км' : '—'; }
 function chargerRu(){
-  return {charging:'Заряжается',done:'Завершено',stopped:'Прервано',wait:'Ожидание','':'Не подключено'}[S.charger]||'—';
+return {charging:'Заряжается',done:'Завершено',stopped:'Прервано',wait:'Ожидание','':'Не подключено'}[S.charger]||'—';
 }
-
 // ---------- render ----------
 let renderQueued = false;
 function render(){
-  // Debounce: MQTT bursts deliver a dozen topics per second
-  if(renderQueued) return;
-  renderQueued = true;
-  requestAnimationFrame(()=>{ renderQueued = false; renderNow(); });
+// Debounce: MQTT bursts deliver a dozen topics per second
+if(renderQueued) return;
+renderQueued = true;
+requestAnimationFrame(()=>{ renderQueued = false; renderNow(); });
 }
 function renderNow(){
-  const soc = S.soc>=0 ? S.soc : null;
-  const km = rangeKm();
-  const iSoc = socInstr();
-  const iRange = rangeInstr();
-  // Garage mirrors the dashboard (as requested), estimates as fallback
-  const socShown = iSoc!=null ? iSoc : soc;
-  const kmShown = iRange!=null ? iRange : km;
-  $('g-soc').textContent = socShown!=null ? socShown.toFixed(0) : '—';
-  $('g-range').textContent = kmShown!=null ? kmShown : '—';
-  $('rm-range').textContent = kmShown!=null ? kmShown : '—';
-  const bar = $('g-bar');
-  const pct = socShown!=null ? socShown : 0;
-  bar.style.width = pct+'%';
-  bar.className = 'fill' + (pct>20?'':' crit') + (pct>20&&pct<=40?' low':'');
-  $('g-charge-state').textContent = S.charging ? 'Заряжается' : (S.charger?chargerRu():'—');
-  const cb = $('g-charge-btn');
-  cb.disabled = false;
-  if(S.charging){ cb.textContent = 'Идёт зарядка'; cb.classList.add('charging'); }
-  else { cb.classList.remove('charging');
-    cb.textContent = S.charger==='done' ? 'Зарядка окончена' : 'Начать зарядку'; }
-
-  // action icon states
-  $('act-lights-ic').classList.toggle('hot', S.lights===1);
-  $('act-climate-ic').classList.toggle('on', S.hvac);
-  const dIc = $('act-doors-ic');
-  if(dIc.dataset.k !== String(S.lock)){
-    dIc.dataset.k = String(S.lock);
-    const holdProgress=dIc.querySelector('.hold-progress');
-    dIc.innerHTML = S.lock===1 ? LOCK_CLOSED_SVG : (S.lock===0 ? LOCK_OPEN_SVG : DOOR_SVG);
-    if(holdProgress) dIc.prepend(holdProgress);
-    dIc.classList.toggle('unlocked', S.lock===0);
-  }
-
-  // setpoint slider: follow the car until the user touches it
-  if(!spTouched && S.setpoint>=16 && S.setpoint<=28){
-    $('sp-slider').value = S.setpoint;
-    $('sp-val').textContent = parseFloat(S.setpoint);
-  }
-
-  $('rm-lock').textContent = S.lock===1?'Заблокировано':(S.lock===0?'Открыто':'—');
-  $('rm-updated').textContent = lastUpdate ? 'Обновлено: '+new Date(lastUpdate).toLocaleTimeString('ru-RU') : 'Обновлено: никогда';
-  $('rb-climate').classList.toggle('on', S.hvac);
-  $('rb-climate-label').textContent = S.hvac ? 'Выкл климат' : 'Климат';
-  $('hvac-left').textContent = S.hvacTimer>0 ? S.hvacTimer+' мин' : '—';
-
-  $('s-soc').textContent = (iSoc!=null && soc!=null) ? fmtPct(iSoc)+' / '+fmtPct(soc) : fmtPct(socShown);
-  $('s-range').textContent = (iRange!=null && km!=null) ? fmtKm(iRange)+' / '+fmtKm(km) : fmtKm(kmShown);
-  $('s-soh').textContent = S.soh>=0 ? S.soh+' %' : '—';
-  $('s-gids').textContent = S.gids>=0 ? S.gids : '—';
-  $('s-v').textContent = S.packValid ? S.v.toFixed(1)+' V' : '—';
-  $('s-i').textContent = S.packValid ? S.i.toFixed(1)+' A' : '—';
-  $('s-power').textContent = S.packValid ? S.power.toFixed(1)+' кВт' : '—';
-  $('s-btemp').textContent = (S.btemp>-30&&S.btemp<70) ? S.btemp.toFixed(1)+' °C' : '—';
-  $('s-cdelta').textContent = S.cdelta>=0 ? S.cdelta+' мВ' : '—';
-  $('s-amb').textContent = (S.amb>-40&&S.amb<60) ? S.amb.toFixed(1)+' °C' : '—';
-  $('s-cabin').textContent = (S.cabin>-30&&S.cabin<80) ? S.cabin.toFixed(1)+' °C' : '—';
-  $('s-lock').textContent = S.lock===1?'Заблокировано':(S.lock===0?'Открыто':'—');
-  $('s-charge').textContent = S.charging?'Подключено':(S.charger?chargerRu():'—');
-  $('s-hvac').textContent = S.hvac ? (S.heat?'Обогрев':(S.cool?'Охлаждение':'Вкл')) : 'Выкл';
-  $('s-on').textContent = S.on===1?'Вкл':(S.on===0?'Выкл':'—');
-  $('s-odo').textContent = S.odo>0 ? S.odo.toLocaleString('ru-RU')+' км' : '—';
-  $('s-vin').textContent = S.vin || '—';
-  $('f-status-sub').textContent = soc!=null ? 'Батарея '+soc.toFixed(0)+'%' : 'Батарея, климат, двери';
-
-  $('seq-banner').classList.toggle('show', !!S.seq);
-  updateGpsRow();
+const soc = S.soc>=0 ? S.soc : null;
+const km = rangeKm();
+const iSoc = socInstr();
+const iRange = rangeInstr();
+// Garage mirrors the dashboard (as requested), estimates as fallback
+const socShown = iSoc!=null ? iSoc : soc;
+const kmShown = iRange!=null ? iRange : km;
+$('g-soc').textContent = socShown!=null ? socShown.toFixed(0) : '—';
+$('g-range').textContent = kmShown!=null ? kmShown : '—';
+$('rm-range').textContent = kmShown!=null ? kmShown : '—';
+const bar = $('g-bar');
+const pct = socShown!=null ? socShown : 0;
+bar.style.width = pct+'%';
+bar.className = 'fill' + (pct>20?'':' crit') + (pct>20&&pct<=40?' low':'');
+$('g-charge-state').textContent = S.charging ? 'Заряжается' : (S.charger?chargerRu():'—');
+const cb = $('g-charge-btn');
+cb.disabled = false;
+if(S.charging){ cb.textContent = 'Идёт зарядка'; cb.classList.add('charging'); }
+else { cb.classList.remove('charging');
+cb.textContent = S.charger==='done' ? 'Зарядка окончена' : 'Начать зарядку'; }
+// action icon states
+$('act-lights-ic').classList.toggle('hot', S.lights===1);
+$('act-climate-ic').classList.toggle('on', S.hvac);
+const dIc = $('act-doors-ic');
+if(dIc.dataset.k !== String(S.lock)){
+dIc.dataset.k = String(S.lock);
+const holdProgress=dIc.querySelector('.hold-progress');
+dIc.innerHTML = S.lock===1 ? LOCK_CLOSED_SVG : (S.lock===0 ? LOCK_OPEN_SVG : DOOR_SVG);
+if(holdProgress) dIc.prepend(holdProgress);
+dIc.classList.toggle('unlocked', S.lock===0);
 }
-
+// setpoint slider: follow the car until the user touches it
+if(!spTouched && S.setpoint>=16 && S.setpoint<=28){
+$('sp-slider').value = S.setpoint;
+$('sp-val').textContent = parseFloat(S.setpoint);
+}
+$('rm-lock').textContent = S.lock===1?'Заблокировано':(S.lock===0?'Открыто':'—');
+$('rm-updated').textContent = lastUpdate ? 'Обновлено: '+new Date(lastUpdate).toLocaleTimeString('ru-RU') : 'Обновлено: никогда';
+$('rb-climate').classList.toggle('on', S.hvac);
+$('rb-climate-label').textContent = S.hvac ? 'Выкл климат' : 'Климат';
+$('hvac-left').textContent = S.hvacTimer>0 ? S.hvacTimer+' мин' : '—';
+$('s-soc').textContent = (iSoc!=null && soc!=null) ? fmtPct(iSoc)+' / '+fmtPct(soc) : fmtPct(socShown);
+$('s-range').textContent = (iRange!=null && km!=null) ? fmtKm(iRange)+' / '+fmtKm(km) : fmtKm(kmShown);
+$('s-soh').textContent = S.soh>=0 ? S.soh+' %' : '—';
+$('s-gids').textContent = S.gids>=0 ? S.gids : '—';
+$('s-v').textContent = S.packValid ? S.v.toFixed(1)+' V' : '—';
+$('s-i').textContent = S.packValid ? S.i.toFixed(1)+' A' : '—';
+$('s-power').textContent = S.packValid ? S.power.toFixed(1)+' кВт' : '—';
+$('s-btemp').textContent = (S.btemp>-30&&S.btemp<70) ? S.btemp.toFixed(1)+' °C' : '—';
+$('s-cdelta').textContent = S.cdelta>=0 ? S.cdelta+' мВ' : '—';
+$('s-amb').textContent = (S.amb>-40&&S.amb<60) ? S.amb.toFixed(1)+' °C' : '—';
+$('s-cabin').textContent = (S.cabin>-30&&S.cabin<80) ? S.cabin.toFixed(1)+' °C' : '—';
+$('s-lock').textContent = S.lock===1?'Заблокировано':(S.lock===0?'Открыто':'—');
+$('s-charge').textContent = S.charging?'Подключено':(S.charger?chargerRu():'—');
+$('s-hvac').textContent = S.hvac ? (S.heat?'Обогрев':(S.cool?'Охлаждение':'Вкл')) : 'Выкл';
+$('s-on').textContent = S.on===1?'Вкл':(S.on===0?'Выкл':'—');
+$('s-odo').textContent = S.odo>0 ? S.odo.toLocaleString('ru-RU')+' км' : '—';
+$('s-vin').textContent = S.vin || '—';
+$('f-status-sub').textContent = soc!=null ? 'Батарея '+soc.toFixed(0)+'%' : 'Батарея, климат, двери';
+$('seq-banner').classList.toggle('show', !!S.seq);
+updateGpsRow();
+}
 function gpsAgeText(){
-  if(!S.gps) return '';
-  const m = Math.max(0, Math.round((Date.now()-S.gps.at)/60000));
-  if(m < 1) return 'только что';
-  if(m < 60) return m+' мин назад';
-  const h = Math.round(m/60);
-  return h+' ч назад';
+if(!S.gps) return '';
+const m = Math.max(0, Math.round((Date.now()-S.gps.at)/60000));
+if(m < 1) return 'только что';
+if(m < 60) return m+' мин назад';
+const h = Math.round(m/60);
+return h+' ч назад';
 }
 function updateGpsRow(){
-  const row=$('gps-row'); if(!row) return;
-  if(!S.gps){ row.style.display='none'; return; }
-  const {lat,lon}=S.gps;
-  $('gps-ya').href='https://yandex.ru/maps/?pt='+lon.toFixed(6)+','+lat.toFixed(6)+'&z=17&l=map';
-  $('gps-go').href='https://www.google.com/maps/search/?api=1&query='+lat.toFixed(6)+','+lon.toFixed(6);
-  $('gps-age').textContent=gpsAgeText();
-  row.style.display='flex';
-  updateFindCard();
+const row=$('gps-row'); if(!row) return;
+if(!S.gps){ row.style.display='none'; return; }
+const {lat,lon}=S.gps;
+$('gps-ya').href='https://yandex.ru/maps/?pt='+lon.toFixed(6)+','+lat.toFixed(6)+'&z=17&l=map';
+$('gps-go').href='https://www.google.com/maps/search/?api=1&query='+lat.toFixed(6)+','+lon.toFixed(6);
+$('gps-age').textContent=gpsAgeText();
+row.style.display='flex';
+updateFindCard();
 }
-
 // ---------- local mode ----------
 let pollBusy = false;
 async function pollLocal(){
-  if(pollBusy) return; // no overlapping requests if the board hangs
-  pollBusy = true;
-  try{
-    const r = await fetch('/api/status');
-    if(!r.ok) throw 0;
-    const j = await r.json();
-    S.soc=j.soc; S.cabin=j.cabin; S.charging=!!j.charging; S.charger=j.charger||'';
-    S.hvac=!!j.hvac; S.lock=j.lock; S.setpoint=j.setpoint; S.fan=j.fan;
-    S.heat=!!j.heat; S.cool=!!j.cool; S.vent=j.vent;
-    S.soh=j.soh; S.gids=j.gids; S.v=j.v; S.i=j.i; S.power=j.power||0; S.packValid=!!j.pack;
-    S.amb=j.amb; S.on=j.on; S.seq=!!j.seq; S.locking=!!j.locking;
-    S.isoc=(j.isoc===undefined)?-1:j.isoc; S.irange=(j.irange===undefined)?-1:j.irange;
-    S.btemp=(j.btemp===undefined)?-99:j.btemp; S.cdelta=(j.cdelta===undefined)?-1:j.cdelta;
-    S.odo=j.odo||0; S.vin=j.vin||''; S.hvacTimer=j.hvac_timer||0;
-    S.lights = (j.lights===undefined) ? -1 : (j.lights?1:0);
-    if(j.gps && j.gps.lat && j.gps.lon && j.gps.age < 900)
-      S.gps = { lat:j.gps.lat, lon:j.gps.lon, spd:(j.gps.spd||0)*1.852, at:Date.now()-j.gps.age*1000 };
-    lastUpdate = Date.now();
-    updateBadge();
-    tripTick();
-    chargeTick();
-    render();
-  }catch(e){ updateBadge(); }
-  finally{ pollBusy = false; }
+if(pollBusy) return; // no overlapping requests if the board hangs
+pollBusy = true;
+try{
+const r = await fetch('/api/status');
+if(!r.ok) throw 0;
+const j = await r.json();
+S.soc=j.soc; S.cabin=j.cabin; S.charging=!!j.charging; S.charger=j.charger||'';
+S.hvac=!!j.hvac; S.lock=j.lock; S.setpoint=j.setpoint; S.fan=j.fan;
+S.heat=!!j.heat; S.cool=!!j.cool; S.vent=j.vent;
+S.soh=j.soh; S.gids=j.gids; S.v=j.v; S.i=j.i; S.power=j.power||0; S.packValid=!!j.pack;
+S.amb=j.amb; S.on=j.on; S.seq=!!j.seq; S.locking=!!j.locking;
+S.isoc=(j.isoc===undefined)?-1:j.isoc; S.irange=(j.irange===undefined)?-1:j.irange;
+S.btemp=(j.btemp===undefined)?-99:j.btemp; S.cdelta=(j.cdelta===undefined)?-1:j.cdelta;
+S.odo=j.odo||0; S.vin=j.vin||''; S.hvacTimer=j.hvac_timer||0;
+S.lights = (j.lights===undefined) ? -1 : (j.lights?1:0);
+if(j.gps && j.gps.lat && j.gps.lon && j.gps.age < 900)
+S.gps = { lat:j.gps.lat, lon:j.gps.lon, spd:(j.gps.spd||0)*1.852, at:Date.now()-j.gps.age*1000 };
+lastUpdate = Date.now();
+updateBadge();
+tripTick();
+chargeTick();
+render();
+}catch(e){ updateBadge(); }
+finally{ pollBusy = false; }
 }
 async function localCmd(path){
-  try{
-    // POST-only routes (CSRF protection); redirect:'manual' keeps the 303
-    // from downloading the whole HTML page
-    const r = await fetch(path,{method:'POST', redirect:'manual'});
-    if(r.type==='opaqueredirect'){ return true; } // 303 = accepted
-    if(!r.ok){ toast('Команда отклонена'); return false; }
-    return true;
-  }
-  catch(e){ toast('Ошибка отправки'); return false; }
+try{
+// POST-only routes (CSRF protection); redirect:'manual' keeps the 303
+// from downloading the whole HTML page
+const r = await fetch(path,{method:'POST', redirect:'manual'});
+if(r.type==='opaqueredirect'){ return true; } // 303 = accepted
+if(!r.ok){ toast('Команда отклонена'); return false; }
+return true;
 }
-
+catch(e){ toast('Ошибка отправки'); return false; }
+}
 // ---------- mqtt mode ----------
 function loadCfg(){ try{ return JSON.parse(localStorage.getItem('leafcfg')); }catch(e){ return null; } }
 function setConn(state, label){
-  const b=$('conn-badge');
-  b.classList.toggle('on',state==='on');
-  b.classList.toggle('warn',state==='warn');
-  b.classList.toggle('off',state==='off');
-  $('conn-text').textContent = label;
+const b=$('conn-badge');
+b.classList.toggle('on',state==='on');
+b.classList.toggle('warn',state==='warn');
+b.classList.toggle('off',state==='off');
+$('conn-text').textContent = label;
 }
 function netTypeLabel(){
-  const c=navigator.connection;
-  if(!c) return 'Net';
-  const e=c.effectiveType||'';
-  if(c.type==='wifi') return 'Wi-Fi';
-  if(c.type==='ethernet') return 'Ethernet';
-  if(c.type==='wimax') return 'WiMAX';
-  if(c.type==='bluetooth') return 'Bluetooth';
-  if(c.type==='cellular'){
-    if(e==='4g') return '4G';
-    if(e==='3g') return '3G';
-    return 'GSM';
-  }
-  if(e==='4g') return '4G';
-  if(e==='3g') return '3G';
-  if(e==='2g'||e==='slow-2g') return 'GSM';
-  return 'Net';
+const c=navigator.connection;
+if(!c) return 'Net';
+const e=c.effectiveType||'';
+if(c.type==='wifi') return 'Wi-Fi';
+if(c.type==='ethernet') return 'Ethernet';
+if(c.type==='wimax') return 'WiMAX';
+if(c.type==='bluetooth') return 'Bluetooth';
+if(c.type==='cellular'){
+if(e==='4g') return '4G';
+if(e==='3g') return '3G';
+return 'GSM';
+}
+if(e==='4g') return '4G';
+if(e==='3g') return '3G';
+if(e==='2g'||e==='slow-2g') return 'GSM';
+return 'Net';
 }
 function updateBadge(){
-  if(client && client.connected){ setConn('on','Online'); return; }
-  if(onBoard && lastUpdate && Date.now()-lastUpdate < 10000){ setConn('on','Online'); return; }
-  if(navigator.onLine){ setConn('warn',netTypeLabel()); return; }
-  setConn('off','Offline');
+if(client && client.connected){ setConn('on','Online'); return; }
+if(onBoard && lastUpdate && Date.now()-lastUpdate < 10000){ setConn('on','Online'); return; }
+if(navigator.onLine){ setConn('warn',netTypeLabel()); return; }
+setConn('off','Offline');
 }
 window.addEventListener('online',updateBadge);
 window.addEventListener('offline',updateBadge);
 if(navigator.connection && navigator.connection.addEventListener)
-  navigator.connection.addEventListener('change',updateBadge);
+navigator.connection.addEventListener('change',updateBadge);
 function mqttConnect(){
-  cfg = loadCfg();
-  if(!cfg){ mode='local'; return; }
-  if(typeof mqtt==='undefined'){
-    const s=document.createElement('script');
-    s.src='https://unpkg.com/mqtt@5.3.5/dist/mqtt.min.js';
-    s.onload=()=>mqttConnect();
-    s.onerror=()=>{ updateBadge(); toast('Не удалось загрузить MQTT-клиент'); };
-    document.head.appendChild(s);
-    return;
-  }
-  mode='mqtt';
-  const url='wss://'+cfg.host+':'+(cfg.port||15871);
-  try{ if(client) client.end(true); }catch(e){}
-  client = mqtt.connect(url,{ username:cfg.user, password:cfg.pass,
-    clientId:'leafpwa-'+Math.random().toString(16).slice(2,8), reconnectPeriod:4000 });
-  const myClient = client;
-  client.on('connect',()=>{
-    updateBadge();
-    $('more-mode').textContent='MQTT · '+cfg.host;
-    const p='ovms/'+cfg.user+'/'+(cfg.vid||'leaf')+'/';
-    client.subscribe(p+'metric/#');
-    client.subscribe(p+'client/pwa/response/#');
-  });
-  client.on('close',()=>{ if(myClient===client) updateBadge(); });
-  client.on('error',()=>{ if(myClient===client) updateBadge(); });
-  client.on('message',(topic,payload)=>{
-    if(myClient!==client) return; // stale connection from a previous session
-    const t=payload.toString();
-    const base='ovms/'+cfg.user+'/'+(cfg.vid||'leaf')+'/';
-    // Firmware replies to client/<id>/response/<cmd> — check before the
-    // metric prefix (client topics live OUTSIDE metric/)
-    if(topic.startsWith(base+'client/')){ toast(t); return; }
-    const p=base+'metric/';
-    if(!topic.startsWith(p)) return;
-    const m=topic.slice(p.length);
-    const num=parseFloat(t);
-    switch(m){
-      case 'v/b/soc': S.soc=num; break;
-      case 'v/b/soc/instrument': S.isoc=num; break;
-      case 'v/b/range/instrument': S.irange=num; break;
-      case 'v/b/temp': S.btemp=num; break;
-      case 'v/b/c/voltage/dev/max': S.cdelta=Math.round(num*1000); break;
-      case 'v/e/cabintemp': S.cabin=num; break;
-      case 'v/c/charging': S.charging=(t==='yes'); break;
-      case 'v/c/state': S.charger=t; if(chg) chg.endState=t; break;
-      case 'v/e/hvac': S.hvac=(t==='yes'); break;
-      case 'v/e/locked': S.lock=(t==='yes')?1:0; break;
-      case 'v/e/cabinsetpoint': S.setpoint=num; break;
-      case 'v/e/cabinfan': S.fan=num; break;
-      case 'v/e/heating': S.heat=(t==='yes'); break;
-      case 'v/e/cooling': S.cool=(t==='yes'); break;
-      case 'v/e/cabinvent': S.vent=num; break;
-      case 'v/b/soh': S.soh=num; break;
-      case 'v/b/gids': S.gids=num; break;
-      case 'v/b/voltage': S.v=num; S.packValid=true; break;
-      case 'v/b/current': S.i=num; break;
-      case 'v/b/power': S.power=num; break;
-      case 'v/e/ambienttemp': S.amb=num; break;
-      case 'v/e/on': S.on=(t==='yes')?1:0; break;
-      case 'v/e/headlights': S.lights=(t==='yes')?1:0; break;
-      case 'v/p/odometer': S.odo=Math.round(num); break;
-      case 'v/vin': S.vin=t; break;
-      case 'v/e/hvac/timer': S.hvacTimer=Math.round(num); break;
-      case 'v/location/last': try{ const g=JSON.parse(t); if(g.lat&&g.lon) S.gps={lat:g.lat,lon:g.lon,spd:(g.spd||0)*1.852,at:Date.now()}; }catch(e){} break;
-      default: return;
-    }
-    lastUpdate=Date.now();
-    tripTick();
-    chargeTick();
-    render();
-  });
+cfg = loadCfg();
+if(!cfg){ mode='local'; return; }
+if(typeof mqtt==='undefined'){
+const s=document.createElement('script');
+s.src='https://unpkg.com/mqtt@5.3.5/dist/mqtt.min.js';
+s.onload=()=>mqttConnect();
+s.onerror=()=>{ updateBadge(); toast('Не удалось загрузить MQTT-клиент'); };
+document.head.appendChild(s);
+return;
 }
-
+mode='mqtt';
+const url='wss://'+cfg.host+':'+(cfg.port||15871);
+try{ if(client) client.end(true); }catch(e){}
+client = mqtt.connect(url,{ username:cfg.user, password:cfg.pass,
+clientId:'leafpwa-'+Math.random().toString(16).slice(2,8), reconnectPeriod:4000 });
+const myClient = client;
+client.on('connect',()=>{
+updateBadge();
+$('more-mode').textContent='MQTT · '+cfg.host;
+const p='ovms/'+cfg.user+'/'+(cfg.vid||'leaf')+'/';
+client.subscribe(p+'metric/#');
+client.subscribe(p+'client/pwa/response/#');
+});
+client.on('close',()=>{ if(myClient===client) updateBadge(); });
+client.on('error',()=>{ if(myClient===client) updateBadge(); });
+client.on('message',(topic,payload)=>{
+if(myClient!==client) return; // stale connection from a previous session
+const t=payload.toString();
+const base='ovms/'+cfg.user+'/'+(cfg.vid||'leaf')+'/';
+// Firmware replies to client/<id>/response/<cmd> — check before the
+// metric prefix (client topics live OUTSIDE metric/)
+if(topic.startsWith(base+'client/')){ toast(t); return; }
+const p=base+'metric/';
+if(!topic.startsWith(p)) return;
+const m=topic.slice(p.length);
+const num=parseFloat(t);
+switch(m){
+case 'v/b/soc': S.soc=num; break;
+case 'v/b/soc/instrument': S.isoc=num; break;
+case 'v/b/range/instrument': S.irange=num; break;
+case 'v/b/temp': S.btemp=num; break;
+case 'v/b/c/voltage/dev/max': S.cdelta=Math.round(num*1000); break;
+case 'v/e/cabintemp': S.cabin=num; break;
+case 'v/c/charging': S.charging=(t==='yes'); break;
+case 'v/c/state': S.charger=t; if(chg) chg.endState=t; break;
+case 'v/e/hvac': S.hvac=(t==='yes'); break;
+case 'v/e/locked': S.lock=(t==='yes')?1:0; break;
+case 'v/e/cabinsetpoint': S.setpoint=num; break;
+case 'v/e/cabinfan': S.fan=num; break;
+case 'v/e/heating': S.heat=(t==='yes'); break;
+case 'v/e/cooling': S.cool=(t==='yes'); break;
+case 'v/e/cabinvent': S.vent=num; break;
+case 'v/b/soh': S.soh=num; break;
+case 'v/b/gids': S.gids=num; break;
+case 'v/b/voltage': S.v=num; S.packValid=true; break;
+case 'v/b/current': S.i=num; break;
+case 'v/b/power': S.power=num; break;
+case 'v/e/ambienttemp': S.amb=num; break;
+case 'v/e/on': S.on=(t==='yes')?1:0; break;
+case 'v/e/headlights': S.lights=(t==='yes')?1:0; break;
+case 'v/p/odometer': S.odo=Math.round(num); break;
+case 'v/vin': S.vin=t; break;
+case 'v/e/hvac/timer': S.hvacTimer=Math.round(num); break;
+case 'v/location/last': try{ const g=JSON.parse(t); if(g.lat&&g.lon) S.gps={lat:g.lat,lon:g.lon,spd:(g.spd||0)*1.852,at:Date.now()}; }catch(e){} break;
+default: return;
+}
+lastUpdate=Date.now();
+tripTick();
+chargeTick();
+render();
+});
+}
 // ---------- commands ----------
 function pressFx(type){
-  const map={ lights:'act-lights-ic', rhloff:'act-lights-ic', hornlights:'act-lights-ic',
-    lock:'act-doors-ic', unlock:'act-doors-ic', hvac:'act-climate-ic' };
-  const el=map[type]&&$(map[type]); if(!el) return;
-  el.classList.add('flash');
-  setTimeout(()=>el.classList.remove('flash'),200);
+const map={ lights:'act-lights-ic', rhloff:'act-lights-ic', hornlights:'act-lights-ic',
+lock:'act-doors-ic', unlock:'act-doors-ic', hvac:'act-climate-ic' };
+const el=map[type]&&$(map[type]); if(!el) return;
+el.classList.add('flash');
+setTimeout(()=>el.classList.remove('flash'),200);
 }
 function cmd(type, quiet){
-  if(!navigator.onLine && mode==='mqtt') toast('Нет сети');
-  if(mode==='local'){
-    if(S.seq){ if(!quiet) toast('Дождитесь завершения текущей команды'); return Promise.resolve(false); }
-    const sp=parseFloat($('sp-slider').value);
-    const mins=parseInt($('hvac-minutes').value,10);
-    const map={ charge:'/charge_on', chargeoff:'/charge_off', lock:'/lock', unlock:'/unlock', refresh:'/refresh',
-      lights:'/lights', hornlights:'/hornlights', rhloff:'/rhloff',
-      hvac: S.hvac?'/hvac_off':'/hvac_on?setpoint='+sp+'&minutes='+mins };
-    pressFx(type);
-    toast('Команда отправлена');
-    return localCmd(map[type]).then(ok=>{
-      if(ok){ S.seq=true; render(); setTimeout(pollLocal,1500); }
-      return ok;
-    });
-  }
-  if(!client||!client.connected){ toast('Нет подключения к брокеру'); return Promise.resolve(false); }
-  const p='ovms/'+cfg.user+'/'+(cfg.vid||'leaf')+'/client/pwa/command/c';
-  const sp=parseFloat($('sp-slider').value);
-  const mins=parseInt($('hvac-minutes').value,10);
-  const payload={ charge:'charge start', chargeoff:'charge stop', lock:'lock', unlock:'unlock',
-    refresh:'server v3 update modified',
-    lights:'lights', hornlights:'hornlights', rhloff:'lights off',
-    hvac: S.hvac?'climatecontrol off':'climatecontrol on '+sp+' '+mins }[type];
-  client.publish(p,payload);
-  pressFx(type);
-  toast('Команда отправлена');
-  remoteStatus(type);
-  return Promise.resolve(true);
+if(!navigator.onLine && mode==='mqtt') toast('Нет сети');
+if(mode==='local'){
+if(S.seq){ if(!quiet) toast('Дождитесь завершения текущей команды'); return Promise.resolve(false); }
+const sp=parseFloat($('sp-slider').value);
+const mins=parseInt($('hvac-minutes').value,10);
+const map={ charge:'/charge_on', chargeoff:'/charge_off', lock:'/lock', unlock:'/unlock', refresh:'/refresh',
+lights:'/lights', hornlights:'/hornlights', rhloff:'/rhloff',
+hvac: S.hvac?'/hvac_off':'/hvac_on?setpoint='+sp+'&minutes='+mins };
+pressFx(type);
+toast('Команда отправлена');
+return localCmd(map[type]).then(ok=>{
+if(ok){ S.seq=true; render(); setTimeout(pollLocal,1500); }
+return ok;
+});
+}
+if(!client||!client.connected){ toast('Нет подключения к брокеру'); return Promise.resolve(false); }
+const p='ovms/'+cfg.user+'/'+(cfg.vid||'leaf')+'/client/pwa/command/c';
+const sp=parseFloat($('sp-slider').value);
+const mins=parseInt($('hvac-minutes').value,10);
+const payload={ charge:'charge start', chargeoff:'charge stop', lock:'lock', unlock:'unlock',
+refresh:'server v3 update modified',
+lights:'lights', hornlights:'hornlights', rhloff:'lights off',
+hvac: S.hvac?'climatecontrol off':'climatecontrol on '+sp+' '+mins }[type];
+client.publish(p,payload);
+pressFx(type);
+toast('Команда отправлена');
+remoteStatus(type);
+return Promise.resolve(true);
 }
 function remoteStatus(type){
-  const el=$('remote-status');
-  const names={charge:'Зарядка',chargeoff:'Стоп зарядки',lock:'Закрытие',unlock:'Открытие',refresh:'Обновление',hvac:'Климат',
-    lights:'Фары',hornlights:'Сигнал и фары',rhloff:'Отмена'};
-  el.textContent=names[type]+': запрос отправлен…';
-  setTimeout(()=>{el.textContent=names[type]+': выполнено';},2000);
-  setTimeout(()=>{el.textContent='Выберите действие';},4500);
+const el=$('remote-status');
+const names={charge:'Зарядка',chargeoff:'Стоп зарядки',lock:'Закрытие',unlock:'Открытие',refresh:'Обновление',hvac:'Климат',
+lights:'Фары',hornlights:'Сигнал и фары',rhloff:'Отмена'};
+el.textContent=names[type]+': запрос отправлен…';
+setTimeout(()=>{el.textContent=names[type]+': выполнено';},2000);
+setTimeout(()=>{el.textContent='Выберите действие';},4500);
 }
-
 // ---------- garage quick actions ----------
 function toggleCharge(){ cmd(S.charging ? 'chargeoff' : 'charge'); }
 // No optimistic state flips: the truth comes from the next poll (local)
@@ -1007,56 +1020,55 @@ function toggleCharge(){ cmd(S.charging ? 'chargeoff' : 'charge'); }
 // after a 403 (locking disabled) or when the board was busy.
 function actLights(){ cmd(S.lights===1 ? 'rhloff' : 'lights'); }
 function actDoors(){
-  if(mode==='local' && !S.locking){ toast('Блокировка выключена в настройках платы'); return; }
-  if(S.lock===1) sendLockCmd(0);
-  else if(S.lock===0) sendLockCmd(1);
-  else {
-    // State unknown (no 0x60D yet): let the user pick instead of guessing
-    const open = confirm('Состояние замков неизвестно.\nOK — открыть двери, Отмена — закрыть.');
-    sendLockCmd(open?0:1);
-  }
+if(mode==='local' && !S.locking){ toast('Блокировка выключена в настройках платы'); return; }
+if(S.lock===1) sendLockCmd(0);
+else if(S.lock===0) sendLockCmd(1);
+else {
+// State unknown (no 0x60D yet): let the user pick instead of guessing
+const open = confirm('Состояние замков неизвестно.\nOK — открыть двери, Отмена — закрыть.');
+sendLockCmd(open?0:1);
+}
 }
 // Send lock/unlock and tell the user if the car never reported the new state
 function sendLockCmd(expect){
-  const res = cmd(expect===1?'lock':'unlock');
-  if(!res || !res.then) return;
-  res.then(ok=>{
-    if(!ok) return;
-    setTimeout(()=>{ if(S.lock!==expect) toast('Замки не отреагировали — повторите'); }, 10000);
-  });
+const res = cmd(expect===1?'lock':'unlock');
+if(!res || !res.then) return;
+res.then(ok=>{
+if(!ok) return;
+setTimeout(()=>{ if(S.lock!==expect) toast('Замки не отреагировали — повторите'); }, 10000);
+});
 }
 function actClimate(){ cmd('hvac'); }
 function spChanged(v){
-  spTouched=true;
-  localStorage.setItem('leafsp',v);
-  $('sp-val').textContent=v;
+spTouched=true;
+localStorage.setItem('leafsp',v);
+$('sp-val').textContent=v;
 }
 function updateFindCard(){
-  const c=$('find-car'); if(!c) return;
-  c.classList.toggle('active',findActive);
-  let sub = findActive ? 'Нажмите ещё раз, чтобы отменить' : 'Сигнал и фары';
-  if(S.gps && !findActive) sub += ' · GPS '+S.gps.lat.toFixed(3)+','+S.gps.lon.toFixed(3);
-  $('find-car-sub').textContent = sub;
+const c=$('find-car'); if(!c) return;
+c.classList.toggle('active',findActive);
+let sub = findActive ? 'Нажмите ещё раз, чтобы отменить' : 'Сигнал и фары';
+if(S.gps && !findActive) sub += ' · GPS '+S.gps.lat.toFixed(3)+','+S.gps.lon.toFixed(3);
+$('find-car-sub').textContent = sub;
 }
 function findCar(){
-  if(findActive){
-    findActive=false; clearTimeout(findTimer); updateFindCard();
-    // Retry while the horn/lights sequence is busy — the board drops
-    // commands issued during an active sequence
-    cancelRhl();
-    toast('Действие отменено');
-    return;
-  }
-  cmd('hornlights');
-  findActive=true; updateFindCard();
-  findTimer=setTimeout(()=>{ findActive=false; updateFindCard(); },60000);
+if(findActive){
+findActive=false; clearTimeout(findTimer); updateFindCard();
+// Retry while the horn/lights sequence is busy — the board drops
+// commands issued during an active sequence
+cancelRhl();
+toast('Действие отменено');
+return;
+}
+cmd('hornlights');
+findActive=true; updateFindCard();
+findTimer=setTimeout(()=>{ findActive=false; updateFindCard(); },60000);
 }
 function cancelRhl(){
-  cmd('rhloff',true).then(ok=>{
-    if(!ok && S.seq) setTimeout(cancelRhl,2000);
-  });
+cmd('rhloff',true).then(ok=>{
+if(!ok && S.seq) setTimeout(cancelRhl,2000);
+});
 }
-
 holdButton($('g-charge-btn'),toggleCharge);
 holdButton($('act-lights'),actLights,$('act-lights-ic'));
 holdButton($('act-doors'),actDoors,$('act-doors-ic'));
@@ -1068,7 +1080,6 @@ holdButton($('rb-climate'),()=>cmd('hvac'));
 holdButton($('rb-lights'),()=>cmd('lights'));
 holdButton($('rb-unlock'),()=>sendLockCmd(0));
 holdButton($('remote-charge'),toggleCharge);
-
 // ---------- trips (IndexedDB) ----------
 const TRIP_DB='leaftrips', TRIP_STORE='trips';
 let tripDB=null;
@@ -1077,402 +1088,446 @@ let tripPrevOn=-1;
 let tripLastPointMs=0;
 let tripLastMoveMs=0;    // last time we saw real movement
 let tripStaleTimer=null;
-
 function tripOpenDB(){
-  return new Promise((res,rej)=>{
-    const r=indexedDB.open(TRIP_DB,1);
-    r.onupgradeneeded=()=>{ r.result.createObjectStore(TRIP_STORE,{keyPath:'id'}); };
-    r.onsuccess=()=>res(r.result);
-    r.onerror=()=>rej(r.error);
-  });
+return new Promise((res,rej)=>{
+const r=indexedDB.open(TRIP_DB,1);
+r.onupgradeneeded=()=>{ r.result.createObjectStore(TRIP_STORE,{keyPath:'id'}); };
+r.onsuccess=()=>res(r.result);
+r.onerror=()=>rej(r.error);
+});
 }
 function tripPut(rec){
-  if(!tripDB) return Promise.resolve();
-  return new Promise((res,rej)=>{
-    const tx=tripDB.transaction(TRIP_STORE,'readwrite');
-    tx.objectStore(TRIP_STORE).put(rec);
-    tx.oncomplete=()=>res();
-    tx.onerror=()=>rej(tx.error);
-  });
+if(!tripDB) return Promise.resolve();
+return new Promise((res,rej)=>{
+const tx=tripDB.transaction(TRIP_STORE,'readwrite');
+tx.objectStore(TRIP_STORE).put(rec);
+tx.oncomplete=()=>res();
+tx.onerror=()=>rej(tx.error);
+});
 }
 function tripGetAll(){
-  return new Promise((res,rej)=>{
-    if(!tripDB) return res([]);
-    const r=tripDB.transaction(TRIP_STORE).objectStore(TRIP_STORE).getAll();
-    r.onsuccess=()=>res(r.result||[]);
-    r.onerror=()=>rej(r.error);
-  });
+return new Promise((res,rej)=>{
+if(!tripDB) return res([]);
+const r=tripDB.transaction(TRIP_STORE).objectStore(TRIP_STORE).getAll();
+r.onsuccess=()=>res(r.result||[]);
+r.onerror=()=>rej(r.error);
+});
 }
 function tripClearAll(){
-  return new Promise((res,rej)=>{
-    if(!tripDB) return res();
-    const tx=tripDB.transaction(TRIP_STORE,'readwrite');
-    tx.objectStore(TRIP_STORE).clear();
-    tx.oncomplete=()=>res();
-    tx.onerror=()=>rej(tx.error);
-  });
+return new Promise((res,rej)=>{
+if(!tripDB) return res();
+const tx=tripDB.transaction(TRIP_STORE,'readwrite');
+tx.objectStore(TRIP_STORE).clear();
+tx.oncomplete=()=>res();
+tx.onerror=()=>rej(tx.error);
+});
 }
 function haversineKm(lat1,lon1,lat2,lon2){
-  const R=6371, toR=d=>d*Math.PI/180;
-  const dLat=toR(lat2-lat1), dLon=toR(lon2-lon1);
-  const a=Math.sin(dLat/2)**2+Math.cos(toR(lat1))*Math.cos(toR(lat2))*Math.sin(dLon/2)**2;
-  return 2*R*Math.asin(Math.sqrt(a));
+const R=6371, toR=d=>d*Math.PI/180;
+const dLat=toR(lat2-lat1), dLon=toR(lon2-lon1);
+const a=Math.sin(dLat/2)**2+Math.cos(toR(lat1))*Math.cos(toR(lat2))*Math.sin(dLon/2)**2;
+return 2*R*Math.asin(Math.sqrt(a));
 }
 function tripHasGps(){ return !!(S.gps && S.gps.lat && S.gps.lon); }
 function tripValidGps(g){ return !!(g && g.lat && g.lon); }
-
 function tripComputeSummary(points){
-  let distKm=0, energyWh=0, maxSpd=0, startSoc=null, endSoc=null, startLat=null, startLon=null, endLat=null, endLon=null;
-  for(let k=0;k<points.length;k++){
-    const p=points[k];
-    if(p.spd!=null && p.spd>maxSpd) maxSpd=p.spd;
-    if(p.soc!=null){ if(startSoc==null) startSoc=p.soc; endSoc=p.soc; }
-    if(tripValidGps(p)){ if(startLat==null){startLat=p.lat;startLon=p.lon;} endLat=p.lat; endLon=p.lon; }
-    if(k>0){
-      const q=points[k-1];
-      const dtH=(p.t-q.t)/3600000;
-      if(tripValidGps(p)&&tripValidGps(q)){
-        const d=haversineKm(q.lat,q.lon,p.lat,p.lon);
-        if(d<50) distKm+=d; // guard vs GPS jump
-      }
-      if(p.v!=null&&p.i!=null&&q.v!=null&&q.i!=null){
-        const avgW=((p.v*p.i)+(q.v*q.i))/2;
-        // i is charge-positive, so discharge (driving consumption) yields negative
-        energyWh -= avgW*dtH; // consume-positive convention
-      }
-    }
-  }
-  return {distKm, energyWh, maxSpd, startSoc, endSoc, startLat, startLon, endLat, endLon};
+let distKm=0, energyWh=0, maxSpd=0, startSoc=null, endSoc=null, startLat=null, startLon=null, endLat=null, endLon=null;
+for(let k=0;k<points.length;k++){
+const p=points[k];
+if(p.spd!=null && p.spd>maxSpd) maxSpd=p.spd;
+if(p.soc!=null){ if(startSoc==null) startSoc=p.soc; endSoc=p.soc; }
+if(tripValidGps(p)){ if(startLat==null){startLat=p.lat;startLon=p.lon;} endLat=p.lat; endLon=p.lon; }
+if(k>0){
+const q=points[k-1];
+const dtH=(p.t-q.t)/3600000;
+if(tripValidGps(p)&&tripValidGps(q)){
+const d=haversineKm(q.lat,q.lon,p.lat,p.lon);
+if(d<50) distKm+=d; // guard vs GPS jump
 }
-
+if(p.v!=null&&p.i!=null&&q.v!=null&&q.i!=null){
+const avgW=((p.v*p.i)+(q.v*q.i))/2;
+// i is charge-positive, so discharge (driving consumption) yields negative
+energyWh -= avgW*dtH; // consume-positive convention
+}
+}
+}
+return {distKm, energyWh, maxSpd, startSoc, endSoc, startLat, startLon, endLat, endLon};
+}
 function tripStart(now){
-  trip={ id:'trip_'+now.toString(36)+'_'+Math.random().toString(36).slice(2,6),
-    startMs:now, endMs:null, points:[] };
-  tripLastMoveMs=now;
-  tripLastPointMs=now;
-  tripPut(trip);
+trip={ id:'trip_'+now.toString(36)+'_'+Math.random().toString(36).slice(2,6),
+startMs:now, endMs:null, points:[] };
+tripLastMoveMs=now;
+tripLastPointMs=now;
+tripPut(trip);
 }
 function tripEnd(now, reason){
-  if(!trip) return;
-  const durSec=(now-trip.startMs)/1000;
-  const sum=tripComputeSummary(trip.points);
-  trip.endMs=now;
-  trip.endReason=reason;
-  Object.assign(trip,sum);
-  // discard junk trips (too short, no movement)
-  if(durSec<20 && sum.distKm<0.05){ trip=null; return; }
-  tripPut(trip);
-  trip=null;
-  refreshTripsScreen();
+if(!trip) return;
+const durSec=(now-trip.startMs)/1000;
+const sum=tripComputeSummary(trip.points);
+trip.endMs=now;
+trip.endReason=reason;
+Object.assign(trip,sum);
+// discard junk trips (too short, no movement)
+if(durSec<20 && sum.distKm<0.05){ trip=null; return; }
+tripPut(trip);
+trip=null;
+refreshTripsScreen();
 }
 function tripRecordPoint(now){
-  const p={ t:now,
-    lat: tripHasGps()?S.gps.lat:null, lon: tripHasGps()?S.gps.lon:null,
-    spd:(S.gps&&S.gps.spd)||0, v:S.packValid?S.v:null, i:S.packValid?S.i:null,
-    soc:S.soc>=0?S.soc:null };
-  trip.points.push(p);
-  tripLastPointMs=now;
-  tripPut(trip); // persist on every point so a reload doesn't lose the trip
+const p={ t:now,
+lat: tripHasGps()?S.gps.lat:null, lon: tripHasGps()?S.gps.lon:null,
+spd:(S.gps&&S.gps.spd)||0, v:S.packValid?S.v:null, i:S.packValid?S.i:null,
+soc:S.soc>=0?S.soc:null };
+trip.points.push(p);
+tripLastPointMs=now;
+tripPut(trip); // persist on every point so a reload doesn't lose the trip
 }
-
 function tripTick(){
-  if(!tripDB) return;
-  const now=Date.now();
-  const moved = tripHasGps() && ((S.gps.spd||0)>2);
-  // detect movement from coordinate delta too (local mode has no spd)
-  if(!moved && trip && trip.points.length){
-    const last=trip.points[trip.points.length-1];
-    if(tripValidGps(last) && tripHasGps()){
-      const d=haversineKm(last.lat,last.lon,S.gps.lat,S.gps.lon);
-      if(d>0.02) moved=true; // 20m in one tick = movement
-    }
-  }
-  if(moved) tripLastMoveMs=now;
-
-  if(!trip){
-    // start when ignition turns on and we have data flowing
-    if(S.on===1 && tripPrevOn!==1 && lastUpdate){
-      tripStart(now);
-    }
-  } else {
-    const noMoveMs = now - tripLastMoveMs;
-    const end = (S.on===0) || (noMoveMs>15*60*1000); // off, or no movement 15min
-    if(end){
-      tripEnd(now, S.on===0?'off':'idle');
-    } else if(now-tripLastPointMs>=5000){
-      tripRecordPoint(now);
-    }
-  }
-  tripPrevOn=S.on;
+if(!tripDB) return;
+const now=Date.now();
+const moved = tripHasGps() && ((S.gps.spd||0)>2);
+// detect movement from coordinate delta too (local mode has no spd)
+if(!moved && trip && trip.points.length){
+const last=trip.points[trip.points.length-1];
+if(tripValidGps(last) && tripHasGps()){
+const d=haversineKm(last.lat,last.lon,S.gps.lat,S.gps.lon);
+if(d>0.02) moved=true; // 20m in one tick = movement
 }
-
+}
+if(moved) tripLastMoveMs=now;
+if(!trip){
+// start when ignition turns on and we have data flowing
+if(S.on===1 && tripPrevOn!==1 && lastUpdate){
+tripStart(now);
+}
+} else {
+const noMoveMs = now - tripLastMoveMs;
+const end = (S.on===0) || (noMoveMs>15*60*1000); // off, or no movement 15min
+if(end){
+tripEnd(now, S.on===0?'off':'idle');
+} else if(now-tripLastPointMs>=5000){
+tripRecordPoint(now);
+}
+}
+tripPrevOn=S.on;
+}
 async function tripCleanupOrphans(){
-  const all=await tripGetAll();
-  let changed=false;
-  for(const t of all){
-    if(t.endMs==null && (!trip || t.id!==trip.id)){
-      const lastT=t.points.length?t.points[t.points.length-1].t:t.startMs;
-      const sum=tripComputeSummary(t.points);
-      t.endMs=lastT; t.endReason='orphan';
-      Object.assign(t,sum);
-      await tripPut(t);
-      changed=true;
-    }
-  }
-  if(changed) refreshTripsScreen();
+const all=await tripGetAll();
+let changed=false;
+for(const t of all){
+if(t.endMs==null && (!trip || t.id!==trip.id)){
+const lastT=t.points.length?t.points[t.points.length-1].t:t.startMs;
+const sum=tripComputeSummary(t.points);
+t.endMs=lastT; t.endReason='orphan';
+Object.assign(t,sum);
+await tripPut(t);
+changed=true;
 }
-
+}
+if(changed) refreshTripsScreen();
+}
 function fmtDur(sec){
-  sec=Math.max(0,Math.round(sec));
-  const h=Math.floor(sec/3600), m=Math.round((sec%3600)/60);
-  if(h>0) return h+' ч '+m+' мин';
-  if(m>0) return m+' мин';
-  return sec+' с';
+sec=Math.max(0,Math.round(sec));
+const h=Math.floor(sec/3600), m=Math.round((sec%3600)/60);
+if(h>0) return h+' ч '+m+' мин';
+if(m>0) return m+' мин';
+return sec+' с';
 }
 async function refreshTripsScreen(){
-  const banner=$('trip-active-banner');
-  if(banner) banner.classList.toggle('show', !!trip);
-  if(!tripDB) return;
-  const all=await tripGetAll();
-  all.sort((a,b)=>b.startMs-a.startMs);
-  const done=all.filter(t=>t.endMs!=null);
-  const totalKm=done.reduce((s,t)=>s+(t.distKm||0),0);
-  const totalWh=done.reduce((s,t)=>s+(t.energyWh||0),0);
-  $('ts-total').textContent=done.length;
-  $('ts-km').textContent=totalKm.toFixed(1);
-  $('ts-kwh').textContent=(totalWh/1000).toFixed(2);
-  const list=$('trip-list'); if(!list) return;
-  if(!done.length){ list.innerHTML=''; $('trip-empty').style.display='block'; $('trip-clear').style.display='none'; return; }
-  $('trip-empty').style.display='none'; $('trip-clear').style.display='block';
-  list.innerHTML=done.map(t=>{
-    const d=new Date(t.startMs);
-    const dstr=d.toLocaleDateString('ru-RU',{day:'2-digit',month:'short'})+' '+d.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
-    const dur=(t.endMs-t.startMs)/1000;
-    const socStr=(t.startSoc!=null&&t.endSoc!=null)?(t.startSoc.toFixed(0)+'→'+t.endSoc.toFixed(0)+'%'):'';
-    const route=(t.startLat!=null)?'<span class="route" onclick="openTripRoute('+t.startLat+','+t.startLon+')">Маршрут</span>':'';
-    return '<div class="trip-item">'+
-      '<div class="t-head"><span class="t-date">'+dstr+'</span><span class="t-dur">'+fmtDur(dur)+'</span></div>'+
-      '<div class="t-metrics"><span><span class="m-val">'+(t.distKm||0).toFixed(1)+'</span> км</span>'+
-      '<span><span class="m-val">'+(t.maxSpd||0).toFixed(0)+'</span> км/ч</span>'+
-      '<span><span class="m-val">'+((t.energyWh||0)/1000).toFixed(2)+'</span> кВт·ч</span></div>'+
-      '<div class="t-meta">'+(socStr?'<span>Заряд: '+socStr+'</span>':'')+route+'</div>'+
-      '</div>';
-  }).join('');
+const banner=$('trip-active-banner');
+if(banner) banner.classList.toggle('show', !!trip);
+if(!tripDB) return;
+const all=await tripGetAll();
+all.sort((a,b)=>b.startMs-a.startMs);
+const done=all.filter(t=>t.endMs!=null);
+const totalKm=done.reduce((s,t)=>s+(t.distKm||0),0);
+const totalWh=done.reduce((s,t)=>s+(t.energyWh||0),0);
+$('ts-total').textContent=done.length;
+$('ts-km').textContent=totalKm.toFixed(1);
+$('ts-kwh').textContent=(totalWh/1000).toFixed(2);
+const list=$('trip-list'); if(!list) return;
+if(!done.length){ list.innerHTML=''; $('trip-empty').style.display='block'; $('trip-clear').style.display='none'; return; }
+$('trip-empty').style.display='none'; $('trip-clear').style.display='block';
+list.innerHTML=done.map(t=>{
+const d=new Date(t.startMs);
+const dstr=d.toLocaleDateString('ru-RU',{day:'2-digit',month:'short'})+' '+d.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
+const dur=(t.endMs-t.startMs)/1000;
+const socStr=(t.startSoc!=null&&t.endSoc!=null)?(t.startSoc.toFixed(0)+'→'+t.endSoc.toFixed(0)+'%'):'';
+const route=(t.startLat!=null)?'<span class="route" onclick="openTripRoute('+t.startLat+','+t.startLon+')">Маршрут</span>':'';
+return '<div class="trip-item">'+
+'<div class="t-head"><span class="t-date">'+dstr+'</span><span class="t-dur">'+fmtDur(dur)+'</span></div>'+
+'<div class="t-metrics"><span><span class="m-val">'+(t.distKm||0).toFixed(1)+'</span> км</span>'+
+'<span><span class="m-val">'+(t.maxSpd||0).toFixed(0)+'</span> км/ч</span>'+
+'<span><span class="m-val">'+((t.energyWh||0)/1000).toFixed(2)+'</span> кВт·ч</span></div>'+
+'<div class="t-meta">'+(socStr?'<span>Заряд: '+socStr+'</span>':'')+route+'</div>'+
+'</div>';
+}).join('');
 }
 function openTripRoute(lat,lon){
-  window.open('https://yandex.ru/maps/?pt='+lon.toFixed(6)+','+lat.toFixed(6)+'&z=15&l=map','_blank');
+window.open('https://yandex.ru/maps/?pt='+lon.toFixed(6)+','+lat.toFixed(6)+'&z=15&l=map','_blank');
 }
 async function clearTrips(){
-  if(!confirm('Удалить всю историю поездок?')) return;
-  await tripClearAll();
-  refreshTripsScreen();
-  toast('История очищена');
+if(!confirm('Удалить всю историю поездок?')) return;
+await tripClearAll();
+refreshTripsScreen();
+toast('История очищена');
 }
-
 // ---------- charges (IndexedDB) ----------
 const CHG_DB='leafcharges', CHG_STORE='charges';
 let chgDB=null;
 let chg=null;            // active charge session
 let chgPrevCharging=false;
 let chgLastPointMs=0;
-
 function chargeOpenDB(){
-  return new Promise((res,rej)=>{
-    const r=indexedDB.open(CHG_DB,1);
-    r.onupgradeneeded=()=>{ r.result.createObjectStore(CHG_STORE,{keyPath:'id'}); };
-    r.onsuccess=()=>res(r.result);
-    r.onerror=()=>rej(r.error);
-  });
+return new Promise((res,rej)=>{
+const r=indexedDB.open(CHG_DB,1);
+r.onupgradeneeded=()=>{ r.result.createObjectStore(CHG_STORE,{keyPath:'id'}); };
+r.onsuccess=()=>res(r.result);
+r.onerror=()=>rej(r.error);
+});
 }
 function chgPut(rec){
-  if(!chgDB) return Promise.resolve();
-  return new Promise((res,rej)=>{
-    const tx=chgDB.transaction(CHG_STORE,'readwrite');
-    tx.objectStore(CHG_STORE).put(rec);
-    tx.oncomplete=()=>res();
-    tx.onerror=()=>rej(tx.error);
-  });
+if(!chgDB) return Promise.resolve();
+return new Promise((res,rej)=>{
+const tx=chgDB.transaction(CHG_STORE,'readwrite');
+tx.objectStore(CHG_STORE).put(rec);
+tx.oncomplete=()=>res();
+tx.onerror=()=>rej(tx.error);
+});
 }
 function chgGetAll(){
-  return new Promise((res,rej)=>{
-    if(!chgDB) return res([]);
-    const r=chgDB.transaction(CHG_STORE).objectStore(CHG_STORE).getAll();
-    r.onsuccess=()=>res(r.result||[]);
-    r.onerror=()=>rej(r.error);
-  });
+return new Promise((res,rej)=>{
+if(!chgDB) return res([]);
+const r=chgDB.transaction(CHG_STORE).objectStore(CHG_STORE).getAll();
+r.onsuccess=()=>res(r.result||[]);
+r.onerror=()=>rej(r.error);
+});
 }
 function chgClearAll(){
-  return new Promise((res,rej)=>{
-    if(!chgDB) return res();
-    const tx=chgDB.transaction(CHG_STORE,'readwrite');
-    tx.objectStore(CHG_STORE).clear();
-    tx.oncomplete=()=>res();
-    tx.onerror=()=>rej(tx.error);
-  });
+return new Promise((res,rej)=>{
+if(!chgDB) return res();
+const tx=chgDB.transaction(CHG_STORE,'readwrite');
+tx.objectStore(CHG_STORE).clear();
+tx.oncomplete=()=>res();
+tx.onerror=()=>rej(tx.error);
+});
 }
 function chgComputeSummary(points){
-  let energyWh=0, startSoc=null, endSoc=null, maxV=null;
-  for(let k=0;k<points.length;k++){
-    const p=points[k];
-    if(p.soc!=null){ if(startSoc==null) startSoc=p.soc; endSoc=p.soc; }
-    if(p.v!=null && (maxV==null||p.v>maxV)) maxV=p.v;
-    if(k>0){
-      const q=points[k-1];
-      if(p.v!=null&&p.i!=null&&q.v!=null&&q.i!=null){
-        const dtH=(p.t-q.t)/3600000;
-        const avgW=((p.v*p.i)+(q.v*q.i))/2;
-        energyWh += avgW*dtH; // charge-positive current → energy into battery
-      }
-    }
-  }
-  return {energyWh, startSoc, endSoc, maxV};
+let energyWh=0, startSoc=null, endSoc=null, maxV=null;
+for(let k=0;k<points.length;k++){
+const p=points[k];
+if(p.soc!=null){ if(startSoc==null) startSoc=p.soc; endSoc=p.soc; }
+if(p.v!=null && (maxV==null||p.v>maxV)) maxV=p.v;
+if(k>0){
+const q=points[k-1];
+if(p.v!=null&&p.i!=null&&q.v!=null&&q.i!=null){
+const dtH=(p.t-q.t)/3600000;
+const avgW=((p.v*p.i)+(q.v*q.i))/2;
+energyWh += avgW*dtH; // charge-positive current → energy into battery
+}
+}
+}
+return {energyWh, startSoc, endSoc, maxV};
 }
 function chargeStart(now){
-  chg={ id:'chg_'+now.toString(36)+'_'+Math.random().toString(36).slice(2,6),
-    startMs:now, endMs:null, points:[] };
-  chgLastPointMs=now;
-  chgPut(chg);
+chg={ id:'chg_'+now.toString(36)+'_'+Math.random().toString(36).slice(2,6),
+startMs:now, endMs:null, points:[] };
+chgLastPointMs=now;
+chgPut(chg);
 }
 function chargeEnd(now, reason){
-  if(!chg) return;
-  const durSec=(now-chg.startMs)/1000;
-  const sum=chgComputeSummary(chg.points);
-  chg.endMs=now;
-  chg.endReason=reason;
-  chg.endState=S.charger||'';
-  Object.assign(chg,sum);
-  // discard junk sessions (too short / no energy)
-  if(durSec<30 && (sum.energyWh||0)<0.01){ chg=null; return; }
-  chgPut(chg);
-  chg=null;
-  refreshChargesScreen();
+if(!chg) return;
+const durSec=(now-chg.startMs)/1000;
+const sum=chgComputeSummary(chg.points);
+chg.endMs=now;
+chg.endReason=reason;
+chg.endState=S.charger||'';
+Object.assign(chg,sum);
+// discard junk sessions (too short / no energy)
+if(durSec<30 && (sum.energyWh||0)<0.01){ chg=null; return; }
+chgPut(chg);
+chg=null;
+refreshChargesScreen();
 }
 function chargeRecordPoint(now){
-  chg.points.push({ t:now, soc:S.soc>=0?S.soc:null,
-    v:S.packValid?S.v:null, i:S.packValid?S.i:null });
-  chgLastPointMs=now;
-  chgPut(chg);
+chg.points.push({ t:now, soc:S.soc>=0?S.soc:null,
+v:S.packValid?S.v:null, i:S.packValid?S.i:null });
+chgLastPointMs=now;
+chgPut(chg);
 }
 function chargeTick(){
-  if(!chgDB) return;
-  const now=Date.now();
-  if(!chg){
-    if(S.charging && !chgPrevCharging && lastUpdate) chargeStart(now);
-  } else {
-    if(!S.charging) chargeEnd(now,'stopped');
-    else if(now-chgLastPointMs>=30000) chargeRecordPoint(now); // 30s, charging is slow
-  }
-  chgPrevCharging=S.charging;
+if(!chgDB) return;
+const now=Date.now();
+if(!chg){
+if(S.charging && !chgPrevCharging && lastUpdate) chargeStart(now);
+} else {
+if(!S.charging) chargeEnd(now,'stopped');
+else if(now-chgLastPointMs>=30000) chargeRecordPoint(now); // 30s, charging is slow
+}
+chgPrevCharging=S.charging;
 }
 async function chargeCleanupOrphans(){
-  const all=await chgGetAll();
-  let changed=false;
-  for(const c of all){
-    if(c.endMs==null && (!chg || c.id!==chg.id)){
-      const lastT=c.points.length?c.points[c.points.length-1].t:c.startMs;
-      const sum=chgComputeSummary(c.points);
-      c.endMs=lastT; c.endReason='orphan';
-      Object.assign(c,sum);
-      await chgPut(c);
-      changed=true;
-    }
-  }
-  if(changed) refreshChargesScreen();
+const all=await chgGetAll();
+let changed=false;
+for(const c of all){
+if(c.endMs==null && (!chg || c.id!==chg.id)){
+const lastT=c.points.length?c.points[c.points.length-1].t:c.startMs;
+const sum=chgComputeSummary(c.points);
+c.endMs=lastT; c.endReason='orphan';
+Object.assign(c,sum);
+await chgPut(c);
+changed=true;
+}
+}
+if(changed) refreshChargesScreen();
 }
 async function refreshChargesScreen(){
-  const banner=$('charge-active-banner');
-  if(banner) banner.classList.toggle('show', !!chg);
-  if(!chgDB) return;
-  const all=await chgGetAll();
-  all.sort((a,b)=>b.startMs-a.startMs);
-  const done=all.filter(c=>c.endMs!=null);
-  const totalWh=done.reduce((s,c)=>s+(c.energyWh||0),0);
-  const totalSec=done.reduce((s,c)=>s+((c.endMs-c.startMs)/1000),0);
-  $('cs-total').textContent=done.length;
-  $('cs-kwh').textContent=(totalWh/1000).toFixed(2);
-  $('cs-hours').textContent=(totalSec/3600).toFixed(1);
-  const list=$('charge-list'); if(!list) return;
-  if(!done.length){ list.innerHTML=''; $('charge-empty').style.display='block'; $('charge-clear').style.display='none'; return; }
-  $('charge-empty').style.display='none'; $('charge-clear').style.display='block';
-  list.innerHTML=done.map(c=>{
-    const d=new Date(c.startMs);
-    const dstr=d.toLocaleDateString('ru-RU',{day:'2-digit',month:'short'})+' '+d.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
-    const dur=(c.endMs-c.startMs)/1000;
-    const socStr=(c.startSoc!=null&&c.endSoc!=null)?(c.startSoc.toFixed(0)+'→'+c.endSoc.toFixed(0)+'%'):'';
-    const st=c.endState?(' · '+({'done':'завершено','stopped':'прервано','wait':'ожидание'}[c.endState]||c.endState)):'';
-    return '<div class="trip-item">'+
-      '<div class="t-head"><span class="t-date">'+dstr+'</span><span class="t-dur">'+fmtDur(dur)+'</span></div>'+
-      '<div class="t-metrics"><span><span class="m-val">'+((c.energyWh||0)/1000).toFixed(2)+'</span> кВт·ч</span>'+
-      (c.maxV!=null?'<span><span class="m-val">'+c.maxV.toFixed(0)+'</span> V</span>':'')+'</div>'+
-      '<div class="t-meta">'+(socStr?'<span>Заряд: '+socStr+'</span>':'')+'<span>'+st+'</span></div>'+
-      '</div>';
-  }).join('');
+const banner=$('charge-active-banner');
+if(banner) banner.classList.toggle('show', !!chg);
+if(!chgDB) return;
+const all=await chgGetAll();
+all.sort((a,b)=>b.startMs-a.startMs);
+const done=all.filter(c=>c.endMs!=null);
+const totalWh=done.reduce((s,c)=>s+(c.energyWh||0),0);
+const totalSec=done.reduce((s,c)=>s+((c.endMs-c.startMs)/1000),0);
+$('cs-total').textContent=done.length;
+$('cs-kwh').textContent=(totalWh/1000).toFixed(2);
+$('cs-hours').textContent=(totalSec/3600).toFixed(1);
+const list=$('charge-list'); if(!list) return;
+if(!done.length){ list.innerHTML=''; $('charge-empty').style.display='block'; $('charge-clear').style.display='none'; return; }
+$('charge-empty').style.display='none'; $('charge-clear').style.display='block';
+list.innerHTML=done.map(c=>{
+const d=new Date(c.startMs);
+const dstr=d.toLocaleDateString('ru-RU',{day:'2-digit',month:'short'})+' '+d.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
+const dur=(c.endMs-c.startMs)/1000;
+const socStr=(c.startSoc!=null&&c.endSoc!=null)?(c.startSoc.toFixed(0)+'→'+c.endSoc.toFixed(0)+'%'):'';
+const st=c.endState?(' · '+({'done':'завершено','stopped':'прервано','wait':'ожидание'}[c.endState]||c.endState)):'';
+return '<div class="trip-item">'+
+'<div class="t-head"><span class="t-date">'+dstr+'</span><span class="t-dur">'+fmtDur(dur)+'</span></div>'+
+'<div class="t-metrics"><span><span class="m-val">'+((c.energyWh||0)/1000).toFixed(2)+'</span> кВт·ч</span>'+
+(c.maxV!=null?'<span><span class="m-val">'+c.maxV.toFixed(0)+'</span> V</span>':'')+'</div>'+
+'<div class="t-meta">'+(socStr?'<span>Заряд: '+socStr+'</span>':'')+'<span>'+st+'</span></div>'+
+'</div>';
+}).join('');
 }
 async function clearCharges(){
-  if(!confirm('Удалить всю историю зарядок?')) return;
-  await chgClearAll();
-  refreshChargesScreen();
-  toast('История очищена');
+if(!confirm('Удалить всю историю зарядок?')) return;
+await chgClearAll();
+refreshChargesScreen();
+toast('История очищена');
 }
-
 // ---------- settings modal ----------
 function openSettings(){
-  if(onBoard){ location.href='/settings'; return; }
-  cfg=loadCfg()||{host:'m5.wqtt.ru',port:15871,user:'',pass:'',vid:'leaf'};
-  $('cfg-host').value=cfg.host||''; $('cfg-port').value=cfg.port||15871;
-  $('cfg-user').value=cfg.user||''; $('cfg-pass').value=cfg.pass||'';
-  $('cfg-vid').value=cfg.vid||'leaf';
-  $('settings-modal').classList.add('show');
+if(onBoard){ location.href='/settings'; return; }
+cfg=loadCfg()||{host:'m5.wqtt.ru',port:15871,user:'',pass:'',vid:'leaf'};
+$('cfg-host').value=cfg.host||''; $('cfg-port').value=cfg.port||15871;
+$('cfg-user').value=cfg.user||''; $('cfg-pass').value=cfg.pass||'';
+$('cfg-vid').value=cfg.vid||'leaf';
+$('settings-modal').classList.add('show');
 }
 function closeSettings(){ $('settings-modal').classList.remove('show'); }
 function openAbout(){ $('about-modal').classList.add('show'); }
 function closeAbout(event){
-  if(event && event.target!==$('about-modal')) return;
-  $('about-modal').classList.remove('show');
+if(event && event.target!==$('about-modal')) return;
+$('about-modal').classList.remove('show');
+}
+let developerStatusTimer=null;
+function openDeveloper(){
+if(!onBoard){ toast('Доступно только при подключении к плате'); return; }
+$('developer-modal').classList.add('show');
+$('developer-password').value='';
+$('developer-login-error').textContent='';
+developerShowLogin();
+$('developer-password').focus();
+}
+function closeDeveloper(event){
+if(event && event.target!==$('developer-modal')) return;
+$('developer-modal').classList.remove('show');
+if(developerStatusTimer){ clearInterval(developerStatusTimer); developerStatusTimer=null; }
+}
+function developerShowLogin(){
+$('developer-login').style.display='block';
+$('developer-panel').style.display='none';
+}
+async function developerLogin(){
+const password=$('developer-password').value;
+$('developer-login-error').textContent='';
+try{
+const r=await fetch('/api/developer/login',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'password='+encodeURIComponent(password)});
+if(!r.ok){ $('developer-login-error').textContent='Неверный пароль'; return; }
+$('developer-login').style.display='none';
+$('developer-panel').style.display='block';
+await refreshCanLogStatus();
+developerStatusTimer=setInterval(refreshCanLogStatus,2000);
+}catch(e){ $('developer-login-error').textContent='Нет связи с платой'; }
+}
+async function refreshCanLogStatus(){
+try{
+const r=await fetch('/api/developer/canlog',{cache:'no-store'});
+if(r.status===401){ developerShowLogin(); return; }
+if(!r.ok) throw new Error();
+const s=await r.json();
+$('canlog-state').textContent=s.full?'Память заполнена':(s.recording?'Идёт запись':'Запись остановлена');
+$('canlog-details').textContent='Кадров: '+s.frames+' из '+s.capacity;
+$('canlog-start').disabled=s.recording;
+$('canlog-stop').disabled=!s.recording;
+$('canlog-clear').disabled=s.recording||s.frames===0;
+$('canlog-download').style.display=s.frames?'block':'none';
+$('canlog-error').textContent=s.full?'Запись остановлена автоматически. Скачайте журнал.':'';
+}catch(e){ $('canlog-error').textContent='Не удалось получить состояние записи'; }
+}
+async function canLogAction(action){
+$('canlog-error').textContent='';
+try{
+const r=await fetch('/api/developer/canlog/'+action,{method:'POST'});
+if(r.status===401){ developerShowLogin(); return; }
+if(!r.ok) throw new Error();
+await refreshCanLogStatus();
+}catch(e){ $('canlog-error').textContent='Команда не выполнена'; }
 }
 document.addEventListener('keydown',event=>{
-  if(event.key==='Escape') closeAbout();
+if(event.key==='Escape'){ closeAbout(); closeDeveloper(); }
 });
 document.querySelectorAll('.settings-group').forEach(s=>s.addEventListener('toggle',()=>{
-  if(!s.open) return;
-  document.querySelectorAll('.settings-group[open]').forEach(o=>{ if(o!==s) o.open=false; });
+if(!s.open) return;
+document.querySelectorAll('.settings-group[open]').forEach(o=>{ if(o!==s) o.open=false; });
 }));
 function saveSettings(){
-  cfg={ host:$('cfg-host').value.trim(), port:parseInt($('cfg-port').value)||15871,
-    user:$('cfg-user').value.trim(), pass:$('cfg-pass').value, vid:$('cfg-vid').value.trim()||'leaf' };
-  localStorage.setItem('leafcfg',JSON.stringify(cfg));
-  closeSettings();
-  if(mode==='mqtt'){ try{client.end(true);}catch(e){} }
-  mqttConnect();
-  toast('Сохранено');
+cfg={ host:$('cfg-host').value.trim(), port:parseInt($('cfg-port').value)||15871,
+user:$('cfg-user').value.trim(), pass:$('cfg-pass').value, vid:$('cfg-vid').value.trim()||'leaf' };
+localStorage.setItem('leafcfg',JSON.stringify(cfg));
+closeSettings();
+if(mode==='mqtt'){ try{client.end(true);}catch(e){} }
+mqttConnect();
+toast('Сохранено');
 }
-
 // ---------- boot ----------
 async function boot(){
-  const savedSp = localStorage.getItem('leafsp');
-  if(savedSp){ $('sp-slider').value = savedSp; $('sp-val').textContent = savedSp; spTouched = true; }
-  render();
-  tripOpenDB().then(db=>{ tripDB=db; return tripCleanupOrphans(); })
-    .then(()=>refreshTripsScreen()).catch(()=>{});
-  chargeOpenDB().then(db=>{ chgDB=db; return chargeCleanupOrphans(); })
-    .then(()=>refreshChargesScreen()).catch(()=>{});
-  setInterval(()=>{ tripTick(); chargeTick(); updateBadge(); }, 15000); // stale/idle check even when no messages arrive
-  if('serviceWorker' in navigator && location.protocol==='https:'){
-    navigator.serviceWorker.register('sw.js').catch(()=>{});
-  }
-  // try local board first, fall back to MQTT
-  try{
-    const ac=new AbortController();
-    setTimeout(()=>ac.abort(),1800);
-    const r=await fetch('/api/status',{signal:ac.signal});
-    if(r.ok){ mode='local'; onBoard=true; pollLocal(); setInterval(pollLocal,3000);
-      $('more-mode').textContent='Локально (плата)';
-      $('more-settings-label').textContent='Настройки платы';
-      $('more-ota').style.display='flex';
-      return; }
-  }catch(e){}
-  if(loadCfg()){ mqttConnect(); $('more-mode').textContent='MQTT'; }
-  else { updateBadge(); $('more-mode').textContent='Не настроено — нажмите Настройки'; openSettings(); }
+const savedSp = localStorage.getItem('leafsp');
+if(savedSp){ $('sp-slider').value = savedSp; $('sp-val').textContent = savedSp; spTouched = true; }
+render();
+tripOpenDB().then(db=>{ tripDB=db; return tripCleanupOrphans(); })
+.then(()=>refreshTripsScreen()).catch(()=>{});
+chargeOpenDB().then(db=>{ chgDB=db; return chargeCleanupOrphans(); })
+.then(()=>refreshChargesScreen()).catch(()=>{});
+setInterval(()=>{ tripTick(); chargeTick(); updateBadge(); }, 15000); // stale/idle check even when no messages arrive
+if('serviceWorker' in navigator && location.protocol==='https:'){
+navigator.serviceWorker.register('sw.js').catch(()=>{});
+}
+// try local board first, fall back to MQTT
+try{
+const ac=new AbortController();
+setTimeout(()=>ac.abort(),1800);
+const r=await fetch('/api/status',{signal:ac.signal});
+if(r.ok){ mode='local'; onBoard=true; pollLocal(); setInterval(pollLocal,3000);
+$('more-mode').textContent='Локально (плата)';
+$('more-settings-label').textContent='Настройки платы';
+$('more-ota').style.display='flex';
+$('more-developer').style.display='flex';
+return; }
+}catch(e){}
+if(loadCfg()){ mqttConnect(); $('more-mode').textContent='MQTT'; }
+else { updateBadge(); $('more-mode').textContent='Не настроено — нажмите Настройки'; openSettings(); }
 }
 boot();
 </script>

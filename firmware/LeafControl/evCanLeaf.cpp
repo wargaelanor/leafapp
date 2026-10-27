@@ -1,6 +1,7 @@
 #include "evCanLeaf.h"
 #include <SPI.h>
 #include "mcp2515.h"
+#include "canLogger.h"
 
 // T-2CAN Port A pins (LilyGO pin_config.h)
 #define EVCAN_SPI_SCLK 12
@@ -90,6 +91,7 @@ void manageEvCAN() {
     struct can_frame frame;
     if (evCan.readMessage(&frame) != MCP2515::ERROR_OK) break;
     canFramesA++;
+    canLoggerAppend('A', '<', frame.can_id, frame.data, frame.can_dlc);
     handleEvFrame(frame.can_id, frame.can_dlc, frame.data);
   }
 }

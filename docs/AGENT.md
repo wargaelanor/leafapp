@@ -28,7 +28,7 @@ powershell -File tools\mkwebapp.ps1
 # 1) компиляция (arduino-cli должен быть установлен)
 & "$env:LOCALAPPDATA\Temp\opencode\arduino-cli\arduino-cli.exe" compile `
   --config-file "$env:USERPROFILE\.arduinoIDE\arduino-cli.yaml" `
-  --fqbn "esp32:esp32:esp32s3:CDCOnBoot=cdc" `
+  --fqbn "esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=cdc,FlashSize=16M,PartitionScheme=app3M_fat9M_16MB,PSRAM=disabled" `
   --output-dir "$env:TEMP\leafbin" firmware\LeafControl
 
 # 2a) web-OTA (плата в той же сети; URL берите из последнего лога
@@ -40,7 +40,14 @@ curl.exe -m 240 -F "firmware=@$env:TEMP\leafbin\LeafControl.ino.bin" http://leaf
 # 3) serial-лог (115200) — на порт не должен держать другой процесс
 ```
 
-Ветка `sim800`: 1 301 541 / 1 310 720 байт flash (**99%**, свободно ~9 КБ).
+Аппаратная конфигурация: ESP32-S3-WROOM-1U-N16R8, 16 МБ flash и 8 МБ
+OPI PSRAM. В этой разводке линии SIM800 пересекаются с линиями октальной
+памяти, поэтому сборка использует `PSRAM=disabled`; CAN-журнал хранится в
+FAT-разделе flash. Используется таблица с двумя OTA-приложениями по 3 МБ.
+Переход со старой 4-МБ разметки выполняется один раз через USB; последующие
+обновления снова можно устанавливать через web-OTA.
+
+Ветка `sim800`: 1 358 017 / 3 145 728 байт flash (**43%**, свободно ~1,7 МБ).
 Ветка `a7670` собирается отдельно и не содержит SIM800/AMR/управление звонком.
 код почти не влезает — после правок ВСЕГДА смотрите строку «Скетч
 использует …», сокращайте если выросло. «Якоря» размера: HTML PWA ~70 КБ

@@ -158,6 +158,16 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
 .about-list li:before{content:'';position:absolute;left:1px;top:7px;width:7px;height:7px;border-radius:50%;background:#0077ac}
 .about-section.planned .about-list li:before{background:#8e8e93}
 .about-note{margin-top:2px;padding:12px 14px;border-left:3px solid #0077ac;background:#f5f8fa;color:#555;font-size:12px;line-height:1.45}
+.dev-status{margin:16px 0;padding:14px;background:#f5f8fa;border:1px solid #e2e8ec;border-radius:8px}
+.dev-status strong{display:block;font-size:14px;color:#333;margin-bottom:4px}
+.dev-status span{font-size:12px;color:#707070;line-height:1.4}
+.dev-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
+.dev-actions button{min-height:44px;border:1px solid #d8dde2;border-radius:6px;background:#fff;color:#333;font:14px inherit;cursor:pointer}
+.dev-actions .primary{background:#0077ac;border-color:#0077ac;color:#fff}
+.dev-actions .danger{color:#d93025;border-color:#efc6c3}
+.dev-actions button:disabled{opacity:.45;cursor:default}
+.dev-download{display:block;margin-top:10px;padding:12px;text-align:center;border-radius:6px;background:#f1f1f1;color:#0077ac;text-decoration:none;font-size:14px}
+.dev-error{min-height:18px;margin-top:8px;color:#d93025;font-size:12px}
 .settings-groups{margin-top:14px;border:1px solid #eceef1;border-radius:8px;overflow:hidden}
 .settings-group{border-bottom:1px solid #eceef1;background:#fff}
 .settings-group:last-child{border-bottom:0}
@@ -464,6 +474,11 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
         Обновление прошивки
         <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
       </div>
+      <div class="more-item" id="more-developer" style="display:none" onclick="openDeveloper()">
+        <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 9l-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg></div>
+        Для разработчика
+        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+      </div>
       <div class="more-item" onclick="openAbout()">
         <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></div>
         О приложении
@@ -591,6 +606,34 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
       </section>
 
       <p class="about-note">Набор доступных функций зависит от комплектации автомобиля, установленного модема и способа подключения платы.</p>
+    </div>
+  </div>
+
+  <!-- Для разработчика -->
+  <div class="modal" id="developer-modal" role="dialog" aria-modal="true" aria-labelledby="developer-title" onclick="closeDeveloper(event)">
+    <div class="sheet">
+      <div class="about-head">
+        <div><h2 id="developer-title">Для разработчика</h2><p>Запись CAN-журнала автомобиля в диагностическое хранилище платы.</p></div>
+        <button class="about-close" type="button" aria-label="Закрыть" onclick="closeDeveloper()">×</button>
+      </div>
+      <div id="developer-login">
+        <label for="developer-password">Пароль</label>
+        <input id="developer-password" type="password" inputmode="numeric" autocomplete="off" maxlength="12" onkeydown="if(event.key==='Enter')developerLogin()">
+        <div class="dev-error" id="developer-login-error"></div>
+        <div class="btns"><button class="save" onclick="developerLogin()">Войти</button></div>
+      </div>
+      <div id="developer-panel" style="display:none">
+        <div class="dev-status"><strong id="canlog-state">Запись выключена</strong><span id="canlog-details">Кадров: 0</span></div>
+        <p class="hint">Нажмите «Начать запись», выполните действия штатным ключом, затем остановите запись и скачайте файл. Новая запись удаляет предыдущую.</p>
+        <div class="dev-actions">
+          <button class="primary" id="canlog-start" onclick="canLogAction('start')">Начать запись</button>
+          <button id="canlog-stop" onclick="canLogAction('stop')">Остановить</button>
+          <button class="danger" id="canlog-clear" onclick="canLogAction('clear')">Очистить</button>
+          <button onclick="refreshCanLogStatus()">Обновить</button>
+        </div>
+        <a class="dev-download" id="canlog-download" href="/api/developer/canlog/download" download>Скачать журнал</a>
+        <div class="dev-error" id="canlog-error"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -1424,8 +1467,62 @@ function closeAbout(event){
   if(event && event.target!==$('about-modal')) return;
   $('about-modal').classList.remove('show');
 }
+let developerStatusTimer=null;
+function openDeveloper(){
+  if(!onBoard){ toast('Доступно только при подключении к плате'); return; }
+  $('developer-modal').classList.add('show');
+  $('developer-password').value='';
+  $('developer-login-error').textContent='';
+  developerShowLogin();
+  $('developer-password').focus();
+}
+function closeDeveloper(event){
+  if(event && event.target!==$('developer-modal')) return;
+  $('developer-modal').classList.remove('show');
+  if(developerStatusTimer){ clearInterval(developerStatusTimer); developerStatusTimer=null; }
+}
+function developerShowLogin(){
+  $('developer-login').style.display='block';
+  $('developer-panel').style.display='none';
+}
+async function developerLogin(){
+  const password=$('developer-password').value;
+  $('developer-login-error').textContent='';
+  try{
+    const r=await fetch('/api/developer/login',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'password='+encodeURIComponent(password)});
+    if(!r.ok){ $('developer-login-error').textContent='Неверный пароль'; return; }
+    $('developer-login').style.display='none';
+    $('developer-panel').style.display='block';
+    await refreshCanLogStatus();
+    developerStatusTimer=setInterval(refreshCanLogStatus,2000);
+  }catch(e){ $('developer-login-error').textContent='Нет связи с платой'; }
+}
+async function refreshCanLogStatus(){
+  try{
+    const r=await fetch('/api/developer/canlog',{cache:'no-store'});
+    if(r.status===401){ developerShowLogin(); return; }
+    if(!r.ok) throw new Error();
+    const s=await r.json();
+    $('canlog-state').textContent=s.full?'Память заполнена':(s.recording?'Идёт запись':'Запись остановлена');
+    $('canlog-details').textContent='Кадров: '+s.frames+' из '+s.capacity;
+    $('canlog-start').disabled=s.recording;
+    $('canlog-stop').disabled=!s.recording;
+    $('canlog-clear').disabled=s.recording||s.frames===0;
+    $('canlog-download').style.display=s.frames?'block':'none';
+    $('canlog-error').textContent=s.full?'Запись остановлена автоматически. Скачайте журнал.':'';
+  }catch(e){ $('canlog-error').textContent='Не удалось получить состояние записи'; }
+}
+async function canLogAction(action){
+  $('canlog-error').textContent='';
+  try{
+    const r=await fetch('/api/developer/canlog/'+action,{method:'POST'});
+    if(r.status===401){ developerShowLogin(); return; }
+    if(!r.ok) throw new Error();
+    await refreshCanLogStatus();
+  }catch(e){ $('canlog-error').textContent='Команда не выполнена'; }
+}
 document.addEventListener('keydown',event=>{
-  if(event.key==='Escape') closeAbout();
+  if(event.key==='Escape'){ closeAbout(); closeDeveloper(); }
 });
 document.querySelectorAll('.settings-group').forEach(s=>s.addEventListener('toggle',()=>{
   if(!s.open) return;
@@ -1463,6 +1560,7 @@ async function boot(){
       $('more-mode').textContent='Локально (плата)';
       $('more-settings-label').textContent='Настройки платы';
       $('more-ota').style.display='flex';
+      $('more-developer').style.display='flex';
       return; }
   }catch(e){}
   if(loadCfg()){ mqttConnect(); $('more-mode').textContent='MQTT'; }

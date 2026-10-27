@@ -14,11 +14,15 @@
 #include "webapp_html.h"
 #include "mqttInterface.h"
 #include "modemManager.h"
+#include "canLogger.h"
 
 WebServer server(80);
 DNSServer dnsServer;
 bool captivePortalActive = false;
 unsigned long rebootPendingAt = 0;
+static uint32_t developerSession = 0;
+static unsigned long developerSessionSeenMs = 0;
+static const unsigned long DEVELOPER_SESSION_MS = 15UL * 60UL * 1000UL;
 
 
 // State variables
@@ -247,6 +251,80 @@ void handleApiStatus() {
     (unsigned long)(gpsValid ? gAge / 1000UL : 0UL));
   server.sendHeader("Cache-Control", "no-store");
   server.send(200, "application/json", json);
+}
+
+static bool developerAuthorized() {
+  if (developerSession == 0 || millis() - developerSessionSeenMs > DEVELOPER_SESSION_MS) return false;
+  String cookie = server.header("Cookie");
+  char expected[32];
+  snprintf(expected, sizeof(expected), "leafdev=%08lx", (unsigned long)developerSession);
+  if (cookie.indexOf(expected) < 0) return false;
+  developerSessionSeenMs = millis();
+  return true;
+}
+
+static bool requireDeveloperAuth() {
+  if (developerAuthorized()) return true;
+  server.send(401, "application/json", "{\"error\":\"unauthorized\"}");
+  return false;
+}
+
+void handleDeveloperLogin() {
+  if (!server.hasArg("password") || server.arg("password") != "1985") {
+    delay(250);
+    server.send(403, "application/json", "{\"error\":\"wrong_password\"}");
+    return;
+  }
+  developerSession = esp_random();
+  if (developerSession == 0) developerSession = 1;
+  developerSessionSeenMs = millis();
+  char cookie[80];
+  snprintf(cookie, sizeof(cookie), "leafdev=%08lx; Path=/; HttpOnly; SameSite=Strict",
+           (unsigned long)developerSession);
+  server.sendHeader("Set-Cookie", cookie);
+  server.send(200, "application/json", "{\"ok\":true}");
+}
+
+void handleCanLogStatus() {
+  if (!requireDeveloperAuth()) return;
+  char json[160];
+  snprintf(json, sizeof(json),
+           "{\"recording\":%s,\"full\":%s,\"frames\":%lu,\"capacity\":%lu}",
+           canLoggerIsRecording() ? "true" : "false", canLoggerIsFull() ? "true" : "false",
+           (unsigned long)canLoggerCount(), (unsigned long)canLoggerCapacity());
+  server.sendHeader("Cache-Control", "no-store");
+  server.send(200, "application/json", json);
+}
+
+void handleCanLogStart() {
+  if (!requireDeveloperAuth()) return;
+  noteUserActivity();
+  if (!canLoggerStart()) {
+    server.send(507, "application/json", "{\"error\":\"no_memory\"}");
+    return;
+  }
+  Serial.println("### Web CAN logging started ###");
+  server.send(200, "application/json", "{\"ok\":true}");
+}
+
+void handleCanLogStop() {
+  if (!requireDeveloperAuth()) return;
+  noteUserActivity();
+  canLoggerStop();
+  Serial.println("### Web CAN logging stopped ###");
+  server.send(200, "application/json", "{\"ok\":true}");
+}
+
+void handleCanLogClear() {
+  if (!requireDeveloperAuth()) return;
+  noteUserActivity();
+  canLoggerClear();
+  server.send(200, "application/json", "{\"ok\":true}");
+}
+
+void handleCanLogDownload() {
+  if (!requireDeveloperAuth()) return;
+  canLoggerSendDownload();
 }
 
 // ---------- OTA ----------
@@ -1011,10 +1089,18 @@ void setup() {
   }
 
   if (wifiEnabled) {
+      const char* trackedHeaders[] = {"Cookie"};
+      server.collectHeaders(trackedHeaders, 1);
       server.on("/", handleRoot);
 server.on("/leaf.webp", handleLeafImg);
 server.on("/leaf.png", handleLeafPngLegacy);
       server.on("/api/status", handleApiStatus);
+      server.on("/api/developer/login", HTTP_POST, handleDeveloperLogin);
+      server.on("/api/developer/canlog", HTTP_GET, handleCanLogStatus);
+      server.on("/api/developer/canlog/start", HTTP_POST, handleCanLogStart);
+      server.on("/api/developer/canlog/stop", HTTP_POST, handleCanLogStop);
+      server.on("/api/developer/canlog/clear", HTTP_POST, handleCanLogClear);
+      server.on("/api/developer/canlog/download", HTTP_GET, handleCanLogDownload);
       server.on("/ota", handleOtaPage);
       server.on("/ota_update", HTTP_POST, handleOtaResult, handleOtaUpload);
       server.on("/settings", handleSettings);
@@ -1101,7 +1187,8 @@ void loop() {
   // --- Power save: deep sleep after idle period ---
   // Never sleep while charging or running remote climate
   bool callControlKeepsAwake = getModemEnable() && getModemCallEnabled();
-  if (getSleepEnabled() && !callControlKeepsAwake && !otaInProgress && activeSequence == CanSequence::NONE &&
+  if (getSleepEnabled() && !callControlKeepsAwake && !canLoggerIsRecording() &&
+      !otaInProgress && activeSequence == CanSequence::NONE &&
       !isChargingNow && !isHvacOn) {
     static unsigned long lastIdleTickMs = 0;
     unsigned long now = millis();

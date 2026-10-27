@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "driver/twai.h"
 #include "canInterface.h"
+#include "canLogger.h"
 
 // --- CAN SETTINGS (Port B) ---
 #define CAN_TX_PIN 7 
@@ -62,6 +63,7 @@ bool sendCAN(uint32_t id,const uint8_t* data, uint8_t len) {
   }
 
   bool ok = (twai_transmit(&message, pdMS_TO_TICKS(10)) == ESP_OK);
+  canLoggerAppend('B', ok ? '>' : '!', message.identifier, message.data, message.data_length_code);
   if (canLogFrames) {
     Serial.print(ok ? "> " : "! ");
     print_can_message(message);
@@ -97,6 +99,7 @@ void readAndHandleCANMessage() {
   while (drained < 32 && twai_receive(&message, 0) == ESP_OK) {
     handleReceivedMessage(message.identifier, message.data, message.data_length_code);
     canFramesB++;
+    canLoggerAppend('B', '<', message.identifier, message.data, message.data_length_code);
     if (canLogFrames) {
       Serial.print("< ");
       print_can_message(message);

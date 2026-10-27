@@ -10,6 +10,11 @@ if (-not $Out) { $Out = Join-Path $root 'firmware\LeafControl\webapp_html.h' }
 
 $html = [System.IO.File]::ReadAllText((Join-Path $app 'index.html'), [System.Text.Encoding]::UTF8)
 if ($html -match '\)"rawliteral') { throw 'index.html contains rawliteral terminator - change delimiter' }
+# Keep the source readable, but omit indentation and empty lines from the
+# embedded copy. On the SIM800 build every saved byte matters near the OTA
+# partition limit; this transformation does not alter HTML/JS token spacing.
+$html = [regex]::Replace($html, '(?m)^[ \t]+', '')
+$html = [regex]::Replace($html, '(?m)^\r?\n', '')
 
 # Vehicle picture: prefer WebP (16.9 KB) over the source PNG (23.5 KB).
 $imgFile = 'leaf.webp'; $imgType = 'image/webp'
