@@ -146,6 +146,17 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
 .modal .btns button{flex:1;padding:12px;border:none;border-radius:6px;font-size:14px;font-family:inherit;cursor:pointer}
 .modal .btns .save{background:#0077ac;color:#fff}
 .modal .btns .cancel{background:#f1f1f1;color:#333}
+.settings-groups{margin-top:14px;border:1px solid #eceef1;border-radius:8px;overflow:hidden}
+.settings-group{border-bottom:1px solid #eceef1;background:#fff}
+.settings-group:last-child{border-bottom:0}
+.settings-group summary{list-style:none;min-height:52px;padding:0 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:14px;color:#333;cursor:pointer;user-select:none}
+.settings-group summary::-webkit-details-marker{display:none}
+.settings-group summary:after{content:'›';font-size:24px;font-weight:300;color:#8e8e93;line-height:1;transition:transform .18s}
+.settings-group[open] summary{color:#0077ac;border-bottom:1px solid #f0f1f3}
+.settings-group[open] summary:after{transform:rotate(90deg)}
+.settings-group-body{padding:2px 14px 16px}
+.settings-availability{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:#707070}
+.settings-availability i{width:8px;height:8px;border-radius:50%;background:#b8bcc2;flex:0 0 auto}
 .seq-banner{background:#fff4e5;color:#b45309;text-align:center;font-size:13px;padding:8px;display:none}
 .seq-banner.show{display:block}
 .trip-summary{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:12px 16px}
@@ -459,21 +470,43 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
     </div>
   </div>
 
-  <!-- Настройки подключения (MQTT) -->
+  <!-- Настройки -->
   <div class="modal" id="settings-modal">
     <div class="sheet">
-      <h2>Подключение</h2>
-      <p class="hint">Данные брокера MQTT (например, из личного кабинета wqtt.ru). В режиме локального подключения к плате настройки не нужны.</p>
-      <label>Сервер</label>
-      <input id="cfg-host" placeholder="m5.wqtt.ru">
-      <label>Порт WebSocket TLS</label>
-      <input id="cfg-port" type="number" value="15871">
-      <label>Пользователь</label>
-      <input id="cfg-user" placeholder="u_XXXXXX" autocapitalize="off">
-      <label>Пароль</label>
-      <input id="cfg-pass" type="password">
-      <label>Vehicle ID</label>
-      <input id="cfg-vid" placeholder="leaf">
+      <h2>Настройки</h2>
+      <div class="settings-groups">
+        <details class="settings-group" data-pwa-section="mqtt" open>
+          <summary>MQTT-брокер</summary>
+          <div class="settings-group-body">
+            <label>Сервер</label>
+            <input id="cfg-host" placeholder="m5.wqtt.ru">
+            <label>Порт WebSocket TLS</label>
+            <input id="cfg-port" type="number" value="15871">
+            <label>Пользователь</label>
+            <input id="cfg-user" placeholder="u_XXXXXX" autocapitalize="off">
+            <label>Пароль</label>
+            <input id="cfg-pass" type="password">
+            <label>Vehicle ID</label>
+            <input id="cfg-vid" placeholder="leaf">
+          </div>
+        </details>
+        <details class="settings-group" data-pwa-section="wifi">
+          <summary>Wi-Fi</summary>
+          <div class="settings-group-body"><div class="settings-availability"><i></i><span>Настраивается при локальном подключении к плате</span></div></div>
+        </details>
+        <details class="settings-group" data-pwa-section="security">
+          <summary>Безопасность</summary>
+          <div class="settings-group-body"><div class="settings-availability"><i></i><span>Настраивается при локальном подключении к плате</span></div></div>
+        </details>
+        <details class="settings-group" data-pwa-section="modem">
+          <summary>Мобильный модем</summary>
+          <div class="settings-group-body"><div class="settings-availability"><i></i><span>Настраивается при локальном подключении к плате</span></div></div>
+        </details>
+        <details class="settings-group" data-pwa-section="power">
+          <summary>Экономия энергии</summary>
+          <div class="settings-group-body"><div class="settings-availability"><i></i><span>Настраивается при локальном подключении к плате</span></div></div>
+        </details>
+      </div>
       <div class="btns">
         <button class="cancel" onclick="closeSettings()">Отмена</button>
         <button class="save" onclick="saveSettings()">Сохранить</button>
@@ -1295,6 +1328,10 @@ function openSettings(){
   $('settings-modal').classList.add('show');
 }
 function closeSettings(){ $('settings-modal').classList.remove('show'); }
+document.querySelectorAll('.settings-group').forEach(s=>s.addEventListener('toggle',()=>{
+  if(!s.open) return;
+  document.querySelectorAll('.settings-group[open]').forEach(o=>{ if(o!==s) o.open=false; });
+}));
 function saveSettings(){
   cfg={ host:$('cfg-host').value.trim(), port:parseInt($('cfg-port').value)||15871,
     user:$('cfg-user').value.trim(), pass:$('cfg-pass').value, vid:$('cfg-vid').value.trim()||'leaf' };
