@@ -32,7 +32,8 @@ inline constexpr CANMessage<4> hvac_on_idle      = {0x56E, {0x8E, 0x00, 0x0A, 0x
 inline constexpr CANMessage<4> hvac_session_idle = {0x56E, {0x86, 0x00, 0x0A, 0x00}}; // Session keepalive (OEM repeats ~1/s)
 inline constexpr CANMessage<4> start_charge_data = {0x56E, {0x66, 0x08, 0x00, 0x00}}; // Charging ON (OEM)
 inline constexpr CANMessage<4> charge_ack_data   = {0x56E, {0xA6, 0x00, 0x00, 0x00}}; // Charging ON final ack (OEM)
-inline constexpr CANMessage<4> interrupt_data    = {0x56E, {0x96, 0x00, 0x0A, 0x00}}; // Interrupt action (OEM climate OFF)
+inline constexpr CANMessage<4> interrupt_data    = {0x56E, {0x96, 0x00, 0x00, 0x00}}; // Interrupt action (generic)
+inline constexpr CANMessage<4> hvac_off_int      = {0x56E, {0x96, 0x00, 0x0A, 0x00}}; // OEM climate OFF interrupt
 inline constexpr CANMessage<4> hvac_off_data     = {0x56E, {0x56, 0x08, 0x0A, 0x00}}; // HVAC OFF (OEM)
 // Lock: OEM sends exactly two 46 80 frames 100 ms apart, then standby.
 // Unlock: OEM sets bit0 of byte0 (46 -> 47), also repeated twice.

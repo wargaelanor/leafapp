@@ -306,9 +306,11 @@ void setHVACTargetTemperature(float setpoint) {
                   setpoint, internal_hvac_setpoint_byte);
 }
 
+// Wake the TCU and leave it awake: ending a refresh with 86 00 00 00 (sleep)
+// cut the data stream off right after the wake-up.
 static const SequenceStep seq_refresh[] = {
     MSG_BURST_STEP(hvac_init, 6, 100, 3, 800),
-    MSG_STEP(idle_data, 4, 100)
+    MSG_STEP(hvac_init, 4, 400)
 };
 
 // Remote climate ON, payloads and cadence from "запуск и стоп климата через тсу":
@@ -326,16 +328,15 @@ static const SequenceStep seq_hvac_on[] = {
 static const SequenceStep seq_hvac_off[] = {
     MSG_STEP(hvac_init, 1, 100),
     MSG_BURST_STEP(hvac_off_data, 3, 100, 3, 800),
-    MSG_BURST_STEP(interrupt_data, 3, 100, 3, 800),
+    MSG_BURST_STEP(hvac_off_int, 3, 100, 3, 800),
     MSG_BURST_STEP(hvac_off_data, 3, 100, 3, 800),
-    MSG_BURST_STEP(interrupt_data, 2, 100, 3, 800),
+    MSG_BURST_STEP(hvac_off_int, 2, 100, 3, 800),
     MSG_STEP(idle_data, 3, 100)
 };
 
 static const SequenceStep seq_charge_on[] = {
     MSG_STEP(start_charge_data, 37, 110),   // OEM: 66 08 00 00 x37 over ~4 s
-    MSG_STEP(charge_ack_data, 1, 100),      // OEM: single A6 00 00 00
-    MSG_STEP(idle_data, 3, 100)
+    MSG_STEP(charge_ack_data, 1, 100)       // OEM: single A6 00 00 00, then nothing
 };
 
 // Experimental: withdraw the remote-charge request (RC bit cleared via init
