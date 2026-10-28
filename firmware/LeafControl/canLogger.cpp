@@ -109,15 +109,35 @@ void canLoggerSendDownload() {
     server.send(404, "text/plain", "CAN log is empty");
     return;
   }
-  server.sendHeader("Content-Disposition", "attachment; filename=leaf-can-log.txt");
-  server.setContentLength(CONTENT_LENGTH_UNKNOWN);
-  server.send(200, "text/plain; charset=utf-8", "");
-  server.sendContent("# Leaf Control CAN log\r\n# time_s bus dir id len data\r\n");
-
+  static const char header[] =
+      "# Leaf Control CAN log\r\n# time_s bus dir id len data\r\n";
   char line[96];
+  CanLogRecord record;
+
+  // Calculate an exact Content-Length first. Chunked responses from the ESP32
+  // WebServer occasionally ended with a malformed empty chunk on a weak Wi-Fi
+  // link, leaving loop() stuck in the download handler and blocking HTTP/OTA.
+  size_t textLength = sizeof(header) - 1;
+  while (input.read(reinterpret_cast<uint8_t*>(&record), sizeof(record)) == sizeof(record)) {
+    int used = snprintf(line, sizeof(line), "%lu.%03lu %c %c 0x%03lX %u",
+                        (unsigned long)(record.timestampMs / 1000UL),
+                        (unsigned long)(record.timestampMs % 1000UL),
+                        record.bus, record.direction, (unsigned long)record.id, record.len);
+    for (uint8_t d = 0; d < record.len && used > 0 && used < (int)sizeof(line) - 6; d++) {
+      used += snprintf(line + used, sizeof(line) - used, " %02X", record.data[d]);
+    }
+    textLength += used + 2; // CRLF
+  }
+  if (full) textLength += strlen("# BUFFER FULL - recording stopped automatically\r\n");
+  input.seek(0);
+
+  server.sendHeader("Content-Disposition", "attachment; filename=leaf-can-log.txt");
+  server.setContentLength(textLength);
+  server.send(200, "text/plain; charset=utf-8", "");
+  server.sendContent(header);
+
   String chunk;
   chunk.reserve(1024);
-  CanLogRecord record;
   while (input.read(reinterpret_cast<uint8_t*>(&record), sizeof(record)) == sizeof(record)) {
     int used = snprintf(line, sizeof(line), "%lu.%03lu %c %c 0x%03lX %u",
                         (unsigned long)(record.timestampMs / 1000UL),
@@ -137,5 +157,4 @@ void canLoggerSendDownload() {
   input.close();
   if (chunk.length()) server.sendContent(chunk);
   if (full) server.sendContent("# BUFFER FULL - recording stopped automatically\r\n");
-  server.sendContent("");
 }

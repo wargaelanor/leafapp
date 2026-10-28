@@ -66,11 +66,11 @@ void handleHVACSetpointMessage(const uint8_t* data, uint8_t len) {
     (void)len;
     float setpoint = extractScaledValue(data, hvac_setpoint_field, setpoint_scaling);
     handleHVACSetpoint(setpoint);
-    // 0x54C (outside ambient) never shows up on Port B. The AC controller
-    // publishes its own ambient reading in 0x54A byte7, 0.5 C/bit.
+    // ZE1 0x54A byte 7 tracks ambient with an offset of +41. On this car
+    // raw 0x2F (47) was observed at about +6 C, confirming raw - 41.
     uint8_t ambRaw = data[7];
     if (ambRaw != 0x00 && ambRaw != 0xFF) {
-        float ambient = ambRaw * 0.5f;
+        float ambient = (float)ambRaw - 41.0f;
         if (ambient >= -40.0f && ambient <= 60.0f) handleEvAmbient(ambient);
     }
 }
@@ -154,9 +154,13 @@ void handleBatteryCapacityMessage(const uint8_t* data, uint8_t len) {
     (void)len;
     static int lastGids = -1;
     static int lastSoh = -1;
+    // IT-CAN alternates valid relayed GIDS with a 0x7D00 service variant.
+    // 0x7D00 decodes to a fake 500 GIDS and made range jump to ~300 km.
+    // Do not filter bit6 generally: valid ~80% values around 320 GIDS use it.
+    bool gidsFrame = !(data[0] == 0x7D && (data[1] & 0xC0) == 0x00);
     int gids = (data[0] << 2) | (data[1] >> 6);
     int soh  = (data[4] >> 1) & 0x7F;
-    if (gids > 0 && gids <= 500 && gids != lastGids) {
+    if (gidsFrame && gids > 0 && gids <= 500 && gids != lastGids) {
         lastGids = gids;
         handleEvGids(gids);
     }
@@ -296,14 +300,15 @@ struct SequenceStep {
 static uint8_t internal_hvac_setpoint_byte = 0;
 
 void setHVACTargetTemperature(float setpoint) {
-    // The remote-climate frames carry a fixed OEM flag in byte 2 (0x0A) and no
-    // setpoint at all — the BCM keeps the setpoint that is configured in the
-    // car. The requested value is only recorded for diagnostics/UI.
     internal_hvac_setpoint_byte = (setpoint >= 16.0f && setpoint <= 32.0f)
         ? static_cast<uint8_t>(setpoint * 2.0f)
         : 0;
-    Serial.printf("HVAC setpoint request: %.1f C (byte %u kept at OEM 0x0A)\n",
+    Serial.printf("HVAC setpoint request: %.1f C (command byte %u)\n",
                   setpoint, internal_hvac_setpoint_byte);
+}
+
+static void hvacPayloadModifier(uint8_t* data, uint8_t len) {
+    if (len >= 3) data[2] = internal_hvac_setpoint_byte;
 }
 
 // Wake the TCU and leave it awake: ending a refresh with 86 00 00 00 (sleep)
@@ -313,14 +318,17 @@ static const SequenceStep seq_refresh[] = {
     MSG_STEP(hvac_init, 4, 400)
 };
 
-// Remote climate ON, payloads and cadence from "запуск и стоп климата через тсу":
-// 46 08 00 00 x7 -> 4E 08 0A 00 x7 -> 8E 00 0A 00 x8 -> 86 00 0A 00 (kept
-// running by manageHvacSessionKeepalive() while the session is active).
+// This car previously started climate reliably with the 0x12 enable and 0x32
+// AUTO_DISABLE close payloads. Restore that proven command, but keep the wake
+// and release tails short so the cluster self-test/parking-brake lamp does not
+// keep blinking as it did with the old 136-frame sequence.
 static const SequenceStep seq_hvac_on[] = {
-    MSG_BURST_STEP(hvac_init, 7, 100, 3, 800),
-    MSG_BURST_STEP(hvac_on_data, 7, 100, 3, 800),
-    MSG_BURST_STEP(hvac_on_idle, 8, 100, 3, 800),
-    MSG_BURST_STEP(hvac_session_idle, 12, 100, 3, 800)
+    MSG_STEP(hvac_init, 8, 100),
+    MSG_MOD_STEP(hvac_on_legacy, 24, 100, hvacPayloadModifier),
+    MSG_WAIT_STEP(1000),
+    MSG_STEP(hvac_close_legacy, 1, 100),
+    MSG_MOD_STEP(hvac_on_idle, 4, 100, hvacPayloadModifier),
+    MSG_MOD_STEP(idle_data, 8, 100, hvacPayloadModifier)
 };
 
 // Remote climate OFF: 0x54B flips to "off" on the first 56 08 0A frame, the
@@ -358,8 +366,6 @@ static const SequenceStep seq_rhl_off[] = {
 // frames are ~800 ms apart (not 100 ms), then the TCU returns to standby.
 static const SequenceStep seq_unlock_doors[] = {
     MSG_STEP(tcu_standby, 1, 100),
-    MSG_STEP(unlock_doors_data, 1, 100),
-    MSG_WAIT_STEP(800),
     MSG_STEP(unlock_doors_data, 1, 100),
     MSG_WAIT_STEP(800),
     MSG_STEP(unlock_doors_data, 1, 100),
@@ -539,9 +545,8 @@ void manageVinQuery(unsigned long currentTimeMs) {
     }
 }
 
-// The OEM TCU sustains a remote climate session by repeating "86 00 0A 00"
-// roughly once per second. Without that heartbeat the BCM drops the request
-// within seconds, which looked like "climate does not start".
+// Sustain the proven climate session with the same requested-temperature byte
+// used by its enable/release frames.
 static unsigned long lastHvacKeepaliveMs = 0;
 
 void manageHvacSessionKeepalive(unsigned long currentTimeMs, bool sessionActive) {
@@ -555,5 +560,10 @@ void manageHvacSessionKeepalive(unsigned long currentTimeMs, bool sessionActive)
         return;
     }
     if (lastHvacKeepaliveMs != 0 && currentTimeMs - lastHvacKeepaliveMs < 1000) return;
-    if (sendCAN(hvac_session_idle)) lastHvacKeepaliveMs = currentTimeMs;
+    uint8_t keepalive[4];
+    memcpy(keepalive, idle_data.data, sizeof(keepalive));
+    keepalive[2] = internal_hvac_setpoint_byte;
+    if (sendCAN(idle_data.identifier, keepalive, sizeof(keepalive))) {
+        lastHvacKeepaliveMs = currentTimeMs;
+    }
 }

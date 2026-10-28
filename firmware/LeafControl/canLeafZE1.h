@@ -25,6 +25,8 @@ inline constexpr CANMessage<7> odometer_units_readout = {0x355};
 // 0x56E byte0 = command, byte1 = sub-command, byte2 = climate/charge flag.
 inline constexpr CANMessage<1> wakeup_data       = {0x68C, {0x00}};                  // Wakeup ping
 inline constexpr CANMessage<4> hvac_init         = {0x56E, {0x46, 0x08, 0x00, 0x00}}; // TCU idle / keepalive
+inline constexpr CANMessage<4> hvac_on_legacy    = {0x56E, {0x4E, 0x08, 0x12, 0x00}}; // Verified working on this car
+inline constexpr CANMessage<4> hvac_close_legacy = {0x56E, {0x46, 0x08, 0x32, 0x00}}; // AUTO_DISABLE closing frame
 inline constexpr CANMessage<4> tcu_standby       = {0x56E, {0x46, 0x00, 0x00, 0x00}}; // TCU standby (between commands)
 inline constexpr CANMessage<4> idle_data         = {0x56E, {0x86, 0x00, 0x00, 0x00}}; // Go to sleep
 inline constexpr CANMessage<4> hvac_on_data      = {0x56E, {0x4E, 0x08, 0x0A, 0x00}}; // Remote climate ON (OEM)

@@ -16,7 +16,7 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.10.28.2"
+#define LEAF_FIRMWARE_VERSION "FW-2026.10.28.5"
 #define LEAF_FIRMWARE_DESCRIPTION "SIM800: OEM TCU commands, CAN telemetry, climate control by authorized call"
 
 WebServer server(80);
@@ -1201,7 +1201,10 @@ void loop() {
     }
     // Sustain a running remote climate session (OEM TCU heartbeat). Bounded by
     // the user-requested timer so the 12 V battery is never drained forever.
-    manageHvacSessionKeepalive(millis(), isHvacOn && hvacTimerEndsMs != 0);
+    // Start/keep the heartbeat from the accepted remote request itself. Do
+    // not wait for 0x54B to confirm HVAC ON: the BCM can still be in its
+    // starting state, and without heartbeat it drops the request.
+    manageHvacSessionKeepalive(millis(), hvacTimerEndsMs != 0);
   }
   manageWiFi();
   processSerialInput();
