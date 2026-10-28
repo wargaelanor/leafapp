@@ -229,7 +229,7 @@ void handleApiStatus() {
   float gLat = 0, gLon = 0, gAlt = 0, gSpd = 0;
   uint32_t gAge = 0;
   bool gpsValid = modemGpsFix(&gLat, &gLon, &gAlt, &gSpd, &gAge);
-  char json[1050];
+  char json[1200];
   snprintf(json, sizeof(json),
     "{\"soc\":%.1f,\"cabin\":%.1f,\"charging\":%d,\"charger\":\"%s\",\"hvac\":%d,"
     "\"lock\":%d,\"setpoint\":%.1f,\"fan\":%.0f,\"heat\":%d,\"cool\":%d,\"vent\":%d,"
@@ -237,6 +237,7 @@ void handleApiStatus() {
     "\"isoc\":%.1f,\"irange\":%d,\"btemp\":%.1f,\"cdelta\":%d,"
     "\"odo\":%lu,\"vin\":\"%s\",\"hvac_timer\":%u,"
     "\"on\":%d,\"seq\":%d,\"locking\":%d,\"lights\":%d,"
+    "\"evcan\":%d,\"fa\":%lu,\"fb\":%lu,"
     "\"modem\":\"%s\",\"gps\":{\"lat\":%.5f,\"lon\":%.5f,\"age\":%lu}}",
     currentSOC, cabinTemp, isChargingNow ? 1 : 0, chargerStateStr(currentChargerState),
     isHvacOn ? 1 : 0, (int)lockState, currentSetpoint, currentFanSpeed,
@@ -247,6 +248,7 @@ void handleApiStatus() {
     (unsigned long)evData.odometerKm, evData.vin, hvacTimerRemainingMinutes(),
     (int)evData.vehicleOn,
     sequenceActive ? 1 : 0, getLockingEnabled() ? 1 : 0, headlightsState ? 1 : 0,
+    evCanIsUp() ? 1 : 0, (unsigned long)canFramesA, (unsigned long)canFramesB,
     modemGetStateStr(), gpsValid ? gLat : 0.0, gpsValid ? gLon : 0.0,
     (unsigned long)(gpsValid ? gAge / 1000UL : 0UL));
   server.sendHeader("Cache-Control", "no-store");
@@ -1181,6 +1183,9 @@ void loop() {
       hvacTimerStopPending = false;
       Serial.println("### HVAC timer expired: OFF command started ###");
     }
+    // Sustain a running remote climate session (OEM TCU heartbeat). Bounded by
+    // the user-requested timer so the 12 V battery is never drained forever.
+    manageHvacSessionKeepalive(millis(), isHvacOn && hvacTimerEndsMs != 0);
   }
   manageWiFi();
   processSerialInput();

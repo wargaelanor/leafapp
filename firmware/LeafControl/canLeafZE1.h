@@ -13,21 +13,31 @@ inline constexpr CANMessage<2> hvac_status_readout = {0x54B};
 inline constexpr CANMessage<5> hvac_setpoint_readout = {0x54A};
 inline constexpr CANMessage<3> doors_and_locks_readout = {0x60D};
 inline constexpr CANMessage<2> range_instrument_readout = {0x5A9};
+inline constexpr CANMessage<7> battery_capacity_readout = {0x5BC}; // GIDS + SOH (also present on IT-CAN)
+inline constexpr CANMessage<8> battery_temp_hvb_readout = {0x5C0}; // LBC pack temperature (mux 1/2/3)
+inline constexpr CANMessage<5> battery_temp_vcm_readout = {0x5B3}; // VCM pack temperature (fallback)
 inline constexpr CANMessage<4> odometer_readout = {0x5C5};
 inline constexpr CANMessage<7> odometer_units_readout = {0x355};
 
-// Leaf can messages
+// Leaf can messages.
+// Payloads below are copied from the OEM TCU (NissanConnect) captures, see
+// "закрыть через тсу.txt" / "запуск и стоп климата через тсу.txt".
+// 0x56E byte0 = command, byte1 = sub-command, byte2 = climate/charge flag.
 inline constexpr CANMessage<1> wakeup_data       = {0x68C, {0x00}};                  // Wakeup ping
-inline constexpr CANMessage<4> hvac_init         = {0x56E, {0x46, 0x08, 0x00, 0x00}}; // HVAC init
-inline constexpr CANMessage<4> hvac_close_data   = {0x56E, {0x46, 0x08, 0x32, 0x00}}; // AUTO_DISABLE closing frame (Leaf-ZE1-ESP32 field fix)
+inline constexpr CANMessage<4> hvac_init         = {0x56E, {0x46, 0x08, 0x00, 0x00}}; // TCU idle / keepalive
+inline constexpr CANMessage<4> tcu_standby       = {0x56E, {0x46, 0x00, 0x00, 0x00}}; // TCU standby (between commands)
 inline constexpr CANMessage<4> idle_data         = {0x56E, {0x86, 0x00, 0x00, 0x00}}; // Go to sleep
-inline constexpr CANMessage<4> hvac_on_data      = {0x56E, {0x4E, 0x08, 0x12, 0x00}}; // HVAC ON (OVMS payload)
-inline constexpr CANMessage<4> hvac_on_idle      = {0x56E, {0x8E, 0x00, 0x00, 0x00}}; // Stop HVAC ON
-inline constexpr CANMessage<4> start_charge_data = {0x56E, {0x66, 0x08, 0x12, 0x00}}; // Charging ON (OVMS payload)
-inline constexpr CANMessage<4> interrupt_data    = {0x56E, {0x96, 0x00, 0x00, 0x00}}; // Interrupt action
-inline constexpr CANMessage<4> hvac_off_data     = {0x56E, {0x56, 0x08, 0x00, 0x00}}; // HVAC OFF
-inline constexpr CANMessage<4> unlock_doors_data = {0x56E, {0x11, 0x00, 0x00, 0x00}}; // Unlock doors
-inline constexpr CANMessage<4> lock_doors_data   = {0x56E, {0x60, 0x80, 0x00, 0x00}}; // Lock doors
+inline constexpr CANMessage<4> hvac_on_data      = {0x56E, {0x4E, 0x08, 0x0A, 0x00}}; // Remote climate ON (OEM)
+inline constexpr CANMessage<4> hvac_on_idle      = {0x56E, {0x8E, 0x00, 0x0A, 0x00}}; // Climate ON acknowledgement phase
+inline constexpr CANMessage<4> hvac_session_idle = {0x56E, {0x86, 0x00, 0x0A, 0x00}}; // Session keepalive (OEM repeats ~1/s)
+inline constexpr CANMessage<4> start_charge_data = {0x56E, {0x66, 0x08, 0x00, 0x00}}; // Charging ON (OEM)
+inline constexpr CANMessage<4> charge_ack_data   = {0x56E, {0xA6, 0x00, 0x00, 0x00}}; // Charging ON final ack (OEM)
+inline constexpr CANMessage<4> interrupt_data    = {0x56E, {0x96, 0x00, 0x0A, 0x00}}; // Interrupt action (OEM climate OFF)
+inline constexpr CANMessage<4> hvac_off_data     = {0x56E, {0x56, 0x08, 0x0A, 0x00}}; // HVAC OFF (OEM)
+// Lock: OEM sends exactly two 46 80 frames 100 ms apart, then standby.
+// Unlock: OEM sets bit0 of byte0 (46 -> 47), also repeated twice.
+inline constexpr CANMessage<4> unlock_doors_data = {0x56E, {0x47, 0x00, 0x00, 0x00}}; // Unlock doors (OEM)
+inline constexpr CANMessage<4> lock_doors_data   = {0x56E, {0x46, 0x80, 0x00, 0x00}}; // Lock doors (OEM)
 inline constexpr CANMessage<4> lights_data       = {0x56E, {0x46, 0x09, 0x12, 0x10}}; // Flash lights (RHL=1, captured)
 inline constexpr CANMessage<4> horn_light_data   = {0x56E, {0x46, 0x0B, 0x12, 0x10}}; // Flash + horn (RHL=3, captured)
 
@@ -108,5 +118,11 @@ void setHVACTargetTemperature(float setpoint);
 bool startSequence(CanSequence seq, unsigned long currentTimeMs);
 CanSeqResult manageCANSequence(unsigned long currentTimeMs);
 void manageVinQuery(unsigned long currentTimeMs);
+
+// The OEM TCU keeps sending 0x56E "86 00 0A 00" about once per second while a
+// remote climate session is running. Calling this from loop() while a remote
+// climate session is active keeps that heartbeat going (no-op when a command
+// sequence is in progress).
+void manageHvacSessionKeepalive(unsigned long currentTimeMs, bool sessionActive);
 
 #endif

@@ -1,4 +1,5 @@
 #include "canLeafZE1.h"
+#include "evCanLeaf.h"
 #include <Arduino.h>
 #include <cstring>
 
@@ -15,7 +16,10 @@ struct MessageParser {
 // Message-specific handlers
 void handleSOCMessage(const uint8_t* data, uint8_t len) {
     (void)len;
+    // 0x55B is the BMS "nominal" SOC, not the dashboard value. Blank frames
+    // (0xFF 0xC0 ...) decode above 100 %, so filter them out here.
     float soc = extractScaledValue(data, soc_field, soc_scaling);
+    if (soc < 0.0f || soc > 100.0f) return;
     handleRawSOC(soc);
 }
 
@@ -62,6 +66,13 @@ void handleHVACSetpointMessage(const uint8_t* data, uint8_t len) {
     (void)len;
     float setpoint = extractScaledValue(data, hvac_setpoint_field, setpoint_scaling);
     handleHVACSetpoint(setpoint);
+    // 0x54C (outside ambient) never shows up on Port B. The AC controller
+    // publishes its own ambient reading in 0x54A byte7, 0.5 C/bit.
+    uint8_t ambRaw = data[7];
+    if (ambRaw != 0x00 && ambRaw != 0xFF) {
+        float ambient = ambRaw * 0.5f;
+        if (ambient >= -40.0f && ambient <= 60.0f) handleEvAmbient(ambient);
+    }
 }
 
 VentilationMode decodeVentilationMode(uint8_t byte2) {
@@ -115,20 +126,64 @@ void handleDoorsAndLocksMessage(const uint8_t* data, uint8_t len) {
 
 void handleRangeInstrumentMessage(const uint8_t* data, uint8_t len) {
     (void)len;
-    // 0x5A9 RangeInstrument, bits 15..4 (12 bits), same extraction as OVMS.
-    // OVMS divides by 5 (AZE0), but on a ZE1 the raw value is 1/16 km:
-    // observed raw 2045 while the dashboard showed 129 km (2045/16 = 128).
-    uint16_t raw = (data[1] << 4) | (data[2] >> 4);
-    if (raw == 0 || raw == 0xFFF) return;
-    int km = (raw + 8) / 16;
-    if (km > 0 && km <= 400) {
-        static uint16_t lastRaw = 0xFFFF;
-        if (raw != lastRaw) {
-            lastRaw = raw;
-            Serial.printf("0x5A9 range: raw=%u -> %d km\n", raw, km);
-        }
-        handleInstrumentRange(km);
+    // 0x5A9 RangeInstrument (CAR-CAN, 13 bits, Motorola, start bit 15).
+    // The ZE1 logs so far only contain "blank" frames (raw 0x1000 / 0x1FFF)
+    // and the km scale is not confirmed for this car yet, so the value is kept
+    // for diagnostics only — never published as a range.
+    uint16_t raw = ((uint16_t)data[1] << 5) | (data[2] >> 3);
+    extern uint16_t lastRangeRawA9;
+    if (raw != lastRangeRawA9) {
+        lastRangeRawA9 = raw;
+        Serial.printf("0x5A9 range raw=%u (uncalibrated, not displayed)\n", raw);
     }
+    // Clear a stale retained dashboard range once: older firmware published
+    // 0x5A9 as km and the PWA would keep showing that value after an update.
+    static bool staleRangeCleared = false;
+    if (!staleRangeCleared) {
+        staleRangeCleared = true;
+        handleInstrumentRange(0);
+    }
+}
+
+uint16_t lastRangeRawA9 = 0;
+
+// 0x5BC — HV battery capacity: GIDS + SOH. Normally an EV-CAN frame, but the
+// ZE1 also broadcasts it on IT-CAN (Port B), which is our working bus.
+// Verified on car: 3D 80 ... -> GIDS 246 at 61 % dashboard, A1 -> SOH 80 %.
+void handleBatteryCapacityMessage(const uint8_t* data, uint8_t len) {
+    (void)len;
+    static int lastGids = -1;
+    static int lastSoh = -1;
+    int gids = (data[0] << 2) | (data[1] >> 6);
+    int soh  = (data[4] >> 1) & 0x7F;
+    if (gids > 0 && gids <= 500 && gids != lastGids) {
+        lastGids = gids;
+        handleEvGids(gids);
+    }
+    if (soh > 0 && soh <= 100 && soh != lastSoh) {
+        lastSoh = soh;
+        handleEvSOH(soh);
+    }
+}
+
+// 0x5C0 — LBC pack temperature. The temperature is only carried by the
+// multiplexed mux 1/2/3 frames (OVMS: d[0] >> 6 == 1, temp = d[2]/2 - 40).
+// Every Port B log so far only had mux 0, which carries no temperature.
+void handleBatteryTempHvbMessage(const uint8_t* data, uint8_t len) {
+    (void)len;
+    uint8_t mux = (data[0] >> 6) & 0x03;
+    if (mux == 0) return;
+    float temp = data[2] * 0.5f - 40.0f;
+    if (temp >= -40.0f && temp <= 80.0f) handleBatteryTemp(temp);
+}
+
+// 0x5B3 — VCM pack temperature, 0.25 C/bit. Present on IT-CAN in every log,
+// used as a fallback while 0x5C0 carries no temperature mux.
+void handleBatteryTempVcmMessage(const uint8_t* data, uint8_t len) {
+    (void)len;
+    if (data[0] == 0xFF) return; // blank frame (63.75 C is not a reading)
+    float temp = data[0] * 0.25f;
+    if (temp >= -40.0f && temp <= 80.0f) handleBatteryTemp(temp);
 }
 
 static int8_t odometerUnits = -1; // 0 km, 1 miles
@@ -181,6 +236,9 @@ static const MessageParser parsers[] = {
     CAN_PARSER(hvac_setpoint_readout, handleHVACSetpointMessage),
     CAN_PARSER(doors_and_locks_readout, handleDoorsAndLocksMessage),
     CAN_PARSER(range_instrument_readout, handleRangeInstrumentMessage),
+    CAN_PARSER(battery_capacity_readout, handleBatteryCapacityMessage),
+    CAN_PARSER(battery_temp_hvb_readout, handleBatteryTempHvbMessage),
+    CAN_PARSER(battery_temp_vcm_readout, handleBatteryTempVcmMessage),
     CAN_PARSER(odometer_units_readout, handleOdometerUnitsMessage),
     CAN_PARSER(odometer_readout, handleOdometerMessage),
     { 0x79A, 1, handleVinResponse },
@@ -222,57 +280,62 @@ struct SequenceStep {
     int intervalMs;
     int delayAfterMs;
     SequencePayloadModifier modifier;
+    // OEM TCU cadence: `burstSize` frames at `intervalMs`, then pause
+    // `burstPauseMs`. 0 = plain fixed-interval repeat.
+    uint8_t burstSize;
+    int burstPauseMs;
 };
 
 #define MSG_STEP(msg, reps, interv) { msg.identifier, msg.data, sizeof(msg.data), reps, interv, 0, nullptr }
 #define MSG_DLY_STEP(msg, reps, interv, delay) { msg.identifier, msg.data, sizeof(msg.data), reps, interv, delay, nullptr }
 #define MSG_MOD_STEP(msg, reps, interv, mod_fn) { msg.identifier, msg.data, sizeof(msg.data), reps, interv, 0, mod_fn }
 #define MSG_WAIT_STEP(wait_ms) { 0, nullptr, 0, 1, wait_ms, wait_ms, nullptr }
+// A burst step mimics the OEM TCU: 3 frames 100 ms apart, then ~800 ms pause.
+#define MSG_BURST_STEP(msg, reps, interv, burst, pause) { msg.identifier, msg.data, sizeof(msg.data), reps, interv, 0, nullptr, burst, pause }
 
 static uint8_t internal_hvac_setpoint_byte = 0;
 
 void setHVACTargetTemperature(float setpoint) {
-    // Valid Leaf range is 16..32 °C; anything else (or NaN) clears the byte
+    // The remote-climate frames carry a fixed OEM flag in byte 2 (0x0A) and no
+    // setpoint at all — the BCM keeps the setpoint that is configured in the
+    // car. The requested value is only recorded for diagnostics/UI.
     internal_hvac_setpoint_byte = (setpoint >= 16.0f && setpoint <= 32.0f)
         ? static_cast<uint8_t>(setpoint * 2.0f)
         : 0;
-}
-
-static void hvacPayloadModifier(uint8_t* data, uint8_t len) {
-    if (len >= 3) {
-        data[2] = internal_hvac_setpoint_byte;
-    }
+    Serial.printf("HVAC setpoint request: %.1f C (byte %u kept at OEM 0x0A)\n",
+                  setpoint, internal_hvac_setpoint_byte);
 }
 
 static const SequenceStep seq_refresh[] = {
-    MSG_DLY_STEP(hvac_init, 20, 100, 1000),
-    MSG_STEP(idle_data, 20, 100)
+    MSG_BURST_STEP(hvac_init, 6, 100, 3, 800),
+    MSG_STEP(idle_data, 4, 100)
 };
 
+// Remote climate ON, payloads and cadence from "запуск и стоп климата через тсу":
+// 46 08 00 00 x7 -> 4E 08 0A 00 x7 -> 8E 00 0A 00 x8 -> 86 00 0A 00 (kept
+// running by manageHvacSessionKeepalive() while the session is active).
 static const SequenceStep seq_hvac_on[] = {
-    // Shorter burst than before: the old sequence blasted 136 frames (~14 s)
-    // and the cluster kept doing tell-tale self-tests (parking-brake lamp
-    // blinking). OVMS sends the enable 24x/100 ms and one AUTO_DISABLE 1 s
-    // later, so we keep that shape and only a short release tail.
-    MSG_STEP(hvac_init, 8, 100),
-    MSG_MOD_STEP(hvac_on_data, 24, 100, hvacPayloadModifier),
-    MSG_WAIT_STEP(1000),                               // Leaf-ZE1-ESP32 field fix: pause ~1s after ENABLE repeats
-    MSG_STEP(hvac_close_data, 1, 100),                 // AUTO_DISABLE closing frame, prevents BCM climate restart ~30min
-    MSG_MOD_STEP(hvac_on_idle, 4, 100, hvacPayloadModifier),
-    MSG_MOD_STEP(idle_data, 8, 100, hvacPayloadModifier)
+    MSG_BURST_STEP(hvac_init, 7, 100, 3, 800),
+    MSG_BURST_STEP(hvac_on_data, 7, 100, 3, 800),
+    MSG_BURST_STEP(hvac_on_idle, 8, 100, 3, 800),
+    MSG_BURST_STEP(hvac_session_idle, 12, 100, 3, 800)
 };
 
+// Remote climate OFF: 0x54B flips to "off" on the first 56 08 0A frame, the
+// rest is the OEM release tail.
 static const SequenceStep seq_hvac_off[] = {
-    MSG_STEP(hvac_init, 10, 100),
-    MSG_STEP(interrupt_data, 9, 100),
-    MSG_STEP(hvac_off_data, 8, 100),
-    MSG_STEP(hvac_init, 4, 100),
-    MSG_STEP(idle_data, 8, 100)
+    MSG_STEP(hvac_init, 1, 100),
+    MSG_BURST_STEP(hvac_off_data, 3, 100, 3, 800),
+    MSG_BURST_STEP(interrupt_data, 3, 100, 3, 800),
+    MSG_BURST_STEP(hvac_off_data, 3, 100, 3, 800),
+    MSG_BURST_STEP(interrupt_data, 2, 100, 3, 800),
+    MSG_STEP(idle_data, 3, 100)
 };
 
 static const SequenceStep seq_charge_on[] = {
-    MSG_STEP(start_charge_data, 24, 100),   // OVMS: 0x66 0x08 0x12 0x00, 24 repeats
-    MSG_STEP(idle_data, 8, 100)
+    MSG_STEP(start_charge_data, 37, 110),   // OEM: 66 08 00 00 x37 over ~4 s
+    MSG_STEP(charge_ack_data, 1, 100),      // OEM: single A6 00 00 00
+    MSG_STEP(idle_data, 3, 100)
 };
 
 // Experimental: withdraw the remote-charge request (RC bit cleared via init
@@ -280,38 +343,47 @@ static const SequenceStep seq_charge_on[] = {
 // in-car verification.
 static const SequenceStep seq_charge_off[] = {
     MSG_STEP(interrupt_data, 9, 100),
-    MSG_STEP(hvac_init, 20, 100),
-    MSG_STEP(idle_data, 8, 100)
+    MSG_STEP(hvac_init, 6, 100),
+    MSG_STEP(idle_data, 3, 100)
 };
 
 // Clear RHL request (flash/horn off) — init frames carry RHL=0
 static const SequenceStep seq_rhl_off[] = {
-    MSG_STEP(hvac_init, 10, 100),
-    MSG_STEP(idle_data, 8, 100)
+    MSG_BURST_STEP(hvac_init, 6, 100, 3, 800),
+    MSG_STEP(idle_data, 3, 100)
 };
 
+// Unlock: OEM sets bit0 of byte0 (46 -> 47) and repeats the request about
+// 0.8 s later. Only a couple of frames — long bursts made the locks click.
 static const SequenceStep seq_unlock_doors[] = {
-    MSG_STEP(unlock_doors_data, 24, 100),   // OVMS repeats the command 24x/100ms
-    MSG_STEP(idle_data, 8, 100)
+    MSG_STEP(tcu_standby, 1, 100),
+    MSG_STEP(unlock_doors_data, 2, 100),
+    MSG_WAIT_STEP(800),
+    MSG_STEP(unlock_doors_data, 2, 100),
+    MSG_STEP(tcu_standby, 2, 100)
 };
 
+// Lock: OEM sends exactly two 46 80 frames 100 ms apart, then standby.
+// The old 24x "60 80" burst was seen by the BCM as repeated lock events and
+// made the actuators click 8-10 times without latching.
 static const SequenceStep seq_lock_doors[] = {
-    MSG_STEP(lock_doors_data, 24, 100),
-    MSG_STEP(idle_data, 8, 100)
+    MSG_STEP(tcu_standby, 1, 100),
+    MSG_STEP(lock_doors_data, 2, 100),
+    MSG_STEP(tcu_standby, 2, 100)
 };
 
 static const SequenceStep seq_lights[] = {
-    MSG_STEP(hvac_init, 8, 100),
+    MSG_BURST_STEP(hvac_init, 6, 100, 3, 800),
     MSG_STEP(lights_data, 20, 100),
     MSG_STEP(hvac_init, 4, 100),
-    MSG_STEP(idle_data, 8, 100)
+    MSG_STEP(idle_data, 3, 100)
 };
 
 static const SequenceStep seq_horn_lights[] = {
-    MSG_STEP(hvac_init, 8, 100),
+    MSG_BURST_STEP(hvac_init, 6, 100, 3, 800),
     MSG_STEP(horn_light_data, 20, 100),
     MSG_STEP(hvac_init, 4, 100),
-    MSG_STEP(idle_data, 8, 100)
+    MSG_STEP(idle_data, 3, 100)
 };
 
 struct SequenceDef {
@@ -429,6 +501,10 @@ CanSeqResult manageCANSequence(unsigned long currentTimeMs) {
                     const uint32_t nextDelayMs =
                         (step.delayAfterMs > step.intervalMs) ? step.delayAfterMs : step.intervalMs;
                     nextCANEventTime = currentTimeMs + nextDelayMs;
+                } else if (step.burstSize > 0 && (repeatCount % step.burstSize) == 0 &&
+                           step.burstPauseMs > step.intervalMs) {
+                    // OEM cadence: end of a 3-frame burst -> longer pause
+                    nextCANEventTime = currentTimeMs + step.burstPauseMs;
                 } else {
                     nextCANEventTime = currentTimeMs + step.intervalMs;
                 }
@@ -458,4 +534,23 @@ void manageVinQuery(unsigned long currentTimeMs) {
         lastVinRequestMs = currentTimeMs;
         Serial.println("VIN request sent on IT-CAN");
     }
+}
+
+// The OEM TCU sustains a remote climate session by repeating "86 00 0A 00"
+// roughly once per second. Without that heartbeat the BCM drops the request
+// within seconds, which looked like "climate does not start".
+static unsigned long lastHvacKeepaliveMs = 0;
+
+void manageHvacSessionKeepalive(unsigned long currentTimeMs, bool sessionActive) {
+    if (!sessionActive) {
+        lastHvacKeepaliveMs = 0;
+        return;
+    }
+    // Never interleave with a command sequence; restart the 1 s clock after it.
+    if (activeSequence != CanSequence::NONE) {
+        lastHvacKeepaliveMs = currentTimeMs;
+        return;
+    }
+    if (lastHvacKeepaliveMs != 0 && currentTimeMs - lastHvacKeepaliveMs < 1000) return;
+    if (sendCAN(hvac_session_idle)) lastHvacKeepaliveMs = currentTimeMs;
 }

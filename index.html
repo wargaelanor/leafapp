@@ -363,11 +363,11 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
       <div class="vs-grid" style="margin-top:12px">
         <div class="vs-cell">
           <div class="vsi"><svg viewBox="0 0 24 25" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13.63.51L4.24 13.11c-.6.85 0 2.06 1.03 2.06h4.66l-1.63 8.12c-.24 1.33 1.45 2.12 2.3 1.03l9.39-12.6c.6-.85 0-2.06-1.03-2.06h-4.66l1.63-8.12c.24-1.33-1.45-2.12-2.3-1.03z"/></svg></div>
-          <div><div class="vst">Батарея (прибор / расч.)</div><div class="vsv" id="s-soc">—</div></div>
+          <div><div class="vst">Батарея</div><div class="vsv" id="s-soc">—</div></div>
         </div>
         <div class="vs-cell">
           <div class="vsi"><svg viewBox="0 0 25 20" fill="currentColor"><path d="M5.44 19.77c-.22-.22-5.44-5.54-5.44-10.41a5.68 5.68 0 015.66-5.66 5.66 5.66 0 015.66 5.66c0 4.84-5.22 10.19-5.44 10.41a.29.29 0 01-.22.1.28.28 0 01-.22-.1zM2.8 9.36a2.87 2.87 0 002.86 2.86 2.87 2.87 0 002.87-2.86A2.87 2.87 0 005.66 6.5a2.87 2.87 0 00-2.86 2.86zm18.57.46c-.14-.14-3.32-3.41-3.32-6.37a3.45 3.45 0 013.46-3.46 3.45 3.45 0 013.45 3.46c0 2.99-3.17 6.23-3.31 6.37a.33.33 0 01-.14.05.17.17 0 01-.14-.05zM19.76 3.45a1.76 1.76 0 001.75 1.75 1.76 1.76 0 001.75-1.75 1.76 1.76 0 00-1.75-1.75 1.76 1.76 0 00-1.75 1.75z"/></svg></div>
-          <div><div class="vst">Запас хода (прибор / расч.)</div><div class="vsv" id="s-range">—</div></div>
+          <div><div class="vst">Запас хода</div><div class="vsv" id="s-range">—</div></div>
         </div>
         <div class="vs-cell">
           <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 7h-9M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg></div>
@@ -624,6 +624,7 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
       </div>
       <div id="developer-panel" style="display:none">
         <div class="dev-status"><strong id="canlog-state">Запись выключена</strong><span id="canlog-details">Кадров: 0</span></div>
+        <div class="dev-status"><strong id="bus-state">Шины CAN</strong><span id="bus-details">—</span></div>
         <p class="hint">Нажмите «Начать запись», выполните действия штатным ключом, затем остановите запись и скачайте файл. Новая запись удаляет предыдущую.</p>
         <div class="dev-actions">
           <button class="primary" id="canlog-start" onclick="canLogAction('start')">Начать запись</button>
@@ -729,9 +730,10 @@ function go(name){
 }
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>go(t.dataset.screen)));
 
+// Calculated range estimate. GIDS are the only honest base: the old
+// SOC*3 fallback produced a fictional 285 km at 95 % and is gone.
 function rangeKm(){
-  if(S.gids>=0) return Math.round(S.gids*0.6);
-  if(S.soc>=0) return Math.round(S.soc/100*300);
+  if(S.gids>0) return Math.round(S.gids*0.6);
   return null;
 }
 // Dashboard (instrument) values from 0x59E / 0x5A9; fall back to the estimates
@@ -756,12 +758,13 @@ function renderNow(){
   const km = rangeKm();
   const iSoc = socInstr();
   const iRange = rangeInstr();
-  // Garage mirrors the dashboard (as requested), estimates as fallback
+  // Garage mirrors the dashboard when it is available, otherwise it shows the
+  // BMS value. A calculated range is always marked with "≈".
   const socShown = iSoc!=null ? iSoc : soc;
   const kmShown = iRange!=null ? iRange : km;
   $('g-soc').textContent = socShown!=null ? socShown.toFixed(0) : '—';
-  $('g-range').textContent = kmShown!=null ? kmShown : '—';
-  $('rm-range').textContent = kmShown!=null ? kmShown : '—';
+  $('g-range').textContent = kmShown==null ? '—' : (iRange!=null ? kmShown : '≈'+kmShown);
+  $('rm-range').textContent = kmShown==null ? '—' : (iRange!=null ? kmShown : '≈'+kmShown);
   const bar = $('g-bar');
   const pct = socShown!=null ? socShown : 0;
   bar.style.width = pct+'%';
@@ -797,8 +800,12 @@ function renderNow(){
   $('rb-climate-label').textContent = S.hvac ? 'Выкл климат' : 'Климат';
   $('hvac-left').textContent = S.hvacTimer>0 ? S.hvacTimer+' мин' : '—';
 
-  $('s-soc').textContent = (iSoc!=null && soc!=null) ? fmtPct(iSoc)+' / '+fmtPct(soc) : fmtPct(socShown);
-  $('s-range').textContent = (iRange!=null && km!=null) ? fmtKm(iRange)+' / '+fmtKm(km) : fmtKm(kmShown);
+  // Source is spelled out: the dashboard value, the BMS (nominal) value, or a
+  // calculated estimate. The UI never presents one as the other.
+  $('s-soc').textContent = iSoc!=null ? fmtPct(iSoc)+' (прибор)'
+                        : (soc!=null ? fmtPct(soc)+' (BMS)' : '—');
+  $('s-range').textContent = iRange!=null ? fmtKm(iRange)+' (прибор)'
+                          : (km!=null ? '≈'+fmtKm(km)+' (расч.)' : '—');
   $('s-soh').textContent = S.soh>=0 ? S.soh+' %' : '—';
   $('s-gids').textContent = S.gids>=0 ? S.gids : '—';
   $('s-v').textContent = S.packValid ? S.v.toFixed(1)+' V' : '—';
@@ -1511,7 +1518,18 @@ async function refreshCanLogStatus(){
     $('canlog-download').style.display=s.available?'block':'none';
     $('canlog-error').textContent=s.full?'Запись остановлена автоматически. Скачайте журнал.':
       (!s.recording&&s.available&&s.frames===0?'CAN-кадры не получены. Проверьте подключение к автомобилю и повторите запись.':'');
+    refreshBusStatus();
   }catch(e){ $('canlog-error').textContent='Не удалось получить состояние записи'; }
+}
+// Bus health: is the Port A controller alive and are frames arriving at all?
+async function refreshBusStatus(){
+  try{
+    const r=await fetch('/api/status',{cache:'no-store'});
+    if(!r.ok) throw new Error();
+    const j=await r.json();
+    $('bus-state').textContent = j.evcan ? 'Port A (EV-CAN): MCP2515 отвечает' : 'Port A (EV-CAN): MCP2515 не отвечает';
+    $('bus-details').textContent = 'Кадров: Port A '+(j.fa||0)+', Port B '+(j.fb||0);
+  }catch(e){ $('bus-details').textContent='Ошибка опроса /api/status'; }
 }
 async function canLogAction(action){
   $('canlog-error').textContent='';
