@@ -16,7 +16,7 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.10.28.1"
+#define LEAF_FIRMWARE_VERSION "FW-2026.10.28.2"
 #define LEAF_FIRMWARE_DESCRIPTION "SIM800: OEM TCU commands, CAN telemetry, climate control by authorized call"
 
 WebServer server(80);
@@ -207,7 +207,17 @@ const char* chargerStateStr(ChargerState s) {
 
 void handleRoot() {
   noteUserActivity();
-  server.send_P(200, "text/html", INDEX_HTML);
+  // Stream the large embedded PWA in small chunks. A single send_P call can
+  // stall the WebServer/TCP stack before the first bytes reach the client.
+  const size_t htmlLen = sizeof(INDEX_HTML) - 1;
+  server.setContentLength(htmlLen);
+  server.send(200, "text/html; charset=utf-8", "");
+  for (size_t offset = 0; offset < htmlLen; offset += 1024) {
+    size_t chunk = htmlLen - offset;
+    if (chunk > 1024) chunk = 1024;
+    server.sendContent_P(INDEX_HTML + offset, chunk);
+    delay(0);
+  }
 }
 
 // Vehicle picture for the PWA (also usable from GitHub Pages, where the file
