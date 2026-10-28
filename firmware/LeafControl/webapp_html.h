@@ -573,7 +573,7 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
 <ul class="about-list">
 <li><strong>Дистанционное управление.</strong> Включение и выключение климата, запуск и остановка зарядки, открытие и закрытие дверей, включение фар и звукового сигнала.</li>
 <li><strong>Климат с таймером.</strong> Можно выбрать температуру и время работы: 5, 10, 15, 20 или 30 минут. По окончании таймера климат выключится автоматически.</li>
-<li><strong>Управление звонком.</strong> В версии с модемом SIM800 звонок с разрешённого номера включает или выключает климат. Можно сохранить до пяти номеров.</li>
+<li><strong>Климат по звонку.</strong> В версии с модемом SIM800 первый звонок с разрешённого номера включает климат, следующий выключает его. Можно сохранить до пяти номеров.</li>
 <li><strong>Состояние автомобиля.</strong> В приложении видны заряд и состояние батареи, запас хода, напряжение, ток и мощность, температуры, пробег, VIN, состояние климата, зарядки и дверей.</li>
 <li><strong>Местоположение.</strong> При установленном GPS-модуле координаты автомобиля можно открыть в Яндекс Картах или Google Maps.</li>
 <li><strong>Доступ со смартфона.</strong> Плата работает локально по Wi-Fi и через интернет с помощью MQTT. Приложение можно установить на главный экран телефона.</li>
@@ -597,6 +597,7 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
 <li>Улучшенная история поездок и зарядок, более подробная статистика и удобная работа с сохранёнными данными.</li>
 </ul>
 </section>
+<p class="about-note" id="about-fw" style="display:none"></p>
 <p class="about-note">Набор доступных функций зависит от комплектации автомобиля, установленного модема и способа подключения платы.</p>
 </div>
 </div>
@@ -614,6 +615,7 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
 <div class="btns"><button class="save" onclick="developerLogin()">Войти</button></div>
 </div>
 <div id="developer-panel" style="display:none">
+<div class="dev-status"><strong id="firmware-state">Прошивка платы</strong><span id="firmware-details">—</span></div>
 <div class="dev-status"><strong id="canlog-state">Запись выключена</strong><span id="canlog-details">Кадров: 0</span></div>
 <div class="dev-status"><strong id="bus-state">Шины CAN</strong><span id="bus-details">—</span></div>
 <p class="hint">Нажмите «Начать запись», выполните действия штатным ключом, затем остановите запись и скачайте файл. Новая запись удаляет предыдущую.</p>
@@ -636,7 +638,7 @@ const S = { soc:-1, cabin:-99, charging:false, charger:'', hvac:false, lock:-1,
 setpoint:-1, fan:-1, heat:false, cool:false, vent:-1,
 soh:-1, gids:-1, v:-1, i:0, power:0, packValid:false, amb:-99, on:-1, seq:false, locking:false,
 isoc:-1, irange:-1, btemp:-99, cdelta:-1,
-odo:0, vin:'', hvacTimer:0, lights:-1, gps:null };
+odo:0, vin:'', hvacTimer:0, lights:-1, gps:null, fw:'', fwDesc:'' };
 let mode = 'local'; // 'local' | 'mqtt'
 let onBoard = false; // true only when served from the board itself (local /api/status works)
 let lastUpdate = 0;
@@ -834,6 +836,8 @@ try{
 const r = await fetch('/api/status');
 if(!r.ok) throw 0;
 const j = await r.json();
+S.fw=j.fw||''; S.fwDesc=j.fw_desc||'';
+if(S.fw){ $('about-fw').style.display='block'; $('about-fw').textContent='Прошивка платы: '+S.fw; }
 S.soc=j.soc; S.cabin=j.cabin; S.charging=!!j.charging; S.charger=j.charger||'';
 S.hvac=!!j.hvac; S.lock=j.lock; S.setpoint=j.setpoint; S.fan=j.fan;
 S.heat=!!j.heat; S.cool=!!j.cool; S.vent=j.vent;
@@ -1491,6 +1495,8 @@ try{
 const r=await fetch('/api/status',{cache:'no-store'});
 if(!r.ok) throw new Error();
 const j=await r.json();
+$('firmware-state').textContent = 'Прошивка: '+(j.fw||'неизвестна');
+$('firmware-details').textContent = j.fw_desc||'Описание сборки отсутствует';
 $('bus-state').textContent = j.evcan ? 'Port A (EV-CAN): MCP2515 отвечает' : 'Port A (EV-CAN): MCP2515 не отвечает';
 $('bus-details').textContent = 'Кадров: Port A '+(j.fa||0)+', Port B '+(j.fb||0);
 }catch(e){ $('bus-details').textContent='Ошибка опроса /api/status'; }

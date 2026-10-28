@@ -16,6 +16,9 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
+#define LEAF_FIRMWARE_VERSION "FW-2026.10.28.1"
+#define LEAF_FIRMWARE_DESCRIPTION "SIM800: OEM TCU commands, CAN telemetry, climate control by authorized call"
+
 WebServer server(80);
 DNSServer dnsServer;
 bool captivePortalActive = false;
@@ -231,7 +234,7 @@ void handleApiStatus() {
   bool gpsValid = modemGpsFix(&gLat, &gLon, &gAlt, &gSpd, &gAge);
   char json[1200];
   snprintf(json, sizeof(json),
-    "{\"soc\":%.1f,\"cabin\":%.1f,\"charging\":%d,\"charger\":\"%s\",\"hvac\":%d,"
+    "{\"fw\":\"%s\",\"fw_desc\":\"%s\",\"soc\":%.1f,\"cabin\":%.1f,\"charging\":%d,\"charger\":\"%s\",\"hvac\":%d,"
     "\"lock\":%d,\"setpoint\":%.1f,\"fan\":%.0f,\"heat\":%d,\"cool\":%d,\"vent\":%d,"
     "\"soh\":%d,\"gids\":%d,\"v\":%.1f,\"i\":%.1f,\"power\":%.1f,\"pack\":%d,\"amb\":%.1f,"
     "\"isoc\":%.1f,\"irange\":%d,\"btemp\":%.1f,\"cdelta\":%d,"
@@ -239,6 +242,7 @@ void handleApiStatus() {
     "\"on\":%d,\"seq\":%d,\"locking\":%d,\"lights\":%d,"
     "\"evcan\":%d,\"fa\":%lu,\"fb\":%lu,"
     "\"modem\":\"%s\",\"gps\":{\"lat\":%.5f,\"lon\":%.5f,\"age\":%lu}}",
+    LEAF_FIRMWARE_VERSION, LEAF_FIRMWARE_DESCRIPTION,
     currentSOC, cabinTemp, isChargingNow ? 1 : 0, chargerStateStr(currentChargerState),
     isHvacOn ? 1 : 0, (int)lockState, currentSetpoint, currentFanSpeed,
     isHeatingEnabled ? 1 : 0, isCoolingEnabled ? 1 : 0, (int)currentVentilationMode,
@@ -338,6 +342,7 @@ void handleOtaPage() {
   server.send(200, "text/html",
     "<html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1'></head><body style='font-family:Arial;text-align:center;margin-top:30px'>"
     "<h1>Firmware Update</h1>"
+    "<p>Установлено: <strong>" LEAF_FIRMWARE_VERSION "</strong><br>SIM800: CAN-телеметрия, дистанционные команды и климат по разрешённому звонку</p>"
     "<p>Загрузите .bin, собранный через Arduino CLI/IDE<br>(File > Export Compiled Binary)</p>"
     "<form method='POST' action='/ota_update' enctype='multipart/form-data' style='margin:20px auto;max-width:320px'>"
     "<input type='file' name='firmware' accept='.bin' required style='width:100%;margin-bottom:15px'>"
@@ -996,6 +1001,7 @@ void wifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
 
 void setup() {
   Serial.begin(115200);
+  Serial.printf("### Leaf Control %s: %s ###\n", LEAF_FIRMWARE_VERSION, LEAF_FIRMWARE_DESCRIPTION);
   WiFi.onEvent(wifiEvent);
   initConfiguration();
   modemInit();
