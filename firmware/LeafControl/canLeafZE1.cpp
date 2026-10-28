@@ -354,13 +354,15 @@ static const SequenceStep seq_rhl_off[] = {
     MSG_STEP(idle_data, 3, 100)
 };
 
-// Unlock: OEM sets bit0 of byte0 (46 -> 47) and repeats the request about
-// 0.8 s later. Only a couple of frames — long bursts made the locks click.
+// Unlock: OEM sets bit0 of byte0 (46 -> 47). In the capture the two request
+// frames are ~800 ms apart (not 100 ms), then the TCU returns to standby.
 static const SequenceStep seq_unlock_doors[] = {
     MSG_STEP(tcu_standby, 1, 100),
-    MSG_STEP(unlock_doors_data, 2, 100),
+    MSG_STEP(unlock_doors_data, 1, 100),
     MSG_WAIT_STEP(800),
-    MSG_STEP(unlock_doors_data, 2, 100),
+    MSG_STEP(unlock_doors_data, 1, 100),
+    MSG_WAIT_STEP(800),
+    MSG_STEP(unlock_doors_data, 1, 100),
     MSG_STEP(tcu_standby, 2, 100)
 };
 
