@@ -821,7 +821,15 @@ void manageBmsDiagnostics(unsigned long currentTimeMs) {
 
     uint8_t group = kBmsGroups[bmsGroupIndex];
     const uint8_t request[8] = {0x02, 0x21, group, 0, 0, 0, 0, 0};
-    if (sendCAN(0x79B, request, sizeof(request))) {
+    if (!sendCAN(0x79B, request, sizeof(request))) {
+        // Rejected by the TX whitelist or dropped by the controller. Advance
+        // instead of retrying the same blocked group forever: otherwise the
+        // rotation jammed here and no diagnostic was ever sent again.
+        Serial.printf("BMS group 0x%02X could not be sent, skipping\n", group);
+        bmsFailStreak++;
+        advanceBmsGroup();
+        lastBmsQueryMs = currentTimeMs;
+    } else {
         bmsQuery = kBmsQueryTypes[bmsGroupIndex];
         bmsRequestedGroup = group;
         bmsQueryStartedMs = currentTimeMs;

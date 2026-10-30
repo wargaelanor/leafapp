@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.10.29.53-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "Sleep state in status, no net connect during OTA"
+#define LEAF_FIRMWARE_VERSION "FW-2026.10.30.54-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "Whitelist BMS groups 0x01/0x61, never jam rotation"
 
 WebServer server(80);
 DNSServer dnsServer;
