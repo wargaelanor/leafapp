@@ -408,10 +408,6 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
 <div><div class="vst">Батарея, °C</div><div class="vsv" id="s-btemp">—</div></div>
 </div>
 <div class="vs-cell">
-<div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></div>
-<div><div class="vst">Разброс ячеек</div><div class="vsv" id="s-cdelta" title="Диагностический опрос BMS через OBD">—</div></div>
-</div>
-<div class="vs-cell">
 <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 14.76V3.5a2.5 2.5 0 00-5 0v11.26a4.5 4.5 0 105 0z"/></svg></div>
 <div><div class="vst">Воздух</div><div class="vsv" id="s-amb">—</div></div>
 </div>
@@ -827,7 +823,6 @@ $('s-v').textContent = (S.voltageValid && evFresh()) ? S.v.toFixed(1)+' V' : '�
 $('s-i').textContent = (S.packValid && evFresh()) ? S.i.toFixed(1)+' A' : '—';
 $('s-power').textContent = (S.packValid && evFresh()) ? S.power.toFixed(1)+' кВт' : '—';
 $('s-btemp').textContent = (S.btemp>-30&&S.btemp<70) ? S.btemp.toFixed(1)+' °C' : '—';
-$('s-cdelta').textContent = S.cdelta>=0 ? S.cdelta+' мВ' : '—';
 $('s-amb').textContent = (S.amb>-40&&S.amb<60) ? S.amb.toFixed(1)+' °C' : '—';
 $('s-cabin').textContent = (S.cabin>-30&&S.cabin<80) ? S.cabin.toFixed(1)+' °C' : '—';
 $('s-lock').textContent = S.lock===1?'Заблокировано':(S.lock===0?'Открыто':'—');

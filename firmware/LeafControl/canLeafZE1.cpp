@@ -256,9 +256,9 @@ static unsigned long lastBmsQueryMs = 0;
 // OVMS polls four ZE1 groups: 0x01 battery (SOC/Hx/Ah), 0x02 cells,
 // 0x04 temperatures, 0x61 SOH. Rotating through all of them gives the same
 // data set as upstream instead of only cells/temperatures.
-static const uint8_t kBmsGroups[] = {0x02, 0x04, 0x01, 0x61};
+static const uint8_t kBmsGroups[] = {0x04, 0x01, 0x61};
 static const BmsQuery kBmsQueryTypes[] = {
-    BmsQuery::CELLS, BmsQuery::TEMPERATURES, BmsQuery::BATTERY, BmsQuery::SOH
+    BmsQuery::TEMPERATURES, BmsQuery::BATTERY, BmsQuery::SOH
 };
 #define BMS_GROUP_COUNT (sizeof(kBmsGroups) / sizeof(kBmsGroups[0]))
 static uint8_t bmsGroupIndex = 0;
@@ -269,10 +269,10 @@ static uint8_t bmsFailStreak = 0;
 // LBC answer two groups and then ignore everything for minutes, which looked
 // like "temperature never shows up". Keep a per-group slot and back a silent
 // group off instead of flooding the gateway.
-static const uint16_t kBmsPeriodSec[] = {20, 45, 60, 600};
+static const uint16_t kBmsPeriodSec[] = {180, 60, 900};
 static const uint16_t kBmsBackoffMaxSec = 240;
-static unsigned long bmsGroupDueMs[BMS_GROUP_COUNT] = {0, 0, 0, 0};
-static uint16_t bmsGroupBackoffSec[BMS_GROUP_COUNT] = {0, 0, 0, 0};
+static unsigned long bmsGroupDueMs[BMS_GROUP_COUNT] = {0, 0, 0};
+static uint16_t bmsGroupBackoffSec[BMS_GROUP_COUNT] = {0, 0, 0};
 static unsigned long bmsLastReplyMs = 0;
 static uint32_t bmsFailCount = 0;
 // Measured on the car: the LBC answers two groups right after the car wakes up
@@ -940,27 +940,11 @@ void manageBmsDiagnostics(unsigned long currentTimeMs) {
     if (lastActivitySampleMs == 0 || currentTimeMs - lastActivitySampleMs >= 5000) {
         uint32_t frameDelta = canFramesB - lastActivityFrames;
         uint32_t evDelta = canFramesA - lastActivityFramesA;
-        (void)evDelta;
-        // BMS diagnostics travel to the LBC through the CAR-CAN gateway, so
-        // EV-CAN traffic proves nothing. Measured on this car: with the
-        // gateway asleep CAR-CAN shows ~1 frame per 10 s and every request is
-        // ignored (zero replies, only failures), while the EV-CAN side keeps
-        // streaming ~2500 frames per 10 s. Right after a wake command CAR-CAN
-        // jumped to ~3000 frames per 10 s and cells, temperatures and SOH all
-        // answered within seconds.
-        bool wasWindow = diagnosticWindow;
-        bool busActive = isChargingNow || frameDelta >= 10;
+        // Back to the .59 behaviour that worked on the car: any bus activity
+        // keeps the diagnostic window open.
+        bool busActive = isChargingNow || frameDelta >= 20 || evDelta >= 100;
         if (busActive) windowUntilMs = currentTimeMs + 20000;
         diagnosticWindow = busActive || currentTimeMs < windowUntilMs;
-        if (diagnosticWindow && !wasWindow) {
-            // Fresh wake of the gateway: ask every group once, quickly, then
-            // fall back to the per-group periods.
-            for (uint8_t i = 0; i < BMS_GROUP_COUNT; i++) {
-                bmsGroupDueMs[i] = currentTimeMs + (unsigned long)i * 2500UL;
-            }
-            bmsCooldownUntilMs = 0;
-            bmsFailStreak = 0;
-        }
         lastActivityFrames = canFramesB;
         lastActivityFramesA = canFramesA;
         lastActivitySampleMs = currentTimeMs;

@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.10.30.60-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "BMS window on CAR-CAN gateway activity, temp refresh 45 s"
+#define LEAF_FIRMWARE_VERSION "FW-2026.10.30.61-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "Back to .59 BMS window, cell delta removed"
 
 WebServer server(80);
 DNSServer dnsServer;

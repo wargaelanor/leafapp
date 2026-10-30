@@ -66,20 +66,17 @@ bool sendCAN(uint32_t id,const uint8_t* data, uint8_t len) {
     }
   }
   if (id == 0x79B && len == 8 && data) {
-    static const uint8_t bmsCellRequest[8] = {0x02, 0x21, 0x02, 0, 0, 0, 0, 0};
+    // Cell group 0x02 is no longer polled (its only consumer was the cell
+    // delta tile, which was removed), so the whitelist stays at the groups we
+    // actually ask for.
     static const uint8_t bmsTempRequest[8] = {0x02, 0x21, 0x04, 0, 0, 0, 0, 0};
-    // Same read-only shape (02 21 <group>) for the two remaining groups OVMS
-    // polls. They were missing here, so once the rotation reached 0x01 every
-    // request was rejected by the whitelist: bmsq froze and cells/temperature
-    // were never asked again.
     static const uint8_t bmsBatteryRequest[8] = {0x02, 0x21, 0x01, 0, 0, 0, 0, 0};
     static const uint8_t bmsSohRequest[8] = {0x02, 0x21, 0x61, 0, 0, 0, 0, 0};
     static const uint8_t isoTpFlowControl[8] = {0x30, 0x00, 0x00, 0, 0, 0, 0, 0};
     // STmin 20 ms: the 198-byte cell reply arrives back-to-back at 500 kbps in
     // ~4 ms, which the ESP32 loses whenever Wi-Fi/TLS work stalls the loop.
     static const uint8_t isoTpFlowControlSlow[8] = {0x30, 0x00, 0x14, 0, 0, 0, 0, 0};
-    allowed = memcmp(data, bmsCellRequest, sizeof(bmsCellRequest)) == 0 ||
-              memcmp(data, bmsTempRequest, sizeof(bmsTempRequest)) == 0 ||
+    allowed = memcmp(data, bmsTempRequest, sizeof(bmsTempRequest)) == 0 ||
               memcmp(data, bmsBatteryRequest, sizeof(bmsBatteryRequest)) == 0 ||
               memcmp(data, bmsSohRequest, sizeof(bmsSohRequest)) == 0 ||
               memcmp(data, isoTpFlowControl, sizeof(isoTpFlowControl)) == 0 ||
