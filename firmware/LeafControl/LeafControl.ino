@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.10.30.67-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "Dark theme, themed icons on every screen"
+#define LEAF_FIRMWARE_VERSION "FW-2026.10.30.68-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "Real car picture + light/cable/wheel overlays embedded"
 
 WebServer server(80);
 DNSServer dnsServer;
@@ -256,30 +256,41 @@ void handleRoot() {
   client.stop();
 }
 
-// Vehicle picture for the PWA (also usable from GitHub Pages, where the file
-// is served statically). WebP is ~16.9 KB vs 23.5 KB for the PNG; kept in
-// PROGMEM and streamed in chunks to avoid a large RAM buffer.
-void handleLeafImg() {
+// Vehicle picture and the status overlays for the PWA. They live in PROGMEM and
+// are streamed in chunks, so the UI served by the board itself is complete
+// without any external files.
+static void streamProgmemImage(const unsigned char* data, size_t len, const char* type) {
   NetworkClient& client = server.client();
   client.setTimeout(750);
-  server.setContentLength(LEAF_IMG_LEN);
+  server.setContentLength(len);
   server.sendHeader("Cache-Control", "public, max-age=604800");
-  server.send(200, LEAF_IMG_TYPE, "");
+  server.send(200, type, "");
   size_t offset = 0;
-  while (offset < LEAF_IMG_LEN && client.connected()) {
-    size_t chunk = LEAF_IMG_LEN - offset;
+  while (offset < len && client.connected()) {
+    size_t chunk = len - offset;
     if (chunk > 1024) chunk = 1024;
-    if (client.write_P((const char*)LEAF_IMG + offset, chunk) != chunk) break;
+    if (client.write_P((const char*)data + offset, chunk) != chunk) break;
     offset += chunk;
     delay(0);
   }
   client.stop();
 }
 
-// Old name kept alive: stale PWA copies (pre leaf-v13) still ask for /leaf.png.
-void handleLeafPngLegacy() {
-  server.sendHeader("Location", "/leaf.webp", true);
-  server.send(301, "text/plain", "");
+void handleLeafImg() {
+  streamProgmemImage(LEAF_IMG, LEAF_IMG_LEN, LEAF_IMG_TYPE);
+}
+
+// The PWA asks for car-lights.png / car-cable.png / car-wheel1..4.png; serve
+// whichever are embedded, 404 for the rest (the page hides a missing layer).
+void handleWebAppImage() {
+  String path = server.uri();
+  for (size_t i = 0; i < WEBAPP_IMAGE_COUNT; i++) {
+    if (path == WEBAPP_IMAGES[i].path) {
+      streamProgmemImage(WEBAPP_IMAGES[i].data, WEBAPP_IMAGES[i].len, WEBAPP_IMAGES[i].type);
+      return;
+    }
+  }
+  server.send(404, "text/plain", "not found");
 }
 
 // Start a listen-only MCP2515 clock/bitrate sweep (Port A never transmits).
@@ -1515,7 +1526,11 @@ void setup() {
       server.collectHeaders(trackedHeaders, 1);
       server.on("/", handleRoot);
 server.on("/leaf.webp", handleLeafImg);
-server.on("/leaf.png", handleLeafPngLegacy);
+server.on("/leaf.png", handleLeafImg);
+// status-picture overlays (only the ones present in the build are served)
+for (size_t i = 0; i < WEBAPP_IMAGE_COUNT; i++) {
+  server.on(WEBAPP_IMAGES[i].path, HTTP_GET, handleWebAppImage);
+}
       server.on("/api/status", handleApiStatus);
       server.on("/api/evscan", HTTP_POST, handleApiEvScan);
       server.on("/api/developer/login", HTTP_POST, handleDeveloperLogin);

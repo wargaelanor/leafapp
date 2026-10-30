@@ -251,7 +251,7 @@ body{background:var(--bg);font-family:'NissanBrand',-apple-system,BlinkMacSystem
 /* --- Car status picture -------------------------------------------------
    Base photo always visible. Optional real overlays are separate files next
    to index.html: car-lights.png, car-cable.png, car-wheel1..4.png. They must
-   be the same size/alignment as leaf.webp (620x347 also works: the browser
+   be the same size/alignment as leaf.png (620x347 also works: the browser
    scales them to the box). Missing files remove themselves, so the picture
    simply stays clean instead of showing a broken image. */
 .car-stage{position:relative;width:100%;max-width:290px;margin:0 auto;line-height:0}
@@ -310,7 +310,7 @@ body{background:var(--bg);font-family:'NissanBrand',-apple-system,BlinkMacSystem
       <div class="card" style="margin-top:8px;padding-bottom:8px">
         <div class="vehicle-hero">
           <div class="car-stage" id="car-stage">
-            <img class="car-base" src="leaf.webp" alt="Nissan Leaf">
+            <img class="car-base" src="leaf.png" alt="Nissan Leaf">
             <img class="car-layer" data-when="lights" src="car-lights.png" alt=""
                  onerror="document.getElementById('car-stage').classList.add('no-lights-img');this.remove()">
             <img class="car-layer" data-when="cable" src="car-cable.png" alt=""
@@ -397,7 +397,7 @@ body{background:var(--bg);font-family:'NissanBrand',-apple-system,BlinkMacSystem
     <!-- ДИСТАНЦИОННЫЕ УСЛУГИ -->
     <section class="screen" id="screen-remote">
       <div style="padding:12px 16px 0;text-align:center">
-        <img src="leaf.webp" alt="" style="width:200px;object-fit:contain;max-height:110px">
+        <img src="leaf.png" alt="" style="width:200px;object-fit:contain;max-height:110px">
         <div style="font-size:15px;text-transform:uppercase;color:#13172c;letter-spacing:1px;margin-top:4px">Nissan Leaf</div>
       </div>
       <div class="remote-wrap">

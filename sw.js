@@ -1,6 +1,6 @@
-const CACHE = 'leaf-v23';
+const CACHE = 'leaf-v24';
 const ASSETS = [
-  './', './index.html', './manifest.webmanifest', './leaf.webp',
+  './', './index.html', './manifest.webmanifest', './leaf.png',
   './icon-192.png', './icon-512.png', './apple-touch-icon.png',
   './fonts/nissan_regular.ttf', './fonts/nissan_light.ttf',
   // car status overlays — optional, but pre-cached when present

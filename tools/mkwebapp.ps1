@@ -17,7 +17,7 @@ $html = [regex]::Replace($html, '(?m)^[ \t]+', '')
 $html = [regex]::Replace($html, '(?m)^\r?\n', '')
 
 # Vehicle picture: prefer WebP (16.9 KB) over the source PNG (23.5 KB).
-$imgFile = 'leaf.webp'; $imgType = 'image/webp'
+$imgFile = 'leaf.png'; $imgType = 'image/png'
 if (-not (Test-Path (Join-Path $app $imgFile))) { $imgFile = 'leaf.png'; $imgType = 'image/png' }
 $img = [System.IO.File]::ReadAllBytes((Join-Path $app $imgFile))
 $hex = for ($i = 0; $i -lt $img.Length; $i++) {
@@ -38,6 +38,35 @@ $sb = New-Object System.Text.StringBuilder
 [void]$sb.AppendLine('static const unsigned char LEAF_IMG[] PROGMEM = {' + ($hex -join '') + '};')
 [void]$sb.AppendLine(('static const size_t LEAF_IMG_LEN = {0};' -f $img.Length))
 [void]$sb.AppendLine(('static const char LEAF_IMG_TYPE[] PROGMEM = "{0}";' -f $imgType))
+[void]$sb.AppendLine()
+
+# Optional status-picture overlays, served from the board itself so the UI works
+# without any external files. Missing files are simply skipped.
+$overlays = @('car-lights.png', 'car-cable.png', 'car-wheel1.png', 'car-wheel2.png', 'car-wheel3.png', 'car-wheel4.png')
+$entries = @()
+foreach ($name in $overlays) {
+    $file = Join-Path $app $name
+    if (-not (Test-Path $file)) { continue }
+    $bytes = [System.IO.File]::ReadAllBytes($file)
+    $var = ($name -replace '[^A-Za-z0-9]', '_').ToUpper()
+    $h = for ($i = 0; $i -lt $bytes.Length; $i++) {
+        if ($i % 16 -eq 0) { "`n  " } else { ' ' }
+        '0x{0:x2},' -f $bytes[$i]
+    }
+    [void]$sb.AppendLine(('static const unsigned char {0}[] PROGMEM = {{{1}}};' -f $var, ($h -join '')))
+    $entries += ('  {{"/{0}", {1}, sizeof({1}), "image/png"}},' -f $name, $var)
+    Write-Host ("  overlay {0}: {1} bytes" -f $name, $bytes.Length)
+}
+[void]$sb.AppendLine('struct WebAppImage { const char* path; const unsigned char* data; size_t len; const char* type; };')
+if ($entries.Count -gt 0) {
+    [void]$sb.AppendLine('static const WebAppImage WEBAPP_IMAGES[] = {')
+    foreach ($e in $entries) { [void]$sb.AppendLine($e) }
+    [void]$sb.AppendLine('};')
+    [void]$sb.AppendLine(('static const size_t WEBAPP_IMAGE_COUNT = {0};' -f $entries.Count))
+} else {
+    [void]$sb.AppendLine('static const WebAppImage WEBAPP_IMAGES[] = {{"/none", nullptr, 0, "text/plain"}};')
+    [void]$sb.AppendLine('static const size_t WEBAPP_IMAGE_COUNT = 0;')
+}
 [void]$sb.AppendLine()
 [void]$sb.AppendLine('#endif')
 
