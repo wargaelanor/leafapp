@@ -13,6 +13,7 @@ param(
   [string]$Firmware = "$env:TEMP\leafbin-ze1-cmd53\LeafControl.ino.bin",
   [string]$ExpectedVersion = "FW-2026.10.29.53-CMD",
   [int]$Attempts = 20,
+  [int]$MinRssi = -95,
   [string]$Log = "$env:TEMP\leaf-ota-retry.log"
 )
 
@@ -31,7 +32,13 @@ for ($i = 1; $i -le $Attempts; $i++) {
 
   if ($s.fw -eq $ExpectedVersion) { Log "already on $ExpectedVersion"; exit 0 }
 
-  Log ("attempt {0}: up={1}s reset={2} rssi={3}" -f $i, $s.uptime, $s.reset_reason, $s.wifi_rssi)
+  if ($s.wifi_rssi -lt $MinRssi) {
+    Log ("waiting for a better window: rssi={0} (need {1})" -f $s.wifi_rssi, $MinRssi)
+    Start-Sleep -Seconds 20
+    continue
+  }
+
+  Log ("attempt {0}: up={1}s reset={2} rssi={3} lmax={4}" -f $i, $s.uptime, $s.reset_reason, $s.wifi_rssi, $s.lmax)
   $out = curl.exe -sS --max-time 400 -w "http=%{http_code} up=%{size_upload} t=%{time_total}s" `
     -F "firmware=@$Firmware;type=application/octet-stream" "http://$Board/ota_update" 2>&1
   Log ("  " + ($out -join ' ') + " exit=$LASTEXITCODE")

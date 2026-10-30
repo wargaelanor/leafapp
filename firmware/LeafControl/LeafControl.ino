@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.10.30.56-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "BMS cadence, Wi-Fi recovery, OBD-II VIN probe"
+#define LEAF_FIRMWARE_VERSION "FW-2026.10.30.57-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "BMS cadence, Wi-Fi recovery, VIN probe, OTA without TLS stalls"
 
 WebServer server(80);
 DNSServer dnsServer;
@@ -512,6 +512,12 @@ void handleOtaUpload() {
   if (upload.status == UPLOAD_FILE_START) {
     otaInProgress = true;
     Serial.printf("### OTA upload start: %s ###\n", upload.filename.c_str());
+    // A TLS connect that started just before the upload blocks the main loop
+    // for its whole timeout (~30 s at -90 dBm). During that stall the upload
+    // reader gets no data, the server gives up, and the transfer dies at a
+    // random offset. Abort the remote links outright instead of waiting.
+    mqttDisconnect();
+    ovmsV2Disconnect();
     if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
       Update.printError(Serial);
     }
