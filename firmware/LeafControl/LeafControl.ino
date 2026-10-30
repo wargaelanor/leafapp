@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.10.30.68-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "Real car picture + light/cable/wheel overlays embedded"
+#define LEAF_FIRMWARE_VERSION "FW-2026.10.30.69-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "Reverse wheel frame order so motion reads forwards"
 
 WebServer server(80);
 DNSServer dnsServer;

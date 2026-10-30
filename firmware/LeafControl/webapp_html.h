@@ -269,9 +269,9 @@ simply stays clean instead of showing a broken image. */
 /* Four wheel frames cycled quickly: the classic sprite animation. */
 .car-layer.frames img{opacity:0;animation:wframe .48s linear infinite}
 .car-layer.frames img:nth-child(1){animation-delay:0s}
-.car-layer.frames img:nth-child(2){animation-delay:-.36s}
+.car-layer.frames img:nth-child(2){animation-delay:-.12s}
 .car-layer.frames img:nth-child(3){animation-delay:-.24s}
-.car-layer.frames img:nth-child(4){animation-delay:-.12s}
+.car-layer.frames img:nth-child(4){animation-delay:-.36s}
 @keyframes wframe{0%,24.9%{opacity:1}25%,100%{opacity:0}}
 /* Fallback while car-wheel1..4.png are missing: a stepped conic gradient
 reads as a rotating rim. Hidden as soon as one wheel frame loads. */
