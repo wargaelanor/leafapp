@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0b0e11" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f4f5f7" media="(prefers-color-scheme: light)">
+<title>Leaf Control — демонстрация приложения</title>
+<style>
+:root{
+  --bg:#f4f5f7; --surface:#fff; --surface-2:#f9f9f9; --chip:#eceef1;
+  --text:#1d2126; --text-2:#4a5158; --muted:#6f7780; --line:#e6e8ec;
+  --accent:#0077ac; --accent-soft:rgba(0,119,172,.10); --shadow:0 10px 40px rgba(20,30,45,.12);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0b0e11; --surface:#161a1f; --surface-2:#1c2127; --chip:#232a33;
+    --text:#e8ecf1; --text-2:#b6bec7; --muted:#8f99a3; --line:#242b33;
+    --accent:#4aa8d8; --accent-soft:rgba(74,168,216,.14); --shadow:0 12px 50px rgba(0,0,0,.6);
+  }
+}
+html[data-theme="light"]{
+  --bg:#f4f5f7; --surface:#fff; --surface-2:#f9f9f9; --chip:#eceef1;
+  --text:#1d2126; --text-2:#4a5158; --muted:#6f7780; --line:#e6e8ec;
+  --accent:#0077ac; --accent-soft:rgba(0,119,172,.10); --shadow:0 10px 40px rgba(20,30,45,.12);
+}
+html[data-theme="dark"]{
+  --bg:#0b0e11; --surface:#161a1f; --surface-2:#1c2127; --chip:#232a33;
+  --text:#e8ecf1; --text-2:#b6bec7; --muted:#8f99a3; --line:#242b33;
+  --accent:#4aa8d8; --accent-soft:rgba(74,168,216,.14); --shadow:0 12px 50px rgba(0,0,0,.6);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  line-height:1.5;padding:28px 18px 56px}
+.wrap{max-width:1180px;margin:0 auto}
+header{display:flex;align-items:flex-start;gap:18px;margin-bottom:22px}
+header .titles{flex:1;min-width:0}
+h1{font-size:24px;font-weight:650;letter-spacing:.2px}
+.lead{margin-top:8px;font-size:14px;color:var(--text-2);max-width:640px}
+.badge{display:inline-block;margin-top:10px;font-size:12px;padding:4px 10px;border-radius:999px;
+  background:var(--accent-soft);color:var(--accent);font-weight:600}
+.theme-btn{border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:999px;
+  font:inherit;font-size:12.5px;padding:8px 14px;cursor:pointer;white-space:nowrap}
+.theme-btn:hover{border-color:var(--accent)}
+
+.grid{display:grid;grid-template-columns:400px 1fr;gap:28px;align-items:start}
+@media (max-width:920px){.grid{grid-template-columns:1fr}}
+
+.phone-col{position:sticky;top:18px}
+@media (max-width:920px){.phone-col{position:static}}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.tabs button{border:1px solid var(--line);background:var(--surface);color:var(--text-2);border-radius:999px;
+  font:inherit;font-size:12px;padding:7px 12px;cursor:pointer;transition:.15s}
+.tabs button:hover{border-color:var(--accent);color:var(--text)}
+.tabs button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+@media (prefers-color-scheme: dark){.tabs button.on{color:#08121a;font-weight:600}}
+html[data-theme="dark"] .tabs button.on{color:#08121a;font-weight:600}
+
+.phone{width:100%;max-width:390px;margin:0 auto;border-radius:34px;background:var(--surface);
+  border:1px solid var(--line);box-shadow:var(--shadow);padding:10px}
+.phone iframe{display:block;width:100%;height:740px;border:0;border-radius:26px;background:var(--bg)}
+@media (max-width:920px){.phone iframe{height:680px}}
+
+.caption{margin-top:10px;font-size:12px;color:var(--muted);text-align:center}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin-bottom:14px}
+.card h2{font-size:16px;margin-bottom:8px;font-weight:600}
+.card p{font-size:13.5px;color:var(--text-2)}
+.card ul{list-style:none;margin-top:10px;display:grid;gap:8px}
+.card li{position:relative;padding-left:18px;font-size:13.5px;color:var(--text-2)}
+.card li:before{content:'';position:absolute;left:2px;top:8px;width:6px;height:6px;border-radius:50%;background:var(--accent)}
+.card li b{color:var(--text)}
+
+.features{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:640px){.features{grid-template-columns:1fr}}
+.feature{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+.feature .ico{width:30px;height:30px;border-radius:9px;background:var(--accent-soft);color:var(--accent);
+  display:flex;align-items:center;justify-content:center;margin-bottom:8px}
+.feature .ico svg{width:17px;height:17px}
+.feature h3{font-size:13.5px;font-weight:600;margin-bottom:4px}
+.feature p{font-size:12.5px;color:var(--muted);line-height:1.45}
+footer{margin-top:26px;font-size:12px;color:var(--muted);text-align:center;line-height:1.6}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="titles">
+      <h1>Leaf Control</h1>
+      <p class="lead">Телематика для Nissan Leaf ZE1: состояние автомобиля, дистанционное управление
+        и история — в одном приложении на телефоне. Ниже рабочее приложение, а не картинки: его можно
+        листать и нажимать кнопки.</p>
+      <span class="badge">Демо-режим · данные условные, команды никуда не отправляются</span>
+    </div>
+    <button class="theme-btn" id="theme">Тема</button>
+  </header>
+
+  <div class="grid">
+    <div class="phone-col">
+      <div class="tabs" id="tabs">
+        <button data-screen="garage" class="on">Гараж</button>
+        <button data-screen="remote">Дистанция</button>
+        <button data-screen="status">Состояние</button>
+        <button data-screen="charges">Зарядки</button>
+        <button data-screen="trips">Поездки</button>
+        <button data-screen="more">Ещё</button>
+      </div>
+      <div class="phone">
+        <iframe id="app" src="../index.html?demo=1" title="Leaf Control, демо"></iframe>
+      </div>
+      <div class="caption">Приложение открывается в демо-режиме: сценарии сменяются сами,
+        а кнопки работают вхолостую.</div>
+    </div>
+
+    <div class="about-col">
+      <div class="card">
+        <h2>Гараж — всё главное на одном экране</h2>
+        <p>Заряд и запас хода, картинка автомобиля и быстрые действия.</p>
+        <ul>
+          <li><b>Картинка меняется по состоянию:</b> загорается свет, появляется кабель зарядки, крутятся колёса в движении.</li>
+          <li><b>Быстрые действия:</b> вспышка фар, замки дверей, климат — одно касание, с защитой от случайного нажатия.</li>
+          <li><b>Кнопка зарядки:</b> показывает «Начать зарядку» или «Идёт зарядка» в зависимости от состояния.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h2>Дистанция — управление автомобилем</h2>
+        <p>Круглые кнопки как в пульте: климат по центру, вокруг — сигнал, замки и свет.</p>
+        <ul>
+          <li><b>Климат с температурой и таймером:</b> 5–30 минут, по окончании выключается сам.</li>
+          <li><b>Замки и свет:</b> закрыть/открыть двери, вспышка фар, сигнал с фарами.</li>
+          <li><b>Обновление:</b> принудительно запросить свежие данные у автомобиля.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h2>Состояние — данные автомобиля</h2>
+        <p>Подробности, которые обычно видны только в сервисе.</p>
+        <ul>
+          <li>Напряжение, ток и мощность, заряд и запас хода, температуры.</li>
+          <li>Пробег, состояние батареи (SOH), климат, зарядка, двери, свет.</li>
+          <li>Если данные устарели — показывается «—», а не старое значение.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h2>Поездки и зарядки — история</h2>
+        <p>Приложение само записывает поездки и сеансы зарядки на телефон.</p>
+        <ul>
+          <li>Пробег, время, расход и стоимость по каждой поездке.</li>
+          <li>Сеансы зарядки: сколько киловатт-часов и за какое время.</li>
+          <li>Данные хранятся на телефоне и остаются доступны без интернета.</li>
+        </ul>
+      </div>
+
+      <div class="features">
+        <div class="feature">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg></div>
+          <h3>Тёмная тема</h3>
+          <p>Подстраивается под настройку телефона автоматически, без переключателей.</p>
+        </div>
+        <div class="feature">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 12.5a11 11 0 0114 0M8.5 16a6 6 0 017 0M12 20h.01"/></svg></div>
+          <h3>Три режима связи</h3>
+          <p>Только локально по Wi-Fi, MQTT-брокер или OVMS Server V2 — на выбор.</p>
+        </div>
+        <div class="feature">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 19V5m0 14l4-4 4 3 4-6 4 4"/></svg></div>
+          <h3>Честные данные</h3>
+          <p>Устаревшие показания не выдаются за живые — вместо них прочерк.</p>
+        </div>
+        <div class="feature">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 21h16"/></svg></div>
+          <h3>Обновление по Wi-Fi</h3>
+          <p>Прошивка платы обновляется со страницы устройства, разбирать не нужно.</p>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <h2>Как попробовать</h2>
+        <p>Нажимайте кнопки в приложении слева: команды выполняются в демо-режиме и сразу видно,
+           как меняется состояние. Сценарии сменяются сами — покой, свет, климат, зарядка, поездка,
+           открытые двери, низкий заряд.</p>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    Демонстрационная страница. Данные в приложении условные, автомобиль не используется.<br>
+    Настоящее приложение работает с платой Leaf Control, установленной в автомобиле.
+  </footer>
+</div>
+
+<script>
+'use strict';
+const frame = document.getElementById('app');
+const tabs = [...document.querySelectorAll('#tabs button')];
+
+function showScreen(name){
+  tabs.forEach(b => b.classList.toggle('on', b.dataset.screen === name));
+  try {
+    frame.contentWindow.focus();
+    frame.contentWindow.go(name);
+  } catch (e) { /* cross-origin or not ready yet */ }
+}
+
+tabs.forEach(b => b.addEventListener('click', () => showScreen(b.dataset.screen)));
+
+// The demo app and this page are separate documents: keep the tab row in sync
+// when the user taps the tabbar inside the phone instead.
+frame.addEventListener('load', () => {
+  try {
+    const win = frame.contentWindow;
+    win.document.querySelectorAll('.tab').forEach(t => {
+      t.addEventListener('click', () => {
+        tabs.forEach(b => b.classList.toggle('on', b.dataset.screen === t.dataset.screen));
+      });
+    });
+  } catch (e) {}
+});
+
+document.getElementById('theme').addEventListener('click', () => {
+  const html = document.documentElement;
+  const isDark = html.dataset.theme
+    ? html.dataset.theme === 'dark'
+    : matchMedia('(prefers-color-scheme: dark)').matches;
+  html.dataset.theme = isDark ? 'light' : 'dark';
+  // keep the demo app in step with the page
+  try { frame.contentWindow.document.documentElement.dataset.theme = html.dataset.theme; } catch (e) {}
+});
+</script>
+</body>
+</html>
