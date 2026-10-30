@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.10.30.61-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "Back to .59 BMS window, cell delta removed"
+#define LEAF_FIRMWARE_VERSION "FW-2026.10.30.62-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "Separate MQTT vehicle id, .59 BMS window, no cell delta"
 
 WebServer server(80);
 DNSServer dnsServer;
@@ -636,6 +636,17 @@ void handleSettingsSave() {
     setVehicleId(vid.c_str());
   }
 
+  // MQTT topics have their own vehicle id so the two transports can differ.
+  // Empty field = keep the current value (the form always sends it, but an
+  // older page might not).
+  if (server.hasArg("mqtt_vehicle_id")) {
+    String mqttVid = server.arg("mqtt_vehicle_id");
+    mqttVid.trim();
+    if (mqttVid.length() > 0) {
+      setMqttVehicleId(mqttVid.c_str());
+    }
+  }
+
   // Wi-Fi STA (empty SSID = STA disabled)
   String wifiSsid = server.arg("wifi_ssid");
   wifiSsid.trim();
@@ -732,6 +743,8 @@ void handleSettingsSave() {
   Serial.print(getMqttPort());
   Serial.print(" vehicle_id=");
   Serial.print(getVehicleId());
+  Serial.print(" mqtt_vehicle_id=");
+  Serial.print(getMqttVehicleId());
   Serial.print(" wifi_ssid=");
   Serial.print(getWifiSSID());
   Serial.print(" wifi_ssid2=");

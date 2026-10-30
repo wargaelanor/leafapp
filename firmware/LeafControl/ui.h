@@ -139,6 +139,14 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, bool ovmsConnected,
   sendNonEmpty(server, htmlEscapeAttr(getMqttUser()));
   server.sendContent(F(
     "' placeholder='u_XXXXXX' autocapitalize='off'>\n"
+    "<label for='mqtt_vehicle_id'>Vehicle ID для MQTT</label>\n"
+    "<input type='text' id='mqtt_vehicle_id' name='mqtt_vehicle_id' value='"
+  ));
+  sendNonEmpty(server, htmlEscapeAttr(getMqttVehicleId()));
+  server.sendContent(F(
+    "' placeholder='MYLEAF' autocapitalize='off'>\n"
+    "<div class='hint'>Этот ID попадает в топики <code>ovms/&lt;user&gt;/&lt;id&gt;/...</code>. "
+    "У OVMS Server V2 свой отдельный ID ниже — менять один, чтобы не сломать другой, больше не нужно.</div>\n"
     "<label for='mqtt_password'>Пароль (пусто — не менять)</label>\n"
     "<input type='password' id='mqtt_password' name='mqtt_password' value='' placeholder='••••••••'>\n"
     "<label class='chk'><input type='checkbox' name='mqtt_tls' value='1'"

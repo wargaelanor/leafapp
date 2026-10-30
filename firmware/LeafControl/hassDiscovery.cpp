@@ -8,7 +8,7 @@ const OvmsMetrics ovmsMetrics;
 
 // Helper function to publish a single HASS config message
 void publishHassConfigForMetric(PubSubClient& mqttClient, const StringBuffer<128>& mqttPrefix, const HassMqttMetric& metric) {
-  const char* vid = getVehicleId();
+  const char* vid = getMqttVehicleId();
   StringBuffer<128> topic;
   topic.format("homeassistant/%s/LeafControl_%s/%s/config", metric.hassComponent, vid, metric.entityId);
 
@@ -308,7 +308,7 @@ void mqttPublishHassDiscovery(PubSubClient& mqttClient, const StringBuffer<128>&
 
   // Publish door sensors separately as they share properties
   for (const auto& door : doorDefinitions) {
-    const char* vid = getVehicleId();
+    const char* vid = getMqttVehicleId();
     StringBuffer<128> topic;
     topic.format("homeassistant/binary_sensor/LeafControl_%s/%s/config", vid, door.entityId);
 

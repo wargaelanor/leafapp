@@ -254,7 +254,7 @@ boolean reconnectMQTT() {
 }
 
 void setupMQTT() {
-  mqttPrefix.format("ovms/%s/%s/", getMqttUser(), getVehicleId());
+  mqttPrefix.format("ovms/%s/%s/", getMqttUser(), getMqttVehicleId());
   if (getMqttTls()) {
     espClientSecure.setInsecure(); // Skip certificate validation for simplicity
     espClientSecure.setHandshakeTimeout(5); // default 12s blocks loop() too long

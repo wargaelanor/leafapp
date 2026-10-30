@@ -65,6 +65,10 @@ ConfigStatus setMqttPassword(const char* value);
 
 const char* getVehicleId();
 ConfigStatus setVehicleId(const char* value);
+// Vehicle ID used in the MQTT topics (ovms/<user>/<id>/...). Separate from the
+// OVMS Server V2 id; falls back to it while unset.
+const char* getMqttVehicleId();
+ConfigStatus setMqttVehicleId(const char* value);
 
 bool getLockingEnabled();
 ConfigStatus setLockingEnabled(bool value);

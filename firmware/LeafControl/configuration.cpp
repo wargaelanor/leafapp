@@ -109,6 +109,10 @@ static ConfigInt        conf_mqtt_port("mqtt_port", 8883);
 static ConfigString<64> conf_mqtt_user("mqtt_user", "");
 static ConfigString<64> conf_mqtt_password("mqtt_password", "");
 static ConfigString<64> conf_vehicle_id("vehicle_id", "");
+// MQTT and OVMS Server V2 are separate transports with separate broker
+// accounts, so they need separate vehicle IDs: the MQTT topics are
+// ovms/<user>/<id>/... and changing the OVMS ID must not rename them.
+static ConfigString<64> conf_mqtt_vehicle_id("mqtt_vehicle_id", "");
 static ConfigBool       conf_locking_enabled("locking_enabled", false);
 static ConfigBool       conf_mqtt_tls("mqtt_tls", true);
 static ConfigBool       conf_hass_discovery("hass_discovery", true);
@@ -159,6 +163,7 @@ void initConfiguration() {
     conf_mqtt_user.load();
     conf_mqtt_password.load();
     conf_vehicle_id.load();
+    conf_mqtt_vehicle_id.load();
     conf_locking_enabled.load();
     conf_mqtt_tls.load();
     conf_hass_discovery.load();
@@ -272,6 +277,17 @@ ConfigStatus setMqttPassword(const char* value) { return conf_mqtt_password.set(
 
 const char* getVehicleId() { return conf_vehicle_id.get(); }
 ConfigStatus setVehicleId(const char* value) { return conf_vehicle_id.set(value); }
+
+// Falls back to the OVMS id only while the dedicated one is empty, so an
+// existing installation keeps its topics until it is given a value.
+const char* getMqttVehicleId() {
+  const char* dedicated = conf_mqtt_vehicle_id.get();
+  if (dedicated && dedicated[0]) return dedicated;
+  return conf_vehicle_id.get();
+}
+ConfigStatus setMqttVehicleId(const char* value) {
+  return conf_mqtt_vehicle_id.set(value);
+}
 
 bool getLockingEnabled() { return conf_locking_enabled.get(); }
 ConfigStatus setLockingEnabled(bool value) { return conf_locking_enabled.set(value); }

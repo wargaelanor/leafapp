@@ -42,6 +42,7 @@ void executeCommand(char* cmd) {
         Serial.printf("  mqtt_user: %s\n", getMqttUser());
         Serial.printf("  mqtt_password: %s\n", showSecrets ? getMqttPassword() : "****");
         Serial.printf("  vehicle_id: %s\n", getVehicleId());
+        Serial.printf("  mqtt_vehicle_id: %s\n", getMqttVehicleId());
         Serial.printf("  locking_enabled: %s\n", getLockingEnabled() ? "true" : "false");
         Serial.printf("  mqtt_tls: %s\n", getMqttTls() ? "true" : "false");
         Serial.printf("  hass_discovery: %s\n", getHassDiscoveryEnabled() ? "true" : "false");
@@ -76,6 +77,7 @@ void executeCommand(char* cmd) {
             else if (strcmp(key, "mqtt_user") == 0) Serial.println(getMqttUser());
             else if (strcmp(key, "mqtt_password") == 0) Serial.println("****");
             else if (strcmp(key, "vehicle_id") == 0) Serial.println(getVehicleId());
+            else if (strcmp(key, "mqtt_vehicle_id") == 0) Serial.println(getMqttVehicleId());
             else if (strcmp(key, "locking_enabled") == 0) Serial.println(getLockingEnabled() ? "true" : "false");
             else if (strcmp(key, "mqtt_tls") == 0) Serial.println(getMqttTls() ? "true" : "false");
             else if (strcmp(key, "hass_discovery") == 0) Serial.println(getHassDiscoveryEnabled() ? "true" : "false");
@@ -120,6 +122,7 @@ void executeCommand(char* cmd) {
             else if (strcmp(key, "mqtt_user") == 0) status = setMqttUser(val);
             else if (strcmp(key, "mqtt_password") == 0) status = setMqttPassword(val);
             else if (strcmp(key, "vehicle_id") == 0) status = setVehicleId(val);
+            else if (strcmp(key, "mqtt_vehicle_id") == 0) status = setMqttVehicleId(val);
             else if (strcmp(key, "locking_enabled") == 0) {
                 if (strcmp(val, "true") == 0 || strcmp(val, "1") == 0) {
                     status = setLockingEnabled(true);
