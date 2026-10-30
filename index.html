@@ -140,6 +140,21 @@ body{background:var(--bg);font-family:'NissanBrand',-apple-system,BlinkMacSystem
 .setpoint-row label{font-size:13px;color:var(--muted);white-space:nowrap}
 .setpoint-row input[type=range]{flex:1;accent-color:var(--accent)}
 .setpoint-row .val{font-size:15px;color:var(--text);font-weight:600;min-width:44px;text-align:right}
+/* duration as buttons + countdown bar */
+.dur-row{flex-wrap:wrap}
+.dur-btns{display:flex;gap:6px;flex:1;justify-content:flex-end;flex-wrap:wrap}
+.dur-btns button{border:1px solid var(--line);background:var(--surface);color:var(--text-2);border-radius:8px;
+  font:inherit;font-size:12.5px;min-width:38px;padding:7px 0;cursor:pointer;transition:background .15s,border-color .15s,color .15s}
+.dur-btns button:hover{border-color:var(--accent)}
+.dur-btns button.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+@media (prefers-color-scheme: dark){.dur-btns button.on{color:#08121a}}
+html[data-theme="dark"] .dur-btns button.on{color:#08121a}
+.hvac-progress{margin:0 0 12px;padding:10px 14px;background:var(--surface);border-radius:8px;box-shadow:var(--card-shadow)}
+.hvac-progress[hidden]{display:none}
+.hp-bar{height:6px;border-radius:3px;background:var(--line);overflow:hidden;margin-bottom:7px}
+.hp-bar i{display:block;height:100%;width:100%;background:var(--accent);border-radius:3px;transition:width 1s linear}
+.hp-label{font-size:12px;color:var(--muted)}
+.hp-label b{color:var(--text);font-weight:600}
 .remote-divider{height:1px;background:var(--chip);margin:0 32px 8px}
 .remote-meta{text-align:center;font-size:12px;color:var(--muted);padding-bottom:12px}
 .remote-meta .row{display:flex;justify-content:center;gap:40px;padding:10px 0}
@@ -414,14 +429,20 @@ body.demo .demo-banner{display:block}
           <input type="range" id="sp-slider" min="16" max="28" step="0.5" value="21" oninput="spChanged(this.value)">
           <span class="val" id="sp-val">21.0</span>
         </div>
-        <div class="setpoint-row">
-          <label for="hvac-minutes">Длительность</label>
-          <select id="hvac-minutes">
-            <option value="5">5 минут</option><option value="10">10 минут</option>
-            <option value="15" selected>15 минут</option><option value="20">20 минут</option>
-            <option value="30">30 минут</option>
-          </select>
-          <span class="val" id="hvac-left">—</span>
+        <div class="setpoint-row dur-row">
+          <label>Длительность</label>
+          <div class="dur-btns" id="dur-btns">
+            <button type="button" data-min="5">5</button>
+            <button type="button" data-min="10">10</button>
+            <button type="button" data-min="15" class="on">15</button>
+            <button type="button" data-min="20">20</button>
+            <button type="button" data-min="30">30</button>
+          </div>
+          <input type="hidden" id="hvac-minutes" value="15">
+        </div>
+        <div class="hvac-progress" id="hvac-progress" hidden>
+          <div class="hp-bar"><i id="hp-fill"></i></div>
+          <div class="hp-label">Климат выключится через <b id="hp-left">—</b></div>
         </div>
         <div class="remote-pad">
           <div class="rbtn a" id="rb-horn" aria-disabled="true">
@@ -767,6 +788,8 @@ let lastUpdate = 0;
 let client = null;
 let cfg = null;
 let spTouched = false;
+// How long the climate was asked to run, so the countdown bar has a scale.
+let hvacTotal = 0;
 let findActive = false;
 let findTimer = null;
 const LOCK_CLOSED_SVG = '<svg viewBox="0 0 26 30" fill="none"><path d="M23.13 11.1h-1.85l-.01-2.7A8.33 8.33 0 104.63 8.33l0 2.77H2.78A2.78 2.78 0 000 13.88v12.95a2.78 2.78 0 002.78 2.77h20.35A2.78 2.78 0 0025.9 26.83V13.88a2.78 2.78 0 00-2.77-2.78zM7.4 8.33a5.55 5.55 0 0111.1 0v2.77H7.4V8.33zm15.73 18.5H2.78V13.88h20.35v12.95z" fill="currentColor"/></svg>';
@@ -950,7 +973,17 @@ function renderNow(){
   $('rm-updated').textContent = lastUpdate ? 'Обновлено: '+new Date(lastUpdate).toLocaleTimeString('ru-RU') : 'Обновлено: никогда';
   $('rb-climate').classList.toggle('on', S.hvac);
   $('rb-climate-label').textContent = S.hvac ? 'Выкл климат' : 'Климат';
-  $('hvac-left').textContent = S.hvacTimer>0 ? S.hvacTimer+' мин' : '—';
+  // Countdown bar: visible only while the climate timer is running.
+  const hvacLeft = S.hvacTimer > 0 ? S.hvacTimer : 0;
+  const prog = $('hvac-progress');
+  if(hvacLeft > 0 && S.hvac){
+    if(hvacTotal < hvacLeft) hvacTotal = hvacLeft;   // first sample sets the scale
+    prog.hidden = false;
+    $('hp-fill').style.width = Math.max(2, Math.round(hvacLeft / hvacTotal * 100)) + '%';
+    $('hp-left').textContent = hvacLeft + ' мин';
+  } else {
+    prog.hidden = true;
+  }
 
   // Source is spelled out: the dashboard value, the BMS (nominal) value, or a
   // calculated estimate. The UI never presents one as the other.
@@ -1187,8 +1220,9 @@ function demoCommand(type, quiet){
 const DEMO_STEPS = [
   { dur: 5 },
   { dur: 4, start(){ S.lights = 1; }, end(){ S.lights = 0; } },
-  { dur: 8, start(){ S.hvac = true; S.heat = true; },
-    tick(u){ S.cabin = 9.5 + 13 * u; } },
+  { dur: 8, start(){ S.hvac = true; S.heat = true; hvacTotal = 8; },
+    tick(u){ S.cabin = 9.5 + 13 * u; S.hvacTimer = Math.max(0, Math.round(8 * (1 - u))); },
+    end(){ S.hvacTimer = 0; } },
   { dur: 10, start(){ S.hvac = false; S.heat = false; S.charging = true; S.charger = 'charging'; },
     tick(u){ S.soc = Math.min(100, 72 + u * 2); S.isoc = S.soc; S.irange = Math.round(S.soc * 2.5);
              S.v = 388; S.i = 16.5; S.power = 6.4; },
@@ -1245,6 +1279,7 @@ function cmd(type, quiet){
     if(S.seq){ if(!quiet) toast('Дождитесь завершения текущей команды'); return Promise.resolve(false); }
     const sp=parseFloat($('sp-slider').value);
     const mins=parseInt($('hvac-minutes').value,10);
+    if(type==='hvac' && !S.hvac) hvacTotal = mins;   // scale for the countdown bar
     const map={ charge:'/charge_on', chargeoff:'/charge_off', lock:'/lock', unlock:'/unlock', refresh:'/refresh',
       lights:'/lights', hornlights:'/hornlights', rhloff:'/rhloff',
       hvac: S.hvac?'/hvac_off':'/hvac_on?setpoint='+sp+'&minutes='+mins };
@@ -1259,6 +1294,7 @@ function cmd(type, quiet){
   const p='ovms/'+cfg.user+'/'+(cfg.vid||'leaf')+'/client/pwa/command/c';
   const sp=parseFloat($('sp-slider').value);
   const mins=parseInt($('hvac-minutes').value,10);
+  if(type==='hvac' && !S.hvac) hvacTotal = mins;   // scale for the countdown bar
   const payload={ charge:'charge start', chargeoff:'charge stop', lock:'lock', unlock:'unlock',
     refresh:'server v3 update modified',
     lights:'lights', hornlights:'hornlights', rhloff:'lights off',
@@ -1309,6 +1345,18 @@ function spChanged(v){
   localStorage.setItem('leafsp',v);
   $('sp-val').textContent=v;
 }
+// Climate duration: buttons instead of a select, remembered between visits.
+function setDuration(m){
+  const mins = [5,10,15,20,30].includes(m) ? m : 15;
+  $('hvac-minutes').value = mins;
+  document.querySelectorAll('#dur-btns button').forEach(b=>{
+    b.classList.toggle('on', parseInt(b.dataset.min,10) === mins);
+  });
+  try{ localStorage.setItem('leafdur', String(mins)); }catch(e){}
+}
+document.querySelectorAll('#dur-btns button').forEach(b=>{
+  b.addEventListener('click', ()=> setDuration(parseInt(b.dataset.min,10)));
+});
 function updateFindCard(){
   const c=$('find-car'); if(!c) return;
   c.classList.remove('active');
@@ -1803,6 +1851,7 @@ async function boot(){
   if(DEMO){ demoStart(); return; }
   const savedSp = localStorage.getItem('leafsp');
   if(savedSp){ $('sp-slider').value = savedSp; $('sp-val').textContent = savedSp; spTouched = true; }
+  setDuration(parseInt(localStorage.getItem('leafdur'),10));
   render();
   tripOpenDB().then(db=>{ tripDB=db; return tripCleanupOrphans(); })
     .then(()=>refreshTripsScreen()).catch(()=>{});
