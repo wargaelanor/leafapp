@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0f1216" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f4f5f7" media="(prefers-color-scheme: light)">
+<title>Leaf Control — демонстрация</title>
+<style>
+:root{
+  --bg:#f4f5f7; --surface:#fff; --surface-2:#f9f9f9; --chip:#eceef1;
+  --text:#333; --text-2:#555; --muted:#707070;
+  --line:#e8eaee; --accent:#0077ac; --shadow:0 8px 30px rgba(20,30,45,.10);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0b0e11; --surface:#161a1f; --surface-2:#1c2127; --chip:#232a33;
+    --text:#e8ecf1; --text-2:#b6bec7; --muted:#8f99a3;
+    --line:#242b33; --accent:#4aa8d8; --shadow:0 10px 40px rgba(0,0,0,.55);
+  }
+}
+html[data-theme="light"]{
+  --bg:#f4f5f7; --surface:#fff; --surface-2:#f9f9f9; --chip:#eceef1;
+  --text:#333; --text-2:#555; --muted:#707070;
+  --line:#e8eaee; --accent:#0077ac; --shadow:0 8px 30px rgba(20,30,45,.10);
+}
+html[data-theme="dark"]{
+  --bg:#0b0e11; --surface:#161a1f; --surface-2:#1c2127; --chip:#232a33;
+  --text:#e8ecf1; --text-2:#b6bec7; --muted:#8f99a3;
+  --line:#242b33; --accent:#4aa8d8; --shadow:0 10px 40px rgba(0,0,0,.55);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  min-height:100vh;background:var(--bg);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:28px 16px 40px;gap:22px;transition:background .3s,color .3s;
+}
+.head{text-align:center;max-width:560px}
+.head h1{font-size:22px;font-weight:600;letter-spacing:.2px}
+.head p{margin-top:6px;font-size:13.5px;color:var(--muted);line-height:1.5}
+.card{
+  width:100%;max-width:420px;background:var(--surface);border:1px solid var(--line);
+  border-radius:18px;box-shadow:var(--shadow);overflow:hidden;
+}
+.stage{position:relative;margin:14px 14px 0;border-radius:12px;background:var(--surface-2);overflow:hidden}
+.stage img.base{width:100%;display:block}
+.layer{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;display:none}
+.layer img{position:absolute;left:0;top:0;width:100%;height:100%;display:block}
+.stage.s-lights .layer.lights{display:block}
+.stage.s-charging .layer.cable{display:block}
+.stage.s-moving .layer.frames{display:block}
+.layer.frames img{opacity:0;animation:frame .48s linear infinite}
+.layer.frames img:nth-child(1){animation-delay:0s}
+.layer.frames img:nth-child(2){animation-delay:-.36s}
+.layer.frames img:nth-child(3){animation-delay:-.24s}
+.layer.frames img:nth-child(4){animation-delay:-.12s}
+@keyframes frame{0%,24.9%{opacity:1}25%,100%{opacity:0}}
+.caption{padding:14px 18px 4px;text-align:center}
+.caption .state{font-size:15px;font-weight:600}
+.caption .hint{font-size:12.5px;color:var(--muted);margin-top:3px;min-height:18px}
+.dots{display:flex;gap:6px;justify-content:center;padding:12px 0 16px}
+.dots i{width:6px;height:6px;border-radius:50%;background:var(--line);transition:background .2s,transform .2s}
+.dots i.on{background:var(--accent);transform:scale(1.25)}
+.row{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;padding:0 14px 16px}
+.btn{
+  border:1px solid var(--line);background:var(--chip);color:var(--text);
+  font:inherit;font-size:12.5px;padding:8px 14px;border-radius:999px;cursor:pointer;
+  transition:background .18s,border-color .18s,color .18s;
+}
+.btn:hover{border-color:var(--accent)}
+.btn.on{background:var(--accent);border-color:var(--accent);color:#fff}
+@media (prefers-color-scheme: dark){.btn.on{color:#08121a;font-weight:600}}
+html[data-theme="dark"] .btn.on{color:#08121a;font-weight:600}
+html[data-theme="light"] .btn.on{color:#fff;font-weight:400}
+.foot{font-size:11.5px;color:var(--muted);text-align:center;max-width:520px;line-height:1.5}
+@media (max-width:420px){.head h1{font-size:19px}.card{border-radius:14px}}
+</style>
+</head>
+<body>
+  <div class="head">
+    <h1>Leaf Control</h1>
+    <p>Демонстрация интерфейса: картинка автомобиля меняется по состоянию — включённый свет,
+       подключённый кабель зарядки и вращение колёс в движении.</p>
+  </div>
+
+  <div class="card">
+    <div class="stage" id="stage">
+      <img class="base" src="@@LEAF@@" alt="Nissan Leaf">
+      <div class="layer lights"><img src="@@LIGHTS@@" alt=""></div>
+      <div class="layer cable"><img src="@@CABLE@@" alt=""></div>
+      <div class="layer frames">
+        <img src="@@W1@@" alt=""><img src="@@W2@@" alt="">
+        <img src="@@W3@@" alt=""><img src="@@W4@@" alt="">
+      </div>
+    </div>
+    <div class="caption">
+      <div class="state" id="state">Автомобиль в покое</div>
+      <div class="hint" id="hint">Данные в норме, заряд не идёт</div>
+    </div>
+    <div class="dots" id="dots"><i class="on"></i><i></i><i></i><i></i></div>
+    <div class="row">
+      <button class="btn on" data-state="idle">Покой</button>
+      <button class="btn" data-state="lights">Свет</button>
+      <button class="btn" data-state="charging">Зарядка</button>
+      <button class="btn" data-state="moving">Движение</button>
+      <button class="btn" id="theme">Тема</button>
+    </div>
+  </div>
+
+  <div class="foot">
+    Один и тот же интерфейс работает на плате в автомобиле и как приложение на телефоне.
+    Данные на этой странице условные — она показывает только поведение картинки и темы.
+  </div>
+
+<script>
+'use strict';
+const STATES = {
+  idle:     { cls: 's-idle',     title: 'Автомобиль в покое', hint: 'Данные в норме, заряд не идёт' },
+  lights:   { cls: 's-lights',   title: 'Включён свет',        hint: 'Фары горят — на картинке появляется луч' },
+  charging: { cls: 's-charging', title: 'Идёт зарядка',        hint: 'Кабель подключён, зарядка активна' },
+  moving:   { cls: 's-moving',   title: 'Автомобиль в движении', hint: 'Колёса вращаются, скорость меняется' },
+};
+const ORDER = ['idle', 'lights', 'charging', 'moving'];
+
+const stage = document.getElementById('stage');
+const stateEl = document.getElementById('state');
+const hintEl = document.getElementById('hint');
+const dots = [...document.querySelectorAll('#dots i')];
+const buttons = [...document.querySelectorAll('.btn[data-state]')];
+
+let current = 'idle';
+let auto = true;
+let timer = null;
+let resumeTimer = null;
+
+function apply(name){
+  current = name;
+  stage.className = 'stage ' + STATES[name].cls;
+  stateEl.textContent = STATES[name].title;
+  hintEl.textContent = STATES[name].hint;
+  buttons.forEach(b => b.classList.toggle('on', b.dataset.state === name));
+  dots.forEach((d, i) => d.classList.toggle('on', ORDER[i] === name));
+}
+
+function next(){
+  const i = (ORDER.indexOf(current) + 1) % ORDER.length;
+  apply(ORDER[i]);
+}
+
+function restart(delay = 3000){
+  clearInterval(timer);
+  if (auto) timer = setInterval(next, delay);
+}
+
+buttons.forEach(b => b.addEventListener('click', () => {
+  apply(b.dataset.state);
+  // A manual pick pauses the show briefly, then the demo keeps cycling so it
+  // still looks alive on a stand or in a client's hands.
+  clearInterval(timer);
+  clearTimeout(resumeTimer);
+  resumeTimer = setTimeout(() => { apply(b.dataset.state); restart(3000); }, 10000);
+}));
+
+// The theme follows the phone; the button only overrides it for the demo.
+document.getElementById('theme').addEventListener('click', () => {
+  const html = document.documentElement;
+  const isDark = html.dataset.theme
+    ? html.dataset.theme === 'dark'
+    : matchMedia('(prefers-color-scheme: dark)').matches;
+  html.dataset.theme = isDark ? 'light' : 'dark';
+});
+
+apply('idle');
+restart();
+</script>
+</body>
+</html>
