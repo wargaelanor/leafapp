@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.10.30.71-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "Demo mode in the app, updated About"
+#define LEAF_FIRMWARE_VERSION "FW-2026.10.30.72-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "Climate duration buttons and countdown bar"
 
 WebServer server(80);
 DNSServer dnsServer;
