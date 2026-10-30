@@ -1,4 +1,4 @@
-# End-to-end check of the BMS/VIN work on a live car.
+﻿# End-to-end check of the BMS/VIN work on a live car.
 #
 # Run this when the car can be woken (it sends the climate command, which takes
 # a few kWh but wakes CAR-CAN and the diagnostic gateway):
@@ -13,7 +13,7 @@
 #   btemp/cdelta/v  temperature, cell delta, voltage and current together
 #   vin             result of the read-only OBD-II probe (may stay empty)
 param(
-  [string]$Board = "192.168.70.100",
+  [string]$Board = "leaf.local",
   [int]$Minutes = 6,
   [int]$IntervalSec = 10,
   [double]$Setpoint = 22,

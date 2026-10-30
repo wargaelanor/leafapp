@@ -1,8 +1,8 @@
-# Unattended OTA + capture, for when the board is behind deep sleep/weak Wi-Fi.
+﻿# Unattended OTA + capture, for when the board is behind deep sleep/weak Wi-Fi.
 # Waits for a reachable window, installs the firmware, then records a short
 # telemetry window the next time the car is active by itself.
 param(
-  [string]$Board = "192.168.70.100",
+  [string]$Board = "leaf.local",
   [string]$Firmware = "$env:TEMP\leafbin-ze1-cmd52\LeafControl.ino.bin",
   [string]$ExpectedVersion = "FW-2026.10.29.52-CMD",
   [int]$Hours = 6,

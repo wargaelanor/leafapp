@@ -1,4 +1,4 @@
-# Keep-alive OTA.
+﻿# Keep-alive OTA.
 #
 # The board deep-sleeps when the car has been idle longer than "sleep after"
 # hours, and it only wakes on a timer (default 10 min) for about 90 s.  That is
@@ -11,7 +11,7 @@
 # than the wake window, which is what killed every earlier attempt).
 
 param(
-  [string]$Board = "192.168.70.100",
+  [string]$Board = "leaf.local",
   [string]$Firmware = "$env:TEMP\leafbin-ze1-cmd53\LeafControl.ino.bin",
   [string]$ExpectedVersion = "FW-2026.10.29.53-CMD",
   [int]$Minutes = 720,

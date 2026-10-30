@@ -1,8 +1,8 @@
-# Presence logger: records exactly when the board is on the network and how
-# long each boot lives. No writes, no OTA — only /api/status every 5 s, which
+﻿# Presence logger: records exactly when the board is on the network and how
+# long each boot lives. No writes, no OTA вЂ” only /api/status every 5 s, which
 # also resets the deep-sleep idle timer while the board is reachable.
 param(
-  [string]$Board = "192.168.70.100",
+  [string]$Board = "leaf.local",
   [int]$Minutes = 30,
   [string]$Log = "$env:TEMP\leaf-presence.log"
 )

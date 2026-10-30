@@ -1,4 +1,4 @@
-# Keep-alive + network (espota) flash.
+﻿# Keep-alive + network (espota) flash.
 #
 # Two problems this solves:
 #  1. The board deep-sleeps when the car has been idle past "sleep after"; GET
@@ -8,7 +8,7 @@
 #     in acknowledged blocks and reports real errors, so it survives the link.
 
 param(
-  [string]$Board = "192.168.70.100",
+  [string]$Board = "leaf.local",
   [string]$Firmware = "$env:TEMP\leafbin-ze1-cmd53\LeafControl.ino.bin",
   [string]$ExpectedVersion = "FW-2026.10.29.53-CMD",
   [int]$Minutes = 720,

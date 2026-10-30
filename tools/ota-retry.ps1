@@ -1,6 +1,6 @@
-# Retry OTA upload without touching the board while the transfer runs.
+﻿# Retry OTA upload without touching the board while the transfer runs.
 #
-# Measured facts (2026-10-30, -88…-92 dBm):
+# Measured facts (2026-10-30, -88вЂ¦-92 dBm):
 #  - a parallel /api/status request kills the upload within seconds
 #    (single-threaded WebServer), which is what made every earlier attempt
 #    fail at ~12 s;
@@ -9,7 +9,7 @@
 # So: poll only before the transfer (this also resets the sleep idle timer),
 # then let curl own the board until it finishes or fails.
 param(
-  [string]$Board = "192.168.70.100",
+  [string]$Board = "leaf.local",
   [string]$Firmware = "$env:TEMP\leafbin-ze1-cmd53\LeafControl.ino.bin",
   [string]$ExpectedVersion = "FW-2026.10.29.53-CMD",
   [int]$Attempts = 20,
