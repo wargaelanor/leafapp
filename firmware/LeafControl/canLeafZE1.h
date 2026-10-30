@@ -128,6 +128,13 @@ CanSeqResult manageCANSequence(unsigned long currentTimeMs);
 void manageVinQuery(unsigned long currentTimeMs);
 void manageBmsDiagnostics(unsigned long currentTimeMs);
 
+// Read-only VIN probe over OBD-II mode 09 PID 02 (0x7DF request, 0x7E8 reply).
+// Only allowed while explicitly requested, so the default TX whitelist stays
+// restricted to payloads already proven for this car.
+void requestVinObdProbe();
+bool vinObdProbeActive();
+void manageVinObdProbe(unsigned long currentTimeMs);
+
 // Diagnostic query counters (visible in /api/status for remote debugging)
 uint32_t bmsQueryRequests();
 uint32_t bmsQueryResponses();
@@ -139,6 +146,11 @@ uint16_t bmsLastExpectedLength();
 uint16_t bmsLastReceivedLength();
 uint8_t bmsLastGroupId();
 uint32_t bmsFirstFrames();
+// Diagnostics for the per-group scheduler: seconds since the last accepted
+// BMS reply, number of failed requests, and the group being asked right now.
+uint32_t bmsLastReplyAgeSec();
+uint32_t bmsFailureCount();
+uint8_t bmsRequestedGroupId();
 
 // The OEM TCU keeps sending 0x56E "86 00 0A 00" about once per second while a
 // remote climate session is running. Calling this from loop() while a remote

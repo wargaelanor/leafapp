@@ -3,6 +3,11 @@
 #include "canInterface.h"
 #include "canLogger.h"
 
+// Implemented in canLeafZE1.cpp. Declared here so the low-level CAN layer can
+// gate the one unproven payload (OBD-II VIN read) without including the whole
+// vehicle header.
+bool vinObdProbeActive();
+
 // --- CAN SETTINGS (Port B) ---
 #define CAN_TX_PIN 7 
 #define CAN_RX_PIN 6
@@ -87,6 +92,17 @@ bool sendCAN(uint32_t id,const uint8_t* data, uint8_t len) {
     static const uint8_t vinFlowControl[8] = {0x30, 0x00, 0x00, 0, 0, 0, 0, 0};
     allowed = memcmp(data, vinRequest, sizeof(vinRequest)) == 0 ||
               memcmp(data, vinFlowControl, sizeof(vinFlowControl)) == 0;
+  }
+  // Standard OBD-II VIN request (mode 09 PID 02) on the functional address.
+  // The LBC answers the UDS variant with 17 blanks on this car, so the VCM is
+  // the only remaining source. It stays blocked unless a developer probe is
+  // running, which keeps the default whitelist exactly the OVMS-proven set.
+  if (!allowed && vinObdProbeActive() && data && len == 8 &&
+      (id == 0x7DF || id == 0x7E0)) {
+    static const uint8_t vinObdRequest[8] = {0x02, 0x09, 0x02, 0, 0, 0, 0, 0};
+    static const uint8_t vinObdFlowControl[8] = {0x30, 0x00, 0x00, 0, 0, 0, 0, 0};
+    allowed = memcmp(data, vinObdRequest, sizeof(vinObdRequest)) == 0 ||
+              memcmp(data, vinObdFlowControl, sizeof(vinObdFlowControl)) == 0;
   }
   if (!allowed) {
     Serial.printf("! CAN TX blocked by whitelist: 0x%03lX len=%u\n",

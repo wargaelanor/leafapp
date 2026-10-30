@@ -226,6 +226,19 @@ static uint32_t vinRequestCount = 0;
 static uint32_t vinResponseCount = 0;
 static uint8_t vinInvalidCount = 0;
 static bool vinDisabled = false;
+// Optional read-only VIN probe over standard OBD-II mode 09 PID 02. The LBC on
+// this car answers the UDS request (02 21 81 on 0x797) with 17 blanks, so the
+// VCM through the OBD-II functional address is the only remaining source.
+// It runs only when explicitly requested from the developer page, which keeps
+// the default TX whitelist limited to the payloads OVMS proves for this car.
+static bool vinObdRequest = false;
+static bool vinObdPending = false;
+static unsigned long vinObdStartedMs = 0;
+static unsigned long vinObdLastRequestMs = 0;
+static uint8_t vinObdAttempts = 0;
+static char vinObdBuffer[18] = {0};
+static uint8_t vinObdLength = 0;
+static uint8_t vinObdNextFrame = 1;
 static uint32_t bmsRequestCount = 0;
 static uint32_t bmsResponseCount = 0;
 static uint16_t bmsLastExpected = 0;
@@ -247,13 +260,44 @@ static const uint8_t kBmsGroups[] = {0x02, 0x04, 0x01, 0x61};
 static const BmsQuery kBmsQueryTypes[] = {
     BmsQuery::CELLS, BmsQuery::TEMPERATURES, BmsQuery::BATTERY, BmsQuery::SOH
 };
+#define BMS_GROUP_COUNT (sizeof(kBmsGroups) / sizeof(kBmsGroups[0]))
 static uint8_t bmsGroupIndex = 0;
 static uint8_t bmsRequestedGroup = 0;
 static uint8_t bmsFailStreak = 0;
+// Per-group cadence. Upstream OVMS asks cells and battery every 60 s,
+// temperatures every 180 s and SOH every 900 s. Asking every 2.5 s made this
+// LBC answer two groups and then ignore everything for minutes, which looked
+// like "temperature never shows up". Keep a per-group slot and back a silent
+// group off instead of flooding the gateway.
+static const uint16_t kBmsPeriodSec[] = {30, 120, 60, 600};
+static const uint16_t kBmsBackoffMaxSec = 240;
+static unsigned long bmsGroupDueMs[BMS_GROUP_COUNT] = {0, 0, 0, 0};
+static uint16_t bmsGroupBackoffSec[BMS_GROUP_COUNT] = {0, 0, 0, 0};
+static unsigned long bmsLastReplyMs = 0;
+static uint32_t bmsFailCount = 0;
+
+// Schedule the group that just finished: its normal period when it answered,
+// an exponential backoff when it did not.
+static void bmsGroupDone(bool answered) {
+    uint8_t index = bmsGroupIndex;
+    if (index >= BMS_GROUP_COUNT) return;
+    if (answered) {
+        bmsGroupBackoffSec[index] = 0;
+        bmsGroupDueMs[index] = millis() + (unsigned long)kBmsPeriodSec[index] * 1000UL;
+        bmsLastReplyMs = millis();
+    } else {
+        uint16_t backoff = bmsGroupBackoffSec[index]
+                               ? (uint16_t)(bmsGroupBackoffSec[index] * 2)
+                               : 20;
+        if (backoff > kBmsBackoffMaxSec) backoff = kBmsBackoffMaxSec;
+        bmsGroupBackoffSec[index] = backoff;
+        bmsGroupDueMs[index] = millis() + (unsigned long)backoff * 1000UL;
+    }
+}
 
 static void advanceBmsGroup() {
-    bmsGroupIndex = (uint8_t)((bmsGroupIndex + 1) %
-                              (sizeof(kBmsGroups) / sizeof(kBmsGroups[0])));
+    bmsGroupDone(true);
+    bmsGroupIndex = (uint8_t)((bmsGroupIndex + 1) % BMS_GROUP_COUNT);
     bmsFailStreak = 0;
 }
 
@@ -419,6 +463,7 @@ void handleVinResponse(const uint8_t* data, uint8_t len) {
 }
 
 // Message parser dispatch table
+void handleVinObdResponse(const uint8_t* data, uint8_t len);
 static const MessageParser parsers[] = {
     CAN_PARSER(raw_soc_readout, handleSOCMessage),
     CAN_PARSER(cabin_temp_readout, handleTempMessage),
@@ -438,6 +483,7 @@ static const MessageParser parsers[] = {
     CAN_PARSER(odometer_readout, handleOdometerMessage),
     { 0x79A, 1, handleVinResponse },
     { 0x7BB, 1, handleBmsResponse },
+    { 0x7E8, 1, handleVinObdResponse },   // only used by the explicit VIN probe
 };
 
 // Can message reception handler, to be called when a CAN message is received
@@ -778,6 +824,88 @@ void manageVinQuery(unsigned long currentTimeMs) {
 #endif
 }
 
+bool vinObdProbeActive() { return vinObdRequest; }
+
+void requestVinObdProbe() {
+    vinObdRequest = true;
+    vinObdPending = false;
+    vinObdAttempts = 0;
+    vinObdStartedMs = 0;
+    vinObdLastRequestMs = 0;
+    vinObdLength = 0;
+    vinObdBuffer[0] = '\0';
+    Serial.println("VIN probe: OBD-II 09 02 on 0x7DF requested");
+}
+
+void manageVinObdProbe(unsigned long currentTimeMs) {
+#if LEAF_CAN_RX_ONLY
+    (void)currentTimeMs;
+#else
+    if (!vinObdRequest) return;
+    if (vinObdPending && currentTimeMs - vinObdStartedMs > 3000) {
+        vinObdPending = false;
+    }
+    if (vinObdAttempts >= 3 && !vinObdPending) {
+        vinObdRequest = false;
+        Serial.println("VIN probe: no reply to 09 02, giving up");
+        return;
+    }
+    if (vinObdPending) return;
+    if (vinObdLastRequestMs != 0 && currentTimeMs - vinObdLastRequestMs < 5000) return;
+    const uint8_t request[8] = {0x02, 0x09, 0x02, 0, 0, 0, 0, 0};
+    if (sendCAN(0x7DF, request, sizeof(request))) {
+        vinObdPending = true;
+        vinObdStartedMs = currentTimeMs;
+        vinObdLastRequestMs = currentTimeMs;
+        vinObdAttempts++;
+        Serial.println("VIN probe: 09 02 sent on OBD CAN");
+    } else {
+        vinObdRequest = false;
+        vinObdPending = false;
+        Serial.println("VIN probe: CAN TX rejected, aborted");
+    }
+#endif
+}
+
+// ISO-TP reply to mode 09 PID 02: 49 02 01 followed by 17 VIN characters.
+void handleVinObdResponse(const uint8_t* data, uint8_t len) {
+    if (!vinObdRequest || !vinObdPending || len < 2) return;
+    uint8_t frameType = data[0] & 0xF0;
+    if (frameType == 0x10) {
+        uint16_t total = ((uint16_t)(data[0] & 0x0F) << 8) | data[1];
+        if (len < 6 || total < 20 || data[2] != 0x49 || data[3] != 0x02) return;
+        vinObdLength = 0;
+        vinObdNextFrame = 1;
+        for (uint8_t i = 5; i < len && vinObdLength < 17; i++) {
+            vinObdBuffer[vinObdLength++] = (char)data[i];
+        }
+        const uint8_t flowControl[8] = {0x30, 0x00, 0x00, 0, 0, 0, 0, 0};
+        sendCAN(0x7E0, flowControl, sizeof(flowControl));
+    } else if (frameType == 0x20 && (data[0] & 0x0F) == (vinObdNextFrame & 0x0F)) {
+        vinObdNextFrame++;
+        for (uint8_t i = 1; i < len && vinObdLength < 17; i++) {
+            vinObdBuffer[vinObdLength++] = (char)data[i];
+        }
+        if (vinObdLength >= 17) {
+            vinObdBuffer[17] = '\0';
+            vinObdRequest = false;
+            vinObdPending = false;
+            bool valid = true;
+            for (uint8_t i = 0; i < 17; i++) {
+                char c = vinObdBuffer[i];
+                bool alnum = (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z');
+                if (!alnum || c == 'I' || c == 'O' || c == 'Q') { valid = false; break; }
+            }
+            if (valid) {
+                Serial.printf("VIN probe: OBD-II VIN %s\n", vinObdBuffer);
+                handleVin(vinObdBuffer);
+            } else {
+                Serial.println("VIN probe: reply did not contain a valid VIN");
+            }
+        }
+    }
+}
+
 void manageBmsDiagnostics(unsigned long currentTimeMs) {
 #if LEAF_CAN_RX_ONLY
     (void)currentTimeMs;
@@ -806,28 +934,43 @@ void manageBmsDiagnostics(unsigned long currentTimeMs) {
     }
     if (bmsQuery != BmsQuery::NONE) {
         if (currentTimeMs - bmsQueryStartedMs > 3000) {
-            // Keep asking the same group: a missed window must not push the
-            // rotation forward, or cells/temperature never get a second turn.
+            // No reply: back this group off and let the others keep their
+            // turn. Retrying the same request three times in a row only
+            // flooded the gateway and kept cells/temperature out of rotation.
             bmsFailStreak++;
-            if (bmsFailStreak >= 3) advanceBmsGroup();
+            bmsFailCount++;
+            bmsGroupDone(false);
             finishBmsQuery();
         }
         return;
     }
     if (!diagnosticWindow || activeSequence != CanSequence::NONE || vinPending) return;
-    // Ask often while the car is awake: the gateway answers in short windows.
-    uint32_t spacing = diagnosticWindow ? 2500 : 30000;
-    if (lastBmsQueryMs != 0 && currentTimeMs - lastBmsQueryMs < spacing) return;
+    // Never queue two requests back to back: the gateway needs a breath
+    // between ISO-TP transfers.
+    if (lastBmsQueryMs != 0 && currentTimeMs - lastBmsQueryMs < 3000) return;
+
+    // Ask the group whose slot is due. Each group keeps its own deadline, so a
+    // group that stops answering can no longer starve the rest.
+    int8_t pick = -1;
+    for (uint8_t i = 0; i < BMS_GROUP_COUNT; i++) {
+        if ((long)(currentTimeMs - bmsGroupDueMs[i]) >= 0) {
+            if (pick < 0 || (long)(bmsGroupDueMs[i] - bmsGroupDueMs[pick]) < 0) {
+                pick = (int8_t)i;
+            }
+        }
+    }
+    if (pick < 0) return;
+    bmsGroupIndex = (uint8_t)pick;
 
     uint8_t group = kBmsGroups[bmsGroupIndex];
     const uint8_t request[8] = {0x02, 0x21, group, 0, 0, 0, 0, 0};
     if (!sendCAN(0x79B, request, sizeof(request))) {
-        // Rejected by the TX whitelist or dropped by the controller. Advance
-        // instead of retrying the same blocked group forever: otherwise the
-        // rotation jammed here and no diagnostic was ever sent again.
-        Serial.printf("BMS group 0x%02X could not be sent, skipping\n", group);
+        // Rejected by the TX whitelist or dropped by the controller. Back the
+        // group off instead of retrying the same blocked group forever.
+        Serial.printf("BMS group 0x%02X could not be sent, backing off\n", group);
         bmsFailStreak++;
-        advanceBmsGroup();
+        bmsFailCount++;
+        bmsGroupDone(false);
         lastBmsQueryMs = currentTimeMs;
     } else {
         bmsQuery = kBmsQueryTypes[bmsGroupIndex];
@@ -872,6 +1015,15 @@ uint16_t bmsLastExpectedLength() { return bmsLastExpected; }
 uint16_t bmsLastReceivedLength() { return bmsReceivedLength; }
 uint8_t bmsLastGroupId() { return bmsLastGroup; }
 uint32_t bmsFirstFrames() { return bmsFirstFrameCount; }
+
+uint32_t bmsLastReplyAgeSec() {
+    if (bmsLastReplyMs == 0) return 0xFFFFFFFFUL;   // never answered
+    return (millis() - bmsLastReplyMs) / 1000UL;
+}
+
+uint32_t bmsFailureCount() { return bmsFailCount; }
+
+uint8_t bmsRequestedGroupId() { return bmsRequestedGroup; }
 
 // Sustain the proven climate session with the same requested-temperature byte
 // used by its enable/release frames.

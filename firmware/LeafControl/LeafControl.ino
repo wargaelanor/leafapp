@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.10.30.54-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "Whitelist BMS groups 0x01/0x61, never jam rotation"
+#define LEAF_FIRMWARE_VERSION "FW-2026.10.30.56-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "BMS cadence, Wi-Fi recovery, OBD-II VIN probe"
 
 WebServer server(80);
 DNSServer dnsServer;
@@ -36,6 +36,23 @@ static unsigned long developerSessionSeenMs = 0;
 static const unsigned long DEVELOPER_SESSION_MS = 15UL * 60UL * 1000UL;
 static uint8_t currentWifiProfile = 0;
 static volatile int lastWifiDisconnectReason = 0;
+// Milliseconds since the STA link went down (0 while connected). Reported as
+// wifi_down_s so a "board alive but unreachable" state is visible at a glance.
+static unsigned long wifiStaDownSinceMs = 0;
+
+// (Re)create the configuration AP. Used by setup and by the Wi-Fi recovery
+// path, which restarts the whole radio and therefore loses the AP config.
+static void startSoftAp() {
+  if (strlen(getApSSID()) == 0) return;
+  bool ok;
+  if (strlen(getApPassword()) > 0) {
+    ok = WiFi.softAP(getApSSID(), getApPassword());
+  } else {
+    ok = WiFi.softAP(getApSSID());
+  }
+  Serial.printf("softAP(%s)=%s ip=%s\n", getApSSID(), ok ? "OK" : "FAIL",
+                WiFi.softAPIP().toString().c_str());
+}
 
 
 // State variables
@@ -297,7 +314,7 @@ void handleApiStatus() {
   float gLat = 0, gLon = 0, gAlt = 0, gSpd = 0;
   uint32_t gAge = 0;
   bool gpsValid = modemGpsFix(&gLat, &gLon, &gAlt, &gSpd, &gAge);
-  char json[2100];
+  char json[2400];
   char h1db[26], h5bc[26], h7bb[26], h79a[26], h5c0[26], h1dba[26];
   jsonHexPayload(0x1DB, h1db, sizeof(h1db));
   jsonHexPayload(0x5BC, h5bc, sizeof(h5bc));
@@ -321,9 +338,11 @@ void handleApiStatus() {
     "\"r1db\":\"%s\",\"r5bc\":\"%s\",\"r7bb\":\"%s\",\"r79a\":\"%s\","
     "\"r5c0\":\"%s\",\"r1dba\":\"%s\","
     "\"bmslen\":%u,\"bmsgot\":%u,\"bmsgrp\":%u,\"bmsff\":%lu,"
+    "\"bmsage\":%lu,\"bmsfail\":%lu,\"bmsreq\":%u,"
     "\"modem\":\"%s\",\"uptime\":%lu,\"free_heap\":%lu,\"reset_reason\":%d,\"software_restart\":%u,"
     "\"remote_mode\":%d,\"mqtt_connected\":%d,\"ovms_v2_connected\":%d,\"ovms_v2_paranoid\":%d,"
     "\"wifi_status\":%d,\"wifi_rssi\":%d,\"wifi_profile\":%u,\"wifi_disconnect\":%d,"
+    "\"wifi_down_s\":%lu,"
     "\"sleep_on\":%d,\"sleep_after_h\":%d,\"wake_fast_min\":%d,\"idle_s\":%lu,"
     "\"gps\":{\"lat\":%.5f,\"lon\":%.5f,\"age\":%lu}}",
     LEAF_FIRMWARE_VERSION, LEAF_FIRMWARE_DESCRIPTION,
@@ -350,12 +369,15 @@ void handleApiStatus() {
     h1db, h5bc, h7bb, h79a, h5c0, h1dba,
     (unsigned)bmsLastExpectedLength(), (unsigned)bmsLastReceivedLength(),
     (unsigned)bmsLastGroupId(), (unsigned long)bmsFirstFrames(),
+    (unsigned long)bmsLastReplyAgeSec(), (unsigned long)bmsFailureCount(),
+    (unsigned)bmsRequestedGroupId(),
     modemGetStateStr(), (unsigned long)(millis() / 1000UL),
     (unsigned long)ESP.getFreeHeap(), (int)esp_reset_reason(), (unsigned int)lastSoftwareRestart,
     (int)getRemoteTransport(), mqttIsConnected() ? 1 : 0, ovmsV2IsConnected() ? 1 : 0,
     ovmsV2ParanoidIsActive() ? 1 : 0,
     (int)WiFi.status(), WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0,
     (unsigned int)(currentWifiProfile + 1), lastWifiDisconnectReason,
+    (unsigned long)(wifiStaDownSinceMs ? (millis() - wifiStaDownSinceMs) / 1000UL : 0UL),
     getSleepEnabled() ? 1 : 0, getSleepAfterHours(), getWakeFastMinutes(),
     (unsigned long)rtcState.idleSec,
     gpsValid ? gLat : 0.0, gpsValid ? gLon : 0.0,
@@ -395,6 +417,16 @@ void handleDeveloperLogin() {
            (unsigned long)developerSession);
   server.sendHeader("Set-Cookie", cookie);
   server.send(200, "application/json", "{\"ok\":true}");
+}
+
+// Read-only VIN probe, started from the developer page. Answers "ok" and the
+// VIN shows up in /api/status once (and if) the VCM replies.
+void handleVinProbe() {
+  if (!requireDeveloperAuth()) return;
+  noteUserActivity();
+  requestVinObdProbe();
+  server.send(200, "application/json",
+              "{\"ok\":true,\"probe\":\"obd09_02\",\"request\":\"0x7DF\",\"reply\":\"0x7E8\"}");
 }
 
 void handleCanLogStatus() {
@@ -1254,11 +1286,15 @@ void manageWiFi() {
   }
 
   static unsigned long previousAttemptTime = 0;
-  const unsigned long retryInterval = 5000;
+  static unsigned long staDownSinceMs = 0;
+  static uint8_t retryStep = 0;
+  static const unsigned long retryBackoffMs[] = {8000, 15000, 30000, 60000};
   unsigned long currentTime = millis();
 
   if (WiFi.status() != WL_CONNECTED)
   {
+    if (staDownSinceMs == 0) staDownSinceMs = currentTime;
+    wifiStaDownSinceMs = staDownSinceMs;
     if (wifiAvailable) {
       Serial.println("WiFi disconnected, stopping mDNS/NBNS services...");
       MDNS.end();
@@ -1266,13 +1302,36 @@ void manageWiFi() {
       wifiAvailable = false;
     }
 
-    if (currentTime - previousAttemptTime >= retryInterval) {
+    // Retrying every 5 s called WiFi.disconnect()+WiFi.begin() again while the
+    // previous association was still in progress. At -90 dBm an association
+    // needs longer than that, so the STA never finished and the board looked
+    // alive (AP beaconing, visible from a phone) while being unreachable on
+    // the network. Back off instead, and restart the radio if it stays dead.
+    unsigned long interval = retryBackoffMs[retryStep > 3 ? 3 : retryStep];
+    if (currentTime - previousAttemptTime >= interval) {
+      if (currentTime - staDownSinceMs >= 300000UL) {
+        Serial.println("WiFi: STA down for 5 min, restarting the radio");
+        WiFi.disconnect(true, false);
+        WiFi.mode(WIFI_OFF);
+        delay(300);
+        WiFi.mode(strlen(getApSSID()) > 0 ? WIFI_AP_STA : WIFI_STA);
+        WiFi.setSleep(false);
+        startSoftAp();
+        staDownSinceMs = currentTime;
+        wifiStaDownSinceMs = staDownSinceMs;
+        retryStep = 0;
+      }
       Serial.printf("WiFi connection missing, status=%d; trying saved profiles...\n", (int)WiFi.status());
       connectWifiProfile(true);
       previousAttemptTime = currentTime;
+      if (retryStep < 3) retryStep++;
     }
   }
   else if (!wifiAvailable) {
+    staDownSinceMs = 0;
+    wifiStaDownSinceMs = 0;
+    retryStep = 0;
+    previousAttemptTime = currentTime;
     Serial.println("\nWi-Fi connected!");
   
     if (!MDNS.begin(getHostName())) {
@@ -1420,6 +1479,7 @@ server.on("/leaf.png", handleLeafPngLegacy);
       server.on("/api/evscan", HTTP_POST, handleApiEvScan);
       server.on("/api/developer/login", HTTP_POST, handleDeveloperLogin);
       server.on("/api/developer/canlog", HTTP_GET, handleCanLogStatus);
+      server.on("/api/developer/vin_probe", HTTP_POST, handleVinProbe);
       server.on("/api/developer/canlog/start", HTTP_POST, handleCanLogStart);
       server.on("/api/developer/canlog/stop", HTTP_POST, handleCanLogStop);
       server.on("/api/developer/canlog/clear", HTTP_POST, handleCanLogClear);
@@ -1524,6 +1584,7 @@ void loop() {
     manageEvCAN();
     manageBmsDiagnostics(millis());
     manageVinQuery(millis());
+    manageVinObdProbe(millis());
     CanSeqResult seqRes = manageCANSequence(millis());
     if (seqRes == CanSeqResult::WAKE_SUCCESS) {
         Serial.println("### Car is awake! ###");
