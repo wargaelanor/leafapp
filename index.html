@@ -101,13 +101,13 @@ body{background:var(--bg);font-family:'NissanBrand',-apple-system,BlinkMacSystem
 .action-btn span{font-size:12px;color:var(--muted)}
 .action-btn .circle.on{background:#e9f7ef;box-shadow:0 0 0 2px #34c759 inset,0 1px 4px rgba(0,0,0,.1)}
 .action-btn .circle.on svg{color:#1a7f37}
-.action-btn .circle.hot{background:var(--surface)6e8;box-shadow:0 0 0 2px #ff9500 inset,0 1px 4px rgba(0,0,0,.1)}
+.action-btn .circle.hot{background:rgba(255,149,0,.14);box-shadow:0 0 0 2px #ff9500 inset,0 1px 4px rgba(0,0,0,.1)}
 .action-btn .circle.hot svg{color:#e67e22}
-.action-btn .circle.unlocked{background:var(--surface)6e8;box-shadow:0 0 0 2px #ff9500 inset,0 1px 4px rgba(0,0,0,.1)}
-.action-btn .circle.flash{background:var(--surface)6e8;box-shadow:0 0 0 2px #ff9500 inset,0 1px 4px rgba(0,0,0,.1);transform:scale(0.92)}
+.action-btn .circle.unlocked{background:rgba(255,149,0,.14);box-shadow:0 0 0 2px #ff9500 inset,0 1px 4px rgba(0,0,0,.1)}
+.action-btn .circle.flash{background:rgba(255,149,0,.14);box-shadow:0 0 0 2px #ff9500 inset,0 1px 4px rgba(0,0,0,.1);transform:scale(0.92)}
 .action-btn .circle.flash svg{color:#e67e22}
 .feature-card{background:var(--surface);border-radius:8px;margin:0 16px 8px;box-shadow:0 1px 3px rgba(0,0,0,.06);padding:16px;display:flex;align-items:center;gap:14px;cursor:pointer}
-.feature-card.active{background:var(--surface)8ec;box-shadow:0 0 0 1px #ff9500 inset,0 1px 3px rgba(0,0,0,.06)}
+.feature-card.active{background:rgba(255,149,0,.16);box-shadow:0 0 0 1px #ff9500 inset,0 1px 3px rgba(0,0,0,.06)}
 .feature-card.active .ft-title{color:#b45309}
 .feature-card .fi{width:44px;height:44px;background:var(--bg);border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .feature-card .fi svg{width:24px;height:24px;color:var(--accent)}
@@ -227,8 +227,11 @@ body{background:var(--bg);font-family:'NissanBrand',-apple-system,BlinkMacSystem
 .settings-group-body{padding:2px 14px 16px}
 .settings-availability{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:var(--muted)}
 .settings-availability i{width:8px;height:8px;border-radius:50%;background:var(--muted-2);flex:0 0 auto}
-.seq-banner{background:var(--surface)4e5;color:#b45309;text-align:center;font-size:13px;padding:8px;display:none}
+.seq-banner{background:rgba(255,149,0,.14);color:#b45309;text-align:center;font-size:13px;padding:8px;display:none}
 .seq-banner.show{display:block}
+.demo-banner{display:none;background:var(--accent);color:#fff;font-size:12.5px;padding:7px 12px;text-align:center;letter-spacing:.2px}
+.demo-banner a{color:#fff;font-weight:600;margin-left:6px}
+body.demo .demo-banner{display:block}
 .trip-summary{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:12px 16px}
 .trip-summary .cell{background:var(--surface);border-radius:8px;padding:12px 8px;box-shadow:0 1px 3px rgba(0,0,0,.06);text-align:center}
 .trip-summary .cell .num{font-size:20px;color:var(--text);font-weight:600}
@@ -247,7 +250,7 @@ body{background:var(--bg);font-family:'NissanBrand',-apple-system,BlinkMacSystem
 .trip-item .t-meta .route{color:var(--accent);cursor:pointer}
 .trip-empty{text-align:center;color:var(--muted);font-size:14px;padding:48px 20px}
 .trip-clear{display:block;width:calc(100% - 32px);margin:12px 16px;padding:12px;background:var(--surface);color:#ff3b30;border:1px solid #ff3b30;border-radius:8px;font-size:13px;font-family:inherit;cursor:pointer}
-.trip-clear:active{background:var(--surface)0f0}
+.trip-clear:active{background:rgba(255,59,48,.12)}
 /* --- Car status picture -------------------------------------------------
    Base photo always visible. Optional real overlays are separate files next
    to index.html: car-lights.png, car-cable.png, car-wheel1..4.png. They must
@@ -303,6 +306,10 @@ body{background:var(--bg);font-family:'NissanBrand',-apple-system,BlinkMacSystem
     </div>
   </div>
   <div class="seq-banner" id="seq-banner">Выполняется команда…</div>
+  <div class="demo-banner" id="demo-banner">
+    Демо-режим · данные условные, команды не отправляются
+    <a href="?" id="demo-exit">выйти</a>
+  </div>
 
   <div class="screens" id="screens">
     <!-- ГАРАЖ -->
@@ -582,6 +589,11 @@ body{background:var(--bg);font-family:'NissanBrand',-apple-system,BlinkMacSystem
         О приложении
         <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
       </div>
+      <div class="more-item" onclick="location.href='?demo=1'">
+        <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M10 8.5l6 3.5-6 3.5z" fill="currentColor" stroke="none"/></svg></div>
+        Демо-режим
+        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+      </div>
       <div class="section-title">Режим</div>
       <div class="more-item" style="border-bottom:none">
         <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 12.55a11 11 0 0114.08 0M1.42 9a16 16 0 0121.16 0M8.53 16.11a6 6 0 016.95 0M12 20h.01"/></svg></div>
@@ -672,34 +684,36 @@ body{background:var(--bg);font-family:'NissanBrand',-apple-system,BlinkMacSystem
       </div>
 
       <section class="about-section">
-        <h3>Что умеет сейчас</h3>
+        <h3>Что умеет</h3>
         <ul class="about-list">
-          <li><strong>Дистанционное управление.</strong> Включение и выключение климата, запуск зарядки, открытие и закрытие дверей.</li>
-          <li><strong>Климат с таймером.</strong> Можно выбрать температуру и время работы: 5, 10, 15, 20 или 30 минут. По окончании таймера климат выключится автоматически.</li>
-          <li><strong>Климат по звонку.</strong> В версии с модемом SIM800 первый звонок с разрешённого номера включает климат, следующий выключает его. Можно сохранить до пяти номеров.</li>
-          <li><strong>Состояние автомобиля.</strong> В приложении видны заряд и состояние батареи, запас хода, напряжение, ток и мощность, температуры, пробег, VIN, состояние климата, зарядки и дверей.</li>
-          <li><strong>Местоположение.</strong> При установленном GPS-модуле координаты автомобиля можно открыть в Яндекс Картах или Google Maps.</li>
-          <li><strong>Доступ со смартфона.</strong> Плата работает локально по Wi-Fi и через интернет с помощью MQTT. Приложение можно установить на главный экран телефона.</li>
-          <li><strong>История.</strong> Приложение автоматически сохраняет поездки и сеансы зарядки и показывает основную статистику.</li>
-          <li><strong>Обновление.</strong> Прошивку платы можно обновлять через локальную веб-страницу без разборки устройства.</li>
+          <li><strong>Дистанционное управление.</strong> Климат с выбором температуры и таймером (5–30 минут), запуск зарядки, закрытие и открытие дверей, вспышка фар, сигнал с фарами.</li>
+          <li><strong>Состояние автомобиля.</strong> Заряд и запас хода, напряжение, ток и мощность, температуры, пробег, состояние климата, зарядки, дверей и света.</li>
+          <li><strong>Живая картинка.</strong> Автомобиль на главном экране меняется по состоянию: загорается свет, появляется кабель зарядки, крутятся колёса в движении.</li>
+          <li><strong>Светлая и тёмная тема.</strong> Оформление подстраивается под настройку телефона автоматически.</li>
+          <li><strong>Три способа связи.</strong> Без подключения (только локально), MQTT-брокер или OVMS Server V2 — выбирается в настройках платы. Приложение ставится на главный экран телефона.</li>
+          <li><strong>История.</strong> Поездки и сеансы зарядки сохраняются на телефоне и показываются со статистикой.</li>
+          <li><strong>Демо-режим.</strong> Позволяет пройтись по всем экранам и кнопкам без автомобиля — данные условные, команды никуда не отправляются.</li>
+          <li><strong>Обновление по Wi-Fi.</strong> Прошивка обновляется со страницы платы, разбирать устройство не нужно.</li>
         </ul>
       </section>
 
       <section class="about-section">
         <h3>Как это работает</h3>
         <ul class="about-list">
-          <li>Для защиты от случайного нажатия команды автомобилю выполняются после удержания кнопки.</li>
-          <li>Плата получает данные непосредственно от автомобиля и передаёт их в приложение через выбранное подключение.</li>
+          <li>Плата читает данные напрямую из CAN-шин автомобиля и передаёт их в приложение через выбранное подключение.</li>
+          <li>Команды защищены от случайного нажатия: их нужно удерживать.</li>
+          <li>Если данные устарели, приложение показывает «—», а не последнее известное значение.</li>
+          <li>Температура батареи и состояние ёмкости доступны, пока блок управления батареей отвечает — то есть при движении, зарядке или включённом климате.</li>
         </ul>
       </section>
 
       <section class="about-section planned">
         <h3>Планируется</h3>
         <ul class="about-list">
-          <li>Проверка и доработка совместимости функций с разными комплектациями и годами выпуска Leaf ZE1.</li>
-          <li>Расширенная диагностика тяговой батареи и более подробные данные о её состоянии.</li>
+          <li>Чтение VIN по штатному OBD-II запросу — блок батареи отдаёт его не на всех машинах.</li>
+          <li>Расширенная диагностика тяговой батареи: состояние ячеек и ёмкости.</li>
           <li>Уведомления о завершении зарядки, низком заряде и важных событиях автомобиля.</li>
-          <li>Улучшенная история поездок и зарядок, более подробная статистика и удобная работа с сохранёнными данными.</li>
+          <li>Более подробная статистика поездок и зарядок.</li>
         </ul>
       </section>
 
@@ -1054,6 +1068,7 @@ function netTypeLabel(){
   return 'Net';
 }
 function updateBadge(){
+  if(DEMO){ setConn('on','Online'); return; }
   if(client && client.connected){ setConn('on','Online'); return; }
   if(onBoard && lastUpdate && Date.now()-lastUpdate < 10000){ setConn('on','Online'); return; }
   if(navigator.onLine){ setConn('warn',netTypeLabel()); return; }
@@ -1145,7 +1160,82 @@ function pressFx(type){
   el.classList.add('flash');
   setTimeout(()=>el.classList.remove('flash'),200);
 }
+// ---------- demo mode (?demo=1) ----------
+// Everything runs on simulated data: no network calls, no commands to a car.
+// Scenarios rotate by themselves so every screen and every button can be shown
+// to a buyer without a vehicle.
+const DEMO = new URLSearchParams(location.search).has('demo');
+
+function demoCommand(type, quiet){
+  const names = { charge:'Зарядка', chargeoff:'Стоп зарядки', lock:'Закрытие', unlock:'Открытие',
+    refresh:'Обновление', hvac:'Климат', lights:'Вспышка фар', hornlights:'Сигнал и фары', rhloff:'Отмена' };
+  switch(type){
+    case 'charge':    S.charging = true;  S.charger = 'charging'; break;
+    case 'chargeoff': S.charging = false; S.charger = ''; break;
+    case 'lock':      S.lock = 1; break;
+    case 'unlock':    S.lock = 0; break;
+    case 'hvac':      S.hvac = !S.hvac; S.heat = S.hvac; S.cool = false; break;
+    case 'lights':    S.lights = 1; setTimeout(()=>{ S.lights = 0; render(); }, 1500); break;
+  }
+  pressFx(type);
+  if(!quiet) toast('Демо: ' + (names[type] || type));
+  render();
+  return Promise.resolve(true);
+}
+
+// Each scenario lasts `dur` seconds; `tick(u)` gets the 0..1 progress.
+const DEMO_STEPS = [
+  { dur: 5 },
+  { dur: 4, start(){ S.lights = 1; }, end(){ S.lights = 0; } },
+  { dur: 8, start(){ S.hvac = true; S.heat = true; },
+    tick(u){ S.cabin = 9.5 + 13 * u; } },
+  { dur: 10, start(){ S.hvac = false; S.heat = false; S.charging = true; S.charger = 'charging'; },
+    tick(u){ S.soc = Math.min(100, 72 + u * 2); S.isoc = S.soc; S.irange = Math.round(S.soc * 2.5);
+             S.v = 388; S.i = 16.5; S.power = 6.4; },
+    end(){ S.charging = false; S.charger = ''; } },
+  { dur: 12, start(){ S.on = 1; },
+    tick(u){ S.soc = 74 - u * 1.5; S.isoc = S.soc; S.irange = Math.round(S.soc * 2.5);
+             S.v = 369; S.i = 38 + Math.sin(u * 14) * 20; S.power = Math.round(S.v * S.i) / 1000;
+             S.odo += 0.03; S.btemp = 17.5 + u * 1.5; },
+    end(){ S.on = 0; S.i = 0; S.power = 0; } },
+  { dur: 5, start(){ S.lock = 0; }, end(){ S.lock = 1; } },
+  { dur: 6, start(){ S.soc = 12; S.isoc = 12; S.irange = 30; },
+    end(){ S.soc = 72; S.isoc = 72; S.irange = 180; } },
+];
+
+let demoIndex = 0;
+let demoTickCount = 0;
+
+function demoApplyStep(){
+  const st = DEMO_STEPS[demoIndex];
+  const u = Math.min(1, demoTickCount / st.dur);
+  if(demoTickCount === 0 && st.start) st.start();
+  if(st.tick) st.tick(u);
+  demoTickCount++;
+  if(demoTickCount >= st.dur){
+    if(st.end) st.end();
+    demoIndex = (demoIndex + 1) % DEMO_STEPS.length;
+    demoTickCount = 0;
+  }
+  S.fage = 0;
+  lastUpdate = Date.now();
+  render();
+  updateBadge();
+}
+
+function demoStart(){
+  document.body.classList.add('demo');
+  const m = $('more-mode'); if(m) m.textContent = 'Демо';
+  Object.assign(S, { soc:72, isoc:72, irange:180, cabin:9.5, amb:9.5, charging:false, charger:'',
+    hvac:false, heat:false, cool:false, fan:3, setpoint:22, vent:0, lock:1, locking:true,
+    soh:92, gids:180, v:372.4, i:0, power:0, packValid:true, voltageValid:true, on:0,
+    fage:0, btemp:17.5, odo:46210, vin:'', lights:0, hvacTimer:0, gps:null });
+  demoApplyStep();
+  setInterval(demoApplyStep, 1000);
+}
+
 function cmd(type, quiet){
+  if(DEMO) return demoCommand(type, quiet);
   if(['chargeoff','hornlights','rhloff'].includes(type)){
     if(!quiet) toast('Команда недоступна');
     return Promise.resolve(false);
@@ -1710,6 +1800,7 @@ function enableBoardUi(){
   $('more-developer').style.display='flex';
 }
 async function boot(){
+  if(DEMO){ demoStart(); return; }
   const savedSp = localStorage.getItem('leafsp');
   if(savedSp){ $('sp-slider').value = savedSp; $('sp-val').textContent = savedSp; spTouched = true; }
   render();
