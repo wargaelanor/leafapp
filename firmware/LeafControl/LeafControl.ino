@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.10.30.64-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "EV-CAN timing fallback, BMS burst right after a wake command"
+#define LEAF_FIRMWARE_VERSION "FW-2026.10.30.65-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "Dark theme, car status picture layers"
 
 WebServer server(80);
 DNSServer dnsServer;
