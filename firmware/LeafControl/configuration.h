@@ -17,11 +17,30 @@ enum class ConfigStatus {
 void initConfiguration();
 void factoryReset();
 
+enum class RemoteTransport : uint8_t {
+    OFF = 0,
+    MQTT = 1,
+    OVMS_V2 = 2
+};
+
+RemoteTransport getRemoteTransport();
+ConfigStatus setRemoteTransport(RemoteTransport value);
+
 const char* getWifiSSID();
 ConfigStatus setWifiSSID(const char* value);
 
 const char* getWifiPassword();
 ConfigStatus setWifiPassword(const char* value);
+
+const char* getWifiSSID2();
+ConfigStatus setWifiSSID2(const char* value);
+const char* getWifiPassword2();
+ConfigStatus setWifiPassword2(const char* value);
+
+const char* getWifiSSID3();
+ConfigStatus setWifiSSID3(const char* value);
+const char* getWifiPassword3();
+ConfigStatus setWifiPassword3(const char* value);
 
 const char* getApSSID();
 ConfigStatus setApSSID(const char* value);
@@ -55,6 +74,17 @@ ConfigStatus setMqttTls(bool value);
 
 bool getHassDiscoveryEnabled();
 ConfigStatus setHassDiscoveryEnabled(bool value);
+
+const char* getOvmsServer();
+ConfigStatus setOvmsServer(const char* value);
+int getOvmsPort();
+ConfigStatus setOvmsPort(int value);
+const char* getOvmsPassword();
+ConfigStatus setOvmsPassword(const char* value);
+const char* getOvmsModulePassword();
+ConfigStatus setOvmsModulePassword(const char* value);
+bool getOvmsTls();
+ConfigStatus setOvmsTls(bool value);
 
 bool getSleepEnabled();
 ConfigStatus setSleepEnabled(bool value);

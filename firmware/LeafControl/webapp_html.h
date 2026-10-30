@@ -61,6 +61,7 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
 .btn-primary.charging{background:#34c759}
 .action-buttons{display:flex;justify-content:center;gap:32px;padding:16px 0 20px;background:#f4f5f7;margin:8px 16px;border-radius:8px}
 .action-btn{display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer}
+.action-btn[aria-disabled="true"],.feature-card[aria-disabled="true"]{opacity:.42;cursor:default}
 .action-btn .circle{width:68px;height:68px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.1);display:flex;align-items:center;justify-content:center;transition:transform .18s,background .18s,box-shadow .18s}
 .action-btn .circle svg{width:30px;height:30px;color:#333;transition:color .18s}
 .action-btn span{font-size:12px;color:#707070}
@@ -100,6 +101,7 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
 .rbtn.c{width:88px;height:88px;left:5%;top:55%}
 .rbtn.d{width:88px;height:88px;right:5%;top:55%}
 .rbtn:disabled{opacity:.45}
+.rbtn[aria-disabled="true"]{opacity:.42;cursor:default}
 .setpoint-row{display:flex;align-items:center;gap:12px;background:#fff;border-radius:8px;margin:0 0 12px;padding:12px 16px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
 .setpoint-row label{font-size:13px;color:#707070;white-space:nowrap}
 .setpoint-row input[type=range]{flex:1;accent-color:#0077ac}
@@ -115,6 +117,12 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
 .pill-btn{display:flex;align-items:center;gap:7px;background:#fff;border:1px solid #e6e6e6;border-radius:22px;padding:9px 20px;font-size:13px;color:#333;font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.06);cursor:pointer}
 .pill-btn:active{background:#f4f4f4}
 .pill-btn svg{width:16px;height:16px}
+/* Refresh icon in the app bar: available on every screen */
+.icon-btn{width:34px;height:34px;border:0;background:transparent;color:#333;display:flex;align-items:center;justify-content:center;border-radius:50%;cursor:pointer;padding:0;margin-right:2px}
+.icon-btn:active{background:#eceef1}
+.icon-btn svg{width:19px;height:19px}
+.icon-btn.busy svg{animation:fabspin .9s linear infinite}
+@keyframes fabspin{to{transform:rotate(360deg)}}
 .vs-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 16px}
 .vs-cell{background:#fff;border-radius:8px;padding:12px;box-shadow:0 1px 3px rgba(0,0,0,.06);display:flex;align-items:center;gap:10px}
 .vs-cell .vsi{width:32px;height:32px;display:flex;align-items:center;justify-content:center;color:#0077ac;flex-shrink:0}
@@ -216,6 +224,9 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
 <span>Leaf Control</span>
 </div>
 <div class="actions">
+<button class="icon-btn" id="refresh-btn" aria-label="Обновить данные автомобиля" title="Обновить">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+</button>
 <button class="conn off" id="conn-badge" onclick="openSettings()"><i></i><span id="conn-text">...</span></button>
 </div>
 </div>
@@ -247,7 +258,7 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
 <div class="action-buttons">
 <div class="action-btn" id="act-lights">
 <div class="circle" id="act-lights-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-4 10.5c.6.55 1 1.25 1 2v.5h6v-.5c0-.75.4-1.45 1-2A6 6 0 0012 3z"/></svg></div>
-<span>Свет</span>
+<span>Вспышка фар</span>
 </div>
 <div class="action-btn" id="act-doors">
 <div class="circle" id="act-doors-ic"><svg viewBox="0 0 26 30" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M23.13 11.1h-1.85l-.01-2.7A8.33 8.33 0 104.63 8.33l0 2.77H2.78A2.78 2.78 0 000 13.88v12.95a2.78 2.78 0 002.78 2.77h20.35A2.78 2.78 0 0025.9 26.83V13.88a2.78 2.78 0 00-2.77-2.78zM7.4 8.33a5.55 5.55 0 0111.1 0v2.77H7.4V8.33zm15.73 18.5H2.78V13.88h20.35v12.95z" fill="#333"/></svg></div>
@@ -269,9 +280,9 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
 <div class="ft"><div class="ft-title">Дистанционные услуги</div><div class="ft-sub">Климат, зарядка, двери</div></div>
 <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
 </div>
-<div class="feature-card" id="find-car">
+<div class="feature-card" id="find-car" aria-disabled="true">
 <div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2a7 7 0 00-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 00-7-7zm0 9.5A2.5 2.5 0 1112 6.5a2.5 2.5 0 010 5z"/></svg></div>
-<div class="ft"><div class="ft-title">Поиск моей машины</div><div class="ft-sub" id="find-car-sub">Сигнал и фары</div></div>
+<div class="ft"><div class="ft-title">Поиск моей машины</div><div class="ft-sub" id="find-car-sub">Недоступно</div></div>
 <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
 </div>
 <div class="gps-row" id="gps-row">
@@ -319,7 +330,7 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
 <span class="val" id="hvac-left">—</span>
 </div>
 <div class="remote-pad">
-<div class="rbtn a" id="rb-horn">
+<div class="rbtn a" id="rb-horn" aria-disabled="true">
 <svg viewBox="0 0 24 24" fill="#333"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0014 7.97v8.05A4.47 4.47 0 0016.5 12zM14 3.23v2.06a7 7 0 010 13.42v2.06a9 9 0 000-17.54z"/></svg>
 <span>Сигнал и фары</span>
 </div>
@@ -334,7 +345,7 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
 </div>
 <div class="rbtn c" id="rb-lights">
 <svg viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="1.5"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-4 10.5c.6.55 1 1.25 1 2v.5h6v-.5c0-.75.4-1.45 1-2A6 6 0 0012 3z"/></svg>
-<span>Фары</span>
+<span>Вспышка фар</span>
 </div>
 <div class="rbtn d" id="rb-unlock">
 <svg viewBox="0 0 26 30" fill="none"><path d="M23.13 29.6H2.78A2.78 2.78 0 010 26.83V13.88A2.78 2.78 0 012.78 11.1h1.85V8.33A8.34 8.34 0 0112.95 0h.02a8.28 8.28 0 015.26 1.91 8.47 8.47 0 012.85 4.72h-2.85a5.62 5.62 0 00-1.99-2.77 5.5 5.5 0 00-3.3-1.09A5.56 5.56 0 007.4 8.33V11.1h10.05v.03h5V11.1h.68A2.78 2.78 0 0125.9 13.88v12.95a2.78 2.78 0 01-2.77 2.77zM2.78 13.88v12.95h20.35V13.88H2.78z" fill="#333"/></svg>
@@ -398,7 +409,7 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
 </div>
 <div class="vs-cell">
 <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></div>
-<div><div class="vst">Разброс ячеек</div><div class="vsv" id="s-cdelta" title="Нужен активный опрос BMS; порт A работает только на приём">—</div></div>
+<div><div class="vst">Разброс ячеек</div><div class="vsv" id="s-cdelta" title="Диагностический опрос BMS через OBD">—</div></div>
 </div>
 <div class="vs-cell">
 <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 14.76V3.5a2.5 2.5 0 00-5 0v11.26a4.5 4.5 0 105 0z"/></svg></div>
@@ -571,7 +582,7 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
 <section class="about-section">
 <h3>Что умеет сейчас</h3>
 <ul class="about-list">
-<li><strong>Дистанционное управление.</strong> Включение и выключение климата, запуск и остановка зарядки, открытие и закрытие дверей, включение фар и звукового сигнала.</li>
+<li><strong>Дистанционное управление.</strong> Включение и выключение климата, запуск зарядки, открытие и закрытие дверей.</li>
 <li><strong>Климат с таймером.</strong> Можно выбрать температуру и время работы: 5, 10, 15, 20 или 30 минут. По окончании таймера климат выключится автоматически.</li>
 <li><strong>Климат по звонку.</strong> В версии с модемом SIM800 первый звонок с разрешённого номера включает климат, следующий выключает его. Можно сохранить до пяти номеров.</li>
 <li><strong>Состояние автомобиля.</strong> В приложении видны заряд и состояние батареи, запас хода, напряжение, ток и мощность, температуры, пробег, VIN, состояние климата, зарядки и дверей.</li>
@@ -636,7 +647,7 @@ body{background:#f4f5f7;font-family:'NissanBrand',-apple-system,BlinkMacSystemFo
 // ---------- state ----------
 const S = { soc:-1, cabin:-99, charging:false, charger:'', hvac:false, lock:-1,
 setpoint:-1, fan:-1, heat:false, cool:false, vent:-1,
-soh:-1, gids:-1, v:-1, i:0, power:0, packValid:false, amb:-99, on:-1, seq:false, locking:false,
+soh:-1, gids:-1, v:-1, i:0, power:0, packValid:false, voltageValid:false, amb:-99, on:-1, seq:false, locking:false, fage:-1,
 isoc:-1, irange:-1, btemp:-99, cdelta:-1,
 odo:0, vin:'', hvacTimer:0, lights:-1, gps:null, fw:'', fwDesc:'' };
 let mode = 'local'; // 'local' | 'mqtt'
@@ -657,8 +668,9 @@ clearTimeout(el._t); el._t=setTimeout(()=>el.classList.remove('show'),2200); }
 // Vehicle commands require a deliberate 1.5 s hold. The progress ring/fill
 // gives immediate feedback; releasing, scrolling or moving away cancels it.
 const HOLD_MS=1500, HOLD_MOVE_PX=12;
-function holdButton(el, run, visual){
+function holdButton(el, run, visual, holdMs){
 if(!el) return;
+const need = holdMs || HOLD_MS;
 const host=visual||el;
 const round=host.classList.contains('circle')||host.classList.contains('rbtn');
 const progress=document.createElement('span');
@@ -669,7 +681,7 @@ if(!/^(BUTTON|A)$/.test(el.tagName)){ el.tabIndex=0; el.setAttribute('role','but
 host.prepend(progress);
 let started=0, timer=0, raf=0, pointerId=null, x=0, y=0;
 const paint=()=>{
-progress.style.setProperty('--hold',Math.min(100,(performance.now()-started)/HOLD_MS*100).toFixed(1));
+progress.style.setProperty('--hold',Math.min(100,(performance.now()-started)/need*100).toFixed(1));
 raf=requestAnimationFrame(paint);
 };
 const reset=()=>{
@@ -686,12 +698,12 @@ timer=setTimeout(()=>{
 reset();
 if(navigator.vibrate) try{ navigator.vibrate(30); }catch(e){}
 run();
-},HOLD_MS);
+},need);
 };
 const end=(quiet=false)=>{
 if(!started) return;
 reset();
-if(!quiet) toast('Удерживайте кнопку 1,5 секунды');
+if(!quiet) toast('Удерживайте кнопку '+(need/1000).toFixed(1).replace('.',',')+' секунды');
 };
 el.addEventListener('pointerdown',e=>{
 if(e.button!==0) return;
@@ -719,6 +731,22 @@ if(name==='trips') refreshTripsScreen();
 if(name==='charges') refreshChargesScreen();
 }
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>go(t.dataset.screen)));
+// ---------- refresh from anywhere ----------
+// Single entry point: the app-bar icon next to the connection badge, visible
+// on every screen. Vehicle commands keep the stricter 1.5 s hold.
+function doRefresh(){
+const btn=$('refresh-btn');
+if(S.seq){ toast('Дождитесь завершения текущей команды'); return Promise.resolve(false); }
+if(btn) btn.classList.add('busy');
+const finish=()=>{ if(btn) setTimeout(()=>btn.classList.remove('busy'),1200); };
+let p;
+try{ p=cmd('refresh',true); }
+catch(e){ finish(); toast('Не удалось отправить'); return Promise.resolve(false); }
+if(p&&p.then) p.then(finish,finish); else finish();
+return p;
+}
+const refreshBtn=$('refresh-btn');
+if(refreshBtn) refreshBtn.addEventListener('click',doRefresh);
 // Calculated range estimate. GIDS are the only honest base: the old
 // SOC*3 fallback produced a fictional 285 km at 95 % and is gone.
 function rangeKm(){
@@ -730,6 +758,9 @@ function socInstr(){ return (S.isoc!=null && S.isoc>=0) ? S.isoc : null; }
 function rangeInstr(){ return (S.irange!=null && S.irange>0) ? S.irange : null; }
 function fmtPct(v){ return (v!=null && v>=0) ? v.toFixed(0)+' %' : '—'; }
 function fmtKm(v){ return (v!=null && v>0) ? v+' км' : '—'; }
+// EV-CAN goes silent when the high-voltage side sleeps, while CAR-CAN can stay
+// awake. Never present the last frame as a live measurement: 30 s is stale.
+function evFresh(){ return S.fage>=0 && S.fage<30; }
 function chargerRu(){
 return {charging:'Заряжается',done:'Завершено',stopped:'Прервано',wait:'Ожидание','':'Не подключено'}[S.charger]||'—';
 }
@@ -759,7 +790,7 @@ bar.style.width = pct+'%';
 bar.className = 'fill' + (pct>20?'':' crit') + (pct>20&&pct<=40?' low':'');
 $('g-charge-state').textContent = S.charging ? 'Заряжается' : (S.charger?chargerRu():'—');
 const cb = $('g-charge-btn');
-cb.disabled = false;
+cb.disabled = S.charging;
 if(S.charging){ cb.textContent = 'Идёт зарядка'; cb.classList.add('charging'); }
 else { cb.classList.remove('charging');
 cb.textContent = S.charger==='done' ? 'Зарядка окончена' : 'Начать зарядку'; }
@@ -792,9 +823,9 @@ $('s-range').textContent = iRange!=null ? fmtKm(iRange)+' (прибор)'
 : (km!=null ? '≈'+fmtKm(km)+' (расч.)' : '—');
 $('s-soh').textContent = S.soh>=0 ? S.soh+' %' : '—';
 $('s-gids').textContent = S.gids>=0 ? S.gids : '—';
-$('s-v').textContent = S.packValid ? S.v.toFixed(1)+' V' : '—';
-$('s-i').textContent = S.packValid ? S.i.toFixed(1)+' A' : '—';
-$('s-power').textContent = S.packValid ? S.power.toFixed(1)+' кВт' : '—';
+$('s-v').textContent = (S.voltageValid && evFresh()) ? S.v.toFixed(1)+' V' : '—';
+$('s-i').textContent = (S.packValid && evFresh()) ? S.i.toFixed(1)+' A' : '—';
+$('s-power').textContent = (S.packValid && evFresh()) ? S.power.toFixed(1)+' кВт' : '—';
 $('s-btemp').textContent = (S.btemp>-30&&S.btemp<70) ? S.btemp.toFixed(1)+' °C' : '—';
 $('s-cdelta').textContent = S.cdelta>=0 ? S.cdelta+' мВ' : '—';
 $('s-amb').textContent = (S.amb>-40&&S.amb<60) ? S.amb.toFixed(1)+' °C' : '—';
@@ -841,10 +872,11 @@ if(S.fw){ $('about-fw').style.display='block'; $('about-fw').textContent='Про
 S.soc=j.soc; S.cabin=j.cabin; S.charging=!!j.charging; S.charger=j.charger||'';
 S.hvac=!!j.hvac; S.lock=j.lock; S.setpoint=j.setpoint; S.fan=j.fan;
 S.heat=!!j.heat; S.cool=!!j.cool; S.vent=j.vent;
-S.soh=j.soh; S.gids=j.gids; S.v=j.v; S.i=j.i; S.power=j.power||0; S.packValid=!!j.pack;
+S.soh=j.soh; S.gids=j.gids; S.v=j.v; S.i=j.i; S.power=j.power||0; S.packValid=!!j.pack; S.voltageValid=(j.vvalid===undefined)?S.packValid:!!j.vvalid;
 S.amb=j.amb; S.on=j.on; S.seq=!!j.seq; S.locking=!!j.locking;
 S.isoc=(j.isoc===undefined)?-1:j.isoc; S.irange=(j.irange===undefined)?-1:j.irange;
 S.btemp=(j.btemp===undefined)?-99:j.btemp; S.cdelta=(j.cdelta===undefined)?-1:j.cdelta;
+S.fage=(j.fage===undefined)?-1:j.fage;
 S.odo=j.odo||0; S.vin=j.vin||''; S.hvacTimer=j.hvac_timer||0;
 S.lights = (j.lights===undefined) ? -1 : (j.lights?1:0);
 if(j.gps && j.gps.lat && j.gps.lon && j.gps.age < 900)
@@ -987,6 +1019,10 @@ el.classList.add('flash');
 setTimeout(()=>el.classList.remove('flash'),200);
 }
 function cmd(type, quiet){
+if(['chargeoff','hornlights','rhloff'].includes(type)){
+if(!quiet) toast('Команда недоступна');
+return Promise.resolve(false);
+}
 if(!navigator.onLine && mode==='mqtt') toast('Нет сети');
 if(mode==='local'){
 if(S.seq){ if(!quiet) toast('Дождитесь завершения текущей команды'); return Promise.resolve(false); }
@@ -1019,17 +1055,17 @@ return Promise.resolve(true);
 function remoteStatus(type){
 const el=$('remote-status');
 const names={charge:'Зарядка',chargeoff:'Стоп зарядки',lock:'Закрытие',unlock:'Открытие',refresh:'Обновление',hvac:'Климат',
-lights:'Фары',hornlights:'Сигнал и фары',rhloff:'Отмена'};
+lights:'Вспышка фар',hornlights:'Сигнал и фары',rhloff:'Отмена'};
 el.textContent=names[type]+': запрос отправлен…';
 setTimeout(()=>{el.textContent=names[type]+': выполнено';},2000);
 setTimeout(()=>{el.textContent='Выберите действие';},4500);
 }
 // ---------- garage quick actions ----------
-function toggleCharge(){ cmd(S.charging ? 'chargeoff' : 'charge'); }
+function toggleCharge(){ if(!S.charging) cmd('charge'); }
 // No optimistic state flips: the truth comes from the next poll (local)
 // or from the retained metric (MQTT). Optimistic values used to lie
 // after a 403 (locking disabled) or when the board was busy.
-function actLights(){ cmd(S.lights===1 ? 'rhloff' : 'lights'); }
+function actLights(){ cmd('lights'); }
 function actDoors(){
 if(mode==='local' && !S.locking){ toast('Блокировка выключена в настройках платы'); return; }
 if(S.lock===1) sendLockCmd(0);
@@ -1057,23 +1093,11 @@ $('sp-val').textContent=v;
 }
 function updateFindCard(){
 const c=$('find-car'); if(!c) return;
-c.classList.toggle('active',findActive);
-let sub = findActive ? 'Нажмите ещё раз, чтобы отменить' : 'Сигнал и фары';
-if(S.gps && !findActive) sub += ' · GPS '+S.gps.lat.toFixed(3)+','+S.gps.lon.toFixed(3);
-$('find-car-sub').textContent = sub;
+c.classList.remove('active');
+$('find-car-sub').textContent = 'Недоступно';
 }
 function findCar(){
-if(findActive){
-findActive=false; clearTimeout(findTimer); updateFindCard();
-// Retry while the horn/lights sequence is busy — the board drops
-// commands issued during an active sequence
-cancelRhl();
-toast('Действие отменено');
-return;
-}
-cmd('hornlights');
-findActive=true; updateFindCard();
-findTimer=setTimeout(()=>{ findActive=false; updateFindCard(); },60000);
+toast('Команда недоступна');
 }
 function cancelRhl(){
 cmd('rhloff',true).then(ok=>{
@@ -1527,6 +1551,23 @@ mqttConnect();
 toast('Сохранено');
 }
 // ---------- boot ----------
+function isBoardHost(){
+const h=location.hostname.toLowerCase();
+if(h==='leaf.local'||h==='leaf'||h==='localhost'||h==='127.0.0.1') return true;
+const p=h.split('.').map(Number);
+if(p.length!==4||p.some(n=>!Number.isInteger(n)||n<0||n>255)) return false;
+return p[0]===10 || p[0]===127 ||
+(p[0]===192&&p[1]===168) ||
+(p[0]===172&&p[1]>=16&&p[1]<=31) ||
+(p[0]===169&&p[1]===254);
+}
+function enableBoardUi(){
+mode='local'; onBoard=true;
+$('more-mode').textContent='Локально (плата)';
+$('more-settings-label').textContent='Настройки платы';
+$('more-ota').style.display='flex';
+$('more-developer').style.display='flex';
+}
 async function boot(){
 const savedSp = localStorage.getItem('leafsp');
 if(savedSp){ $('sp-slider').value = savedSp; $('sp-val').textContent = savedSp; spTouched = true; }
@@ -1539,18 +1580,19 @@ setInterval(()=>{ tripTick(); chargeTick(); updateBadge(); }, 15000); // stale/i
 if('serviceWorker' in navigator && location.protocol==='https:'){
 navigator.serviceWorker.register('sw.js').catch(()=>{});
 }
-// try local board first, fall back to MQTT
+// A private/local origin is itself enough to expose board-only navigation.
+// /api/status can take several seconds while a busy CAN queue is drained, so
+// never hide OTA/developer controls merely because a short probe timed out.
+if(isBoardHost()) enableBoardUi();
+// Confirm the board API, otherwise fall back to MQTT on public hosting.
 try{
 const ac=new AbortController();
-setTimeout(()=>ac.abort(),1800);
-const r=await fetch('/api/status',{signal:ac.signal});
-if(r.ok){ mode='local'; onBoard=true; pollLocal(); setInterval(pollLocal,3000);
-$('more-mode').textContent='Локально (плата)';
-$('more-settings-label').textContent='Настройки платы';
-$('more-ota').style.display='flex';
-$('more-developer').style.display='flex';
+setTimeout(()=>ac.abort(),20000);
+const r=await fetch('/api/status',{signal:ac.signal,cache:'no-store'});
+if(r.ok){ enableBoardUi(); pollLocal(); setInterval(pollLocal,3000);
 return; }
 }catch(e){}
+if(onBoard){ pollLocal(); setInterval(pollLocal,3000); return; }
 if(loadCfg()){ mqttConnect(); $('more-mode').textContent='MQTT'; }
 else { updateBadge(); $('more-mode').textContent='Не настроено — нажмите Настройки'; openSettings(); }
 }

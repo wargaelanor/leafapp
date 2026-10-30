@@ -279,6 +279,10 @@ void mqttDisconnect() {
 }
 
 void manageMQTT() {
+  if (getRemoteTransport() != RemoteTransport::MQTT) {
+    mqttDisconnect();
+    return;
+  }
   if (strlen(getMqttServer()) == 0) {
     return; // Don't try to connect if MQTT server is not configured
   }
@@ -541,7 +545,7 @@ void mqttUpdateCellDelta(int mv) {
   static int last = -1;
   if (mv == last) return;
   last = mv;
-  mqttPublishMetric(ovmsMetrics.cellDelta, (float)mv, "%.0f");
+  mqttPublishMetric(ovmsMetrics.cellDelta, mv / 1000.0f, "%.3f");
 }
 
 void mqttUpdateVehicleOn(bool on) {

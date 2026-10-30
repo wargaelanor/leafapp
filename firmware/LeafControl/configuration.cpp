@@ -96,9 +96,14 @@ public:
 // Define config objects
 static ConfigString<64> conf_ssid("ssid", "");
 static ConfigString<64> conf_password("password", "");
+static ConfigString<64> conf_ssid2("ssid2", "");
+static ConfigString<64> conf_password2("password2", "");
+static ConfigString<64> conf_ssid3("ssid3", "");
+static ConfigString<64> conf_password3("password3", "");
 static ConfigString<64> conf_ap_ssid("ap_ssid", "");
 static ConfigString<64> conf_ap_password("ap_password", "");
 static ConfigString<64> conf_hostName("hostName", "leaf");
+static ConfigInt        conf_remote_transport("remote_mode", 1);
 static ConfigString<64> conf_mqtt_server("mqtt_server", "");
 static ConfigInt        conf_mqtt_port("mqtt_port", 8883);
 static ConfigString<64> conf_mqtt_user("mqtt_user", "");
@@ -107,6 +112,11 @@ static ConfigString<64> conf_vehicle_id("vehicle_id", "");
 static ConfigBool       conf_locking_enabled("locking_enabled", false);
 static ConfigBool       conf_mqtt_tls("mqtt_tls", true);
 static ConfigBool       conf_hass_discovery("hass_discovery", true);
+static ConfigString<64> conf_ovms_server("ovms_server", "api.openvehicles.com");
+static ConfigInt        conf_ovms_port("ovms_port", 6870);
+static ConfigString<64> conf_ovms_password("ovms_password", "");
+static ConfigString<64> conf_ovms_module_password("ovms_module_pw", "");
+static ConfigBool       conf_ovms_tls("ovms_tls", true);
 static ConfigBool       conf_sleep_enabled("sleep_enable", false);
 static ConfigInt        conf_sleep_after_h("sleep_after_h", 24);
 static ConfigInt        conf_wake_fast_min("wake_fast_min", 10);
@@ -136,9 +146,14 @@ void initConfiguration() {
 
     conf_ssid.load();
     conf_password.load();
+    conf_ssid2.load();
+    conf_password2.load();
+    conf_ssid3.load();
+    conf_password3.load();
     conf_ap_ssid.load();
     conf_ap_password.load();
     conf_hostName.load();
+    conf_remote_transport.load();
     conf_mqtt_server.load();
     conf_mqtt_port.load();
     conf_mqtt_user.load();
@@ -147,6 +162,11 @@ void initConfiguration() {
     conf_locking_enabled.load();
     conf_mqtt_tls.load();
     conf_hass_discovery.load();
+    conf_ovms_server.load();
+    conf_ovms_port.load();
+    conf_ovms_password.load();
+    conf_ovms_module_password.load();
+    conf_ovms_tls.load();
     conf_sleep_enabled.load();
     conf_sleep_after_h.load();
     conf_wake_fast_min.load();
@@ -188,6 +208,16 @@ ConfigStatus setWifiSSID(const char* value) { return conf_ssid.set(value); }
 const char* getWifiPassword() { return conf_password.get(); }
 ConfigStatus setWifiPassword(const char* value) { return conf_password.set(value); }
 
+const char* getWifiSSID2() { return conf_ssid2.get(); }
+ConfigStatus setWifiSSID2(const char* value) { return conf_ssid2.set(value); }
+const char* getWifiPassword2() { return conf_password2.get(); }
+ConfigStatus setWifiPassword2(const char* value) { return conf_password2.set(value); }
+
+const char* getWifiSSID3() { return conf_ssid3.get(); }
+ConfigStatus setWifiSSID3(const char* value) { return conf_ssid3.set(value); }
+const char* getWifiPassword3() { return conf_password3.get(); }
+ConfigStatus setWifiPassword3(const char* value) { return conf_password3.set(value); }
+
 const char* getApSSID() { return conf_ap_ssid.get(); }
 ConfigStatus setApSSID(const char* value) { return conf_ap_ssid.set(value); }
 
@@ -217,6 +247,17 @@ ConfigStatus setHostName(const char* value) {
     return conf_hostName.set(value);
 }
 
+RemoteTransport getRemoteTransport() {
+    int value = conf_remote_transport.get();
+    if (value < 0 || value > 2) value = 1;
+    return static_cast<RemoteTransport>(value);
+}
+ConfigStatus setRemoteTransport(RemoteTransport value) {
+    int raw = static_cast<int>(value);
+    if (raw < 0 || raw > 2) return ConfigStatus::ERROR_PORT_RANGE;
+    return conf_remote_transport.set(raw);
+}
+
 const char* getMqttServer() { return conf_mqtt_server.get(); }
 ConfigStatus setMqttServer(const char* value) { return conf_mqtt_server.set(value); }
 
@@ -240,6 +281,20 @@ ConfigStatus setMqttTls(bool value) { return conf_mqtt_tls.set(value); }
 
 bool getHassDiscoveryEnabled() { return conf_hass_discovery.get(); }
 ConfigStatus setHassDiscoveryEnabled(bool value) { return conf_hass_discovery.set(value); }
+
+const char* getOvmsServer() { return conf_ovms_server.get(); }
+ConfigStatus setOvmsServer(const char* value) { return conf_ovms_server.set(value); }
+int getOvmsPort() { return conf_ovms_port.get(); }
+ConfigStatus setOvmsPort(int value) {
+    if (value < 1 || value > 65535) return ConfigStatus::ERROR_PORT_RANGE;
+    return conf_ovms_port.set(value);
+}
+const char* getOvmsPassword() { return conf_ovms_password.get(); }
+ConfigStatus setOvmsPassword(const char* value) { return conf_ovms_password.set(value); }
+const char* getOvmsModulePassword() { return conf_ovms_module_password.get(); }
+ConfigStatus setOvmsModulePassword(const char* value) { return conf_ovms_module_password.set(value); }
+bool getOvmsTls() { return conf_ovms_tls.get(); }
+ConfigStatus setOvmsTls(bool value) { return conf_ovms_tls.set(value); }
 
 bool getSleepEnabled() { return conf_sleep_enabled.get(); }
 ConfigStatus setSleepEnabled(bool value) { return conf_sleep_enabled.set(value); }

@@ -6,6 +6,7 @@
 #include <Update.h>
 #include <ArduinoOTA.h>
 #include <esp_sleep.h>
+#include <esp_system.h>
 #include "configuration.h"
 #include "cliParser.h"
 #include "canLeafZE1.h"
@@ -13,19 +14,28 @@
 #include "ui.h"
 #include "webapp_html.h"
 #include "mqttInterface.h"
+#include "ovmsV2Client.h"
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.10.28.5"
-#define LEAF_FIRMWARE_DESCRIPTION "SIM800: OEM TCU commands, CAN telemetry, climate control by authorized call"
+#define LEAF_FIRMWARE_VERSION "FW-2026.10.29.53-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "Sleep state in status, no net connect during OTA"
 
 WebServer server(80);
 DNSServer dnsServer;
 bool captivePortalActive = false;
 unsigned long rebootPendingAt = 0;
+static uint8_t rebootPendingReason = 0;
+RTC_DATA_ATTR static uint8_t lastSoftwareRestart = 0;
+// Largest gap between loop() iterations: proves whether a stalled HTTP
+// response comes from a blocked main loop or only from the network.
+static uint32_t maxLoopGapMs = 0;
+static uint32_t lastLoopTickMs = 0;
 static uint32_t developerSession = 0;
 static unsigned long developerSessionSeenMs = 0;
 static const unsigned long DEVELOPER_SESSION_MS = 15UL * 60UL * 1000UL;
+static uint8_t currentWifiProfile = 0;
+static volatile int lastWifiDisconnectReason = 0;
 
 
 // State variables
@@ -40,6 +50,11 @@ ChargerState currentChargerState = ChargerState::IDLE;
 bool isHvacOn = false;
 int8_t lockState = -1;
 bool headlightsState = false;
+bool doorFL = false;
+bool doorFR = false;
+bool doorRL = false;
+bool doorRR = false;
+bool doorTrunk = false;
 float currentSetpoint = -1.0;
 float currentFanSpeed = -1.0;
 bool isHeatingEnabled = false;
@@ -207,27 +222,41 @@ const char* chargerStateStr(ChargerState s) {
 
 void handleRoot() {
   noteUserActivity();
-  // Stream the large embedded PWA in small chunks. A single send_P call can
-  // stall the WebServer/TCP stack before the first bytes reach the client.
+  // A disconnected client must not hold the single-threaded WebServer for
+  // 5 seconds per chunk. Abort this response on the first short write.
   const size_t htmlLen = sizeof(INDEX_HTML) - 1;
+  NetworkClient& client = server.client();
+  client.setTimeout(750);
   server.setContentLength(htmlLen);
   server.send(200, "text/html; charset=utf-8", "");
   for (size_t offset = 0; offset < htmlLen; offset += 1024) {
+    if (!client.connected()) break;
     size_t chunk = htmlLen - offset;
     if (chunk > 1024) chunk = 1024;
-    server.sendContent_P(INDEX_HTML + offset, chunk);
+    if (client.write_P(INDEX_HTML + offset, chunk) != chunk) break;
     delay(0);
   }
+  client.stop();
 }
 
 // Vehicle picture for the PWA (also usable from GitHub Pages, where the file
 // is served statically). WebP is ~16.9 KB vs 23.5 KB for the PNG; kept in
 // PROGMEM and streamed in chunks to avoid a large RAM buffer.
 void handleLeafImg() {
+  NetworkClient& client = server.client();
+  client.setTimeout(750);
   server.setContentLength(LEAF_IMG_LEN);
   server.sendHeader("Cache-Control", "public, max-age=604800");
   server.send(200, LEAF_IMG_TYPE, "");
-  server.sendContent_P((const char*)LEAF_IMG, LEAF_IMG_LEN);
+  size_t offset = 0;
+  while (offset < LEAF_IMG_LEN && client.connected()) {
+    size_t chunk = LEAF_IMG_LEN - offset;
+    if (chunk > 1024) chunk = 1024;
+    if (client.write_P((const char*)LEAF_IMG + offset, chunk) != chunk) break;
+    offset += chunk;
+    delay(0);
+  }
+  client.stop();
 }
 
 // Old name kept alive: stale PWA copies (pre leaf-v13) still ask for /leaf.png.
@@ -236,37 +265,104 @@ void handleLeafPngLegacy() {
   server.send(301, "text/plain", "");
 }
 
-void handleApiStatus() {
+// Start a listen-only MCP2515 clock/bitrate sweep (Port A never transmits).
+void handleApiEvScan() {
   noteUserActivity();
-  bool sequenceActive = (activeSequence != CanSequence::NONE);
+  if (!evCanIsUp()) {
+    server.send(503, "application/json", "{\"error\":\"evcan_not_ready\"}");
+    return;
+  }
+  evCanRequestScan();
+  server.send(202, "application/json", "{\"scan\":\"started\"}");
+}
+
+// Render the last raw payload of a Port B ID as hex ("-" when never seen).
+static void hexFromBuf(const uint8_t* buf, uint8_t len, char* out, size_t outSize) {
+  if (len == 0) { snprintf(out, outSize, "-"); return; }
+  size_t used = 0;
+  out[0] = '\0';
+  for (uint8_t i = 0; i < len && used + 4 < outSize; i++) {
+    used += snprintf(out + used, outSize - used, i ? " %02X" : "%02X", buf[i]);
+  }
+}
+
+static void jsonHexPayload(uint32_t id, char* out, size_t outSize) {
+  uint8_t buf[8];
+  uint8_t len = dbgLastFrame(id, buf);
+  hexFromBuf(buf, len, out, outSize);
+}
+
+void handleApiStatus() {
+  noteUserActivity();  bool sequenceActive = (activeSequence != CanSequence::NONE);
   float gLat = 0, gLon = 0, gAlt = 0, gSpd = 0;
   uint32_t gAge = 0;
   bool gpsValid = modemGpsFix(&gLat, &gLon, &gAlt, &gSpd, &gAge);
-  char json[1200];
+  char json[2100];
+  char h1db[26], h5bc[26], h7bb[26], h79a[26], h5c0[26], h1dba[26];
+  jsonHexPayload(0x1DB, h1db, sizeof(h1db));
+  jsonHexPayload(0x5BC, h5bc, sizeof(h5bc));
+  jsonHexPayload(0x7BB, h7bb, sizeof(h7bb));
+  jsonHexPayload(0x79A, h79a, sizeof(h79a));
+  uint8_t evTemp[8], evPack[8];
+  hexFromBuf(evTemp, evCanRawTemp(evTemp), h5c0, sizeof(h5c0));
+  hexFromBuf(evPack, evCanRawPack(evPack), h1dba, sizeof(h1dba));
   snprintf(json, sizeof(json),
     "{\"fw\":\"%s\",\"fw_desc\":\"%s\",\"soc\":%.1f,\"cabin\":%.1f,\"charging\":%d,\"charger\":\"%s\",\"hvac\":%d,"
     "\"lock\":%d,\"setpoint\":%.1f,\"fan\":%.0f,\"heat\":%d,\"cool\":%d,\"vent\":%d,"
-    "\"soh\":%d,\"gids\":%d,\"v\":%.1f,\"i\":%.1f,\"power\":%.1f,\"pack\":%d,\"amb\":%.1f,"
+    "\"soh\":%d,\"gids\":%d,\"v\":%.1f,\"i\":%.1f,\"power\":%.1f,\"pack\":%d,\"vvalid\":%d,\"amb\":%.1f,"
     "\"isoc\":%.1f,\"irange\":%d,\"btemp\":%.1f,\"cdelta\":%d,"
     "\"odo\":%lu,\"vin\":\"%s\",\"hvac_timer\":%u,"
     "\"on\":%d,\"seq\":%d,\"locking\":%d,\"lights\":%d,"
-    "\"evcan\":%d,\"fa\":%lu,\"fb\":%lu,"
-    "\"modem\":\"%s\",\"gps\":{\"lat\":%.5f,\"lon\":%.5f,\"age\":%lu}}",
+    "\"evcan\":%d,\"rxonly\":%d,\"fa\":%lu,\"fb\":%lu,"
+    "\"evclk\":\"%s\",\"evkbps\":\"%s\",\"evscan\":%d,\"evlock\":%d,"
+    "\"evchip\":%d,\"evcfg\":%d,\"evrec\":%u,\"evtec\":%u,\"eveflg\":%u,\"evbest\":%u,\"evrst\":%lu,"
+    "\"twai\":%u,\"btec\":%u,\"brec\":%u,\"fage\":%lu,\"lmax\":%lu,"
+    "\"bmsq\":%lu,\"bmsr\":%lu,\"vinq\":%lu,\"vinr\":%lu,"
+    "\"r1db\":\"%s\",\"r5bc\":\"%s\",\"r7bb\":\"%s\",\"r79a\":\"%s\","
+    "\"r5c0\":\"%s\",\"r1dba\":\"%s\","
+    "\"bmslen\":%u,\"bmsgot\":%u,\"bmsgrp\":%u,\"bmsff\":%lu,"
+    "\"modem\":\"%s\",\"uptime\":%lu,\"free_heap\":%lu,\"reset_reason\":%d,\"software_restart\":%u,"
+    "\"remote_mode\":%d,\"mqtt_connected\":%d,\"ovms_v2_connected\":%d,\"ovms_v2_paranoid\":%d,"
+    "\"wifi_status\":%d,\"wifi_rssi\":%d,\"wifi_profile\":%u,\"wifi_disconnect\":%d,"
+    "\"sleep_on\":%d,\"sleep_after_h\":%d,\"wake_fast_min\":%d,\"idle_s\":%lu,"
+    "\"gps\":{\"lat\":%.5f,\"lon\":%.5f,\"age\":%lu}}",
     LEAF_FIRMWARE_VERSION, LEAF_FIRMWARE_DESCRIPTION,
     currentSOC, cabinTemp, isChargingNow ? 1 : 0, chargerStateStr(currentChargerState),
     isHvacOn ? 1 : 0, (int)lockState, currentSetpoint, currentFanSpeed,
     isHeatingEnabled ? 1 : 0, isCoolingEnabled ? 1 : 0, (int)currentVentilationMode,
     evData.soh, evData.gids, evData.packVoltage, evData.packCurrent, evData.packPower,
-    evData.packDataValid ? 1 : 0, evData.ambientTemp,
+    evData.packDataValid ? 1 : 0, evData.packVoltageValid ? 1 : 0, evData.ambientTemp,
     evData.instrumentSOC, evData.instrumentRange, evData.batteryTemp, evData.cellDeltaMv,
     (unsigned long)evData.odometerKm, evData.vin, hvacTimerRemainingMinutes(),
     (int)evData.vehicleOn,
     sequenceActive ? 1 : 0, getLockingEnabled() ? 1 : 0, headlightsState ? 1 : 0,
-    evCanIsUp() ? 1 : 0, (unsigned long)canFramesA, (unsigned long)canFramesB,
-    modemGetStateStr(), gpsValid ? gLat : 0.0, gpsValid ? gLon : 0.0,
+    evCanIsUp() ? 1 : 0, LEAF_CAN_RX_ONLY, (unsigned long)canFramesA, (unsigned long)canFramesB,
+    evCanClockName(), evCanBitrateName(), evCanScanActive() ? 1 : 0, evCanIsLocked() ? 1 : 0,
+    evCanChipCheckOk() ? 1 : 0, evCanConfigWritesOk() ? 1 : 0,
+    (unsigned)evCanRxErrorCount(), (unsigned)evCanTxErrorCount(), (unsigned)evCanErrorFlags(),
+    (unsigned)evCanScanBestFrames(),
+    (unsigned long)evCanHardResetCount(),
+    (unsigned)canBusState(), (unsigned)canBusTxErrors(), (unsigned)canBusRxErrors(),
+    (unsigned long)evCanLastFrameAgeSec(),
+    (unsigned long)maxLoopGapMs,
+    (unsigned long)bmsQueryRequests(), (unsigned long)bmsQueryResponses(),
+    (unsigned long)vinQueryRequests(), (unsigned long)vinQueryResponses(),
+    h1db, h5bc, h7bb, h79a, h5c0, h1dba,
+    (unsigned)bmsLastExpectedLength(), (unsigned)bmsLastReceivedLength(),
+    (unsigned)bmsLastGroupId(), (unsigned long)bmsFirstFrames(),
+    modemGetStateStr(), (unsigned long)(millis() / 1000UL),
+    (unsigned long)ESP.getFreeHeap(), (int)esp_reset_reason(), (unsigned int)lastSoftwareRestart,
+    (int)getRemoteTransport(), mqttIsConnected() ? 1 : 0, ovmsV2IsConnected() ? 1 : 0,
+    ovmsV2ParanoidIsActive() ? 1 : 0,
+    (int)WiFi.status(), WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0,
+    (unsigned int)(currentWifiProfile + 1), lastWifiDisconnectReason,
+    getSleepEnabled() ? 1 : 0, getSleepAfterHours(), getWakeFastMinutes(),
+    (unsigned long)rtcState.idleSec,
+    gpsValid ? gLat : 0.0, gpsValid ? gLon : 0.0,
     (unsigned long)(gpsValid ? gAge / 1000UL : 0UL));
   server.sendHeader("Cache-Control", "no-store");
   server.send(200, "application/json", json);
+  maxLoopGapMs = 0;   // report the worst stall since the previous read
 }
 
 static bool developerAuthorized() {
@@ -347,6 +443,22 @@ void handleCanLogDownload() {
 // ---------- OTA ----------
 bool otaInProgress = false;
 bool arduinoOtaBegun = false;
+static volatile uint32_t loopHeartbeatMs = 0;
+static volatile bool setupComplete = false;
+
+static void loopSupervisorTask(void*) {
+  for (;;) {
+    vTaskDelay(pdMS_TO_TICKS(5000));
+    if (!setupComplete || otaInProgress) continue;
+    uint32_t heartbeat = loopHeartbeatMs;
+    if (heartbeat != 0 && millis() - heartbeat > 60000UL) {
+      Serial.println("### Supervisor: main loop stalled, rebooting ###");
+      lastSoftwareRestart = 1;
+      delay(100);
+      ESP.restart();
+    }
+  }
+}
 
 void handleOtaPage() {
   server.send(200, "text/html",
@@ -395,6 +507,7 @@ void handleOtaResult() {
   } else {
     server.send(200, "text/plain", "OK, перезагрузка…");
     rebootPendingAt = millis() + 1500;
+    rebootPendingReason = 2;
   }
 }
 
@@ -428,11 +541,16 @@ void setupArduinoOTA() {
 
 void handleSettings() {
   const char* result = server.hasArg("saved") ? "Saved. Rebooting..." : nullptr;
-  sendSettingsPage(server, mqttIsConnected(), result);
+  sendSettingsPage(server, mqttIsConnected(), ovmsV2IsConnected(), result);
 }
 
 void handleSettingsSave() {
   Serial.println("### Settings saved via Web UI ###");
+
+  int remoteMode = server.arg("remote_mode").toInt();
+  if (remoteMode >= 0 && remoteMode <= 2) {
+    setRemoteTransport(static_cast<RemoteTransport>(remoteMode));
+  }
 
   String serverAddr = server.arg("mqtt_server");
   serverAddr.trim();
@@ -465,6 +583,31 @@ void handleSettingsSave() {
   // Empty password field = keep current password
   if (server.hasArg("wifi_password") && server.arg("wifi_password").length() > 0) {
     setWifiPassword(server.arg("wifi_password").c_str());
+  }
+
+  String ovmsServer = server.arg("ovms_server");
+  ovmsServer.trim();
+  setOvmsServer(ovmsServer.c_str());
+  int ovmsPort = server.arg("ovms_port").toInt();
+  if (ovmsPort >= 1 && ovmsPort <= 65535) setOvmsPort(ovmsPort);
+  if (server.hasArg("ovms_password") && server.arg("ovms_password").length() > 0) {
+    setOvmsPassword(server.arg("ovms_password").c_str());
+  }
+  if (server.hasArg("ovms_module_password") && server.arg("ovms_module_password").length() > 0) {
+    setOvmsModulePassword(server.arg("ovms_module_password").c_str());
+  }
+  setOvmsTls(server.hasArg("ovms_tls"));
+  String wifiSsid2 = server.arg("wifi_ssid2");
+  wifiSsid2.trim();
+  setWifiSSID2(wifiSsid2.c_str());
+  if (server.hasArg("wifi_password2") && server.arg("wifi_password2").length() > 0) {
+    setWifiPassword2(server.arg("wifi_password2").c_str());
+  }
+  String wifiSsid3 = server.arg("wifi_ssid3");
+  wifiSsid3.trim();
+  setWifiSSID3(wifiSsid3.c_str());
+  if (server.hasArg("wifi_password3") && server.arg("wifi_password3").length() > 0) {
+    setWifiPassword3(server.arg("wifi_password3").c_str());
   }
 
   // Wi-Fi AP (empty SSID = AP disabled)
@@ -531,12 +674,40 @@ void handleSettingsSave() {
   Serial.print(getVehicleId());
   Serial.print(" wifi_ssid=");
   Serial.print(getWifiSSID());
+  Serial.print(" wifi_ssid2=");
+  Serial.print(getWifiSSID2());
+  Serial.print(" wifi_ssid3=");
+  Serial.print(getWifiSSID3());
   Serial.print(" ap_ssid=");
   Serial.println(getApSSID());
 
   rebootPendingAt = millis() + 2000;
+  rebootPendingReason = 3;
   server.sendHeader("Location", "/settings?saved=1");
   server.send(303);
+}
+
+// Narrow endpoint for provisioning extra STA profiles without submitting the
+// full settings form (where absent checkboxes intentionally mean "disabled").
+void handleWifiProfilesSave() {
+  for (uint8_t profile = 2; profile <= 3; profile++) {
+    String suffix = String(profile);
+    String ssidKey = "wifi_ssid" + suffix;
+    String passwordKey = "wifi_password" + suffix;
+    if (server.hasArg(ssidKey)) {
+      String ssid = server.arg(ssidKey);
+      ssid.trim();
+      if (profile == 2) setWifiSSID2(ssid.c_str());
+      else setWifiSSID3(ssid.c_str());
+    }
+    if (server.hasArg(passwordKey) && server.arg(passwordKey).length() > 0) {
+      if (profile == 2) setWifiPassword2(server.arg(passwordKey).c_str());
+      else setWifiPassword3(server.arg(passwordKey).c_str());
+    }
+  }
+  rebootPendingAt = millis() + 2000;
+  rebootPendingReason = 4;
+  server.send(200, "application/json", "{\"ok\":true,\"rebooting\":true}");
 }
 
 void handleCarAwake() {
@@ -599,6 +770,11 @@ void handleVentilationMode(VentilationMode mode) {
 
 void handleDoorStatus(bool fl, bool fr, bool rl, bool rr, bool trunk) {
   noteCarActivity();
+  doorFL = fl;
+  doorFR = fr;
+  doorRL = rl;
+  doorRR = rr;
+  doorTrunk = trunk;
   mqttUpdateDoors(fl, fr, rl, rr, trunk);
 }
 
@@ -655,6 +831,7 @@ void handleEvPackStatus(float voltage, float current) {
   evData.packCurrent = current;
   evData.packPower = voltage * current / 1000.0f;
   evData.packDataValid = true;
+  evData.packVoltageValid = true;
   if (voltage == lastPubbedV && current == lastPubbedA) return;
   if (lastPub != 0 && millis() - lastPub < 5000) return;
   lastPub = millis();
@@ -699,6 +876,19 @@ void handleEvInstrumentSOC(float soc) {
   lastPub = millis();
   lastPubbed = soc;
   mqttUpdateInstrumentSoc(soc);
+}
+
+void handleEvBmsSOC(float soc) {
+  noteCarActivity();
+  if (soc <= 0.0f || soc > 100.0f) return;
+  static unsigned long lastPub = 0;
+  static float lastPubbed = -1.0f;
+  currentSOC = soc;
+  if (soc == lastPubbed) return;
+  if (lastPub != 0 && millis() - lastPub < 10000) return;
+  lastPub = millis();
+  lastPubbed = soc;
+  mqttUpdateSOC(currentSOC);
 }
 
 void handleInstrumentRange(int km) {
@@ -755,6 +945,21 @@ static bool startSeqOrBusy(CanSequence seq) {
 static void sendBusyHttp() {
   server.send(409, "text/plain", "Busy: previous command still running");
 }
+
+void handlePackVoltage(float voltage) {
+  if (voltage < 200.0f || voltage > 500.0f) return;
+  evData.packVoltage = voltage;
+  evData.packVoltageValid = true;
+}
+
+void handleCellDelta(int millivolts) {
+  if (millivolts < 0 || millivolts > 1000) return;
+  evData.cellDeltaMv = millivolts;
+  mqttUpdateCellDelta(millivolts);
+}
+static void sendCommandNotEnabledHttp() {
+  server.send(501, "application/json", "{\"error\":\"command_not_enabled\"}");
+}
 static void sendBusyMqtt() {
   mqttPublishStatus("Busy: previous command still running");
 }
@@ -763,7 +968,10 @@ static void sendBusyMqtt() {
 void handleRefresh() {
   Serial.println("### Refresh! ###");
   if (!startSeqOrBusy(CanSequence::REFRESH)) { sendBusyHttp(); return; }
-  resetData();
+  // The refresh wakes CAR-CAN, which usually wakes the rest of the car too.
+  // If EV-CAN has never produced a frame, use this traffic window to sweep
+  // MCP2515 clock/bitrate candidates while staying listen-only.
+  if (canFramesA == 0) evCanRequestScan();
   server.sendHeader("Location", "/");
   server.send(303);
 }
@@ -771,7 +979,6 @@ void handleRefresh() {
 bool handleMqttRefresh() {
   Serial.println("### Refresh! (MQTT) ###");
   if (!startSeqOrBusy(CanSequence::REFRESH)) { sendBusyMqtt(); return false; }
-  resetData();
   return true;
 }
 
@@ -780,8 +987,10 @@ void handleHvacOn() {
   float setpoint = 0.0f;
   if (server.hasArg("setpoint")) {
     setpoint = server.arg("setpoint").toFloat();
-    // Reject garbage/out-of-range setpoints from the URL
-    if (setpoint != 0.0f && (setpoint < 16.0f || setpoint > 32.0f)) setpoint = 0.0f;
+    if (setpoint < 16.0f || setpoint > 32.0f) {
+      server.send(400, "text/plain", "Invalid HVAC setpoint");
+      return;
+    }
   }
   uint16_t minutes = server.hasArg("minutes") ? (uint16_t)server.arg("minutes").toInt() : 0;
   if (!validHvacMinutes(minutes)) { server.send(400, "text/plain", "Invalid HVAC duration"); return; }
@@ -880,9 +1089,9 @@ void handleMqttChargeOn() {
 
 void handleChargeOff() {
   Serial.println("### Charge OFF! ###");
-  if (!startSeqOrBusy(CanSequence::CHARGE_OFF)) { sendBusyHttp(); return; }
-  server.sendHeader("Location", "/");
-  server.send(303);
+  // No confirmed ZE1 stop-charge payload is available. Keep this route
+  // explicit instead of reporting a misleading busy response.
+  sendCommandNotEnabledHttp();
 }
 
 void handleMqttChargeOff() {
@@ -904,9 +1113,7 @@ void handleMqttLights() {
 
 void handleHornLights() {
   Serial.println("### Horn + Lights! ###");
-  if (!startSeqOrBusy(CanSequence::HORN_LIGHTS)) { sendBusyHttp(); return; }
-  server.sendHeader("Location", "/");
-  server.send(303);
+  sendCommandNotEnabledHttp();
 }
 
 void handleMqttHornLights() {
@@ -916,9 +1123,7 @@ void handleMqttHornLights() {
 
 void handleRhlOff() {
   Serial.println("### Lights/signal OFF! ###");
-  if (!startSeqOrBusy(CanSequence::RHL_OFF)) { sendBusyHttp(); return; }
-  server.sendHeader("Location", "/");
-  server.send(303);
+  sendCommandNotEnabledHttp();
 }
 
 void handleMqttRhlOff() {
@@ -926,9 +1131,98 @@ void handleMqttRhlOff() {
   if (!startSeqOrBusy(CanSequence::RHL_OFF)) { sendBusyMqtt(); return; }
 }
 
+static const char* wifiProfileSsid(uint8_t index) {
+  if (index == 0) return getWifiSSID();
+  if (index == 1) return getWifiSSID2();
+  return getWifiSSID3();
+}
+
+uint8_t handleOvmsV2Command(uint16_t command, const char* args) {
+  switch (command) {
+    case 11: // Start charge
+      return startSeqOrBusy(CanSequence::CHARGE_ON) ? 0 : 1;
+    case 18: // Wakeup car
+    case 19: // Wakeup temperature subsystem (same Leaf wakeup upstream)
+      if (!startSeqOrBusy(CanSequence::REFRESH)) return 1;
+      return 0;
+    case 20: // Lock
+      if (!getLockingEnabled()) return 1;
+      return startSeqOrBusy(CanSequence::LOCK_DOORS) ? 0 : 1;
+    case 22: // Unlock
+      if (!getLockingEnabled()) return 1;
+      return startSeqOrBusy(CanSequence::UNLOCK_DOORS) ? 0 : 1;
+    case 24: { // Leaf upstream maps Homelink buttons 0/1 to climate on/off
+      int button = atoi(args);
+      if (button == 0) return startSeqOrBusy(CanSequence::HVAC_ON) ? 0 : 1;
+      if (button == 1) return startSeqOrBusy(CanSequence::HVAC_OFF) ? 0 : 1;
+      return 2;
+    }
+    case 26: { // Remote climate control: 1=on, 0=off
+      bool enable = atoi(args) != 0;
+      if (!startSeqOrBusy(enable ? CanSequence::HVAC_ON : CanSequence::HVAC_OFF)) return 1;
+      if (!enable) cancelHvacTimer();
+      return 0;
+    }
+    case 12: // Stop charge needs the upstream MITM installation, unavailable on OBD
+    default:
+      return 2;
+  }
+}
+
+static const char* wifiProfilePassword(uint8_t index) {
+  if (index == 0) return getWifiPassword();
+  if (index == 1) return getWifiPassword2();
+  return getWifiPassword3();
+}
+
+static bool wifiStaEnabled() {
+  for (uint8_t i = 0; i < 3; i++) {
+    if (strlen(wifiProfileSsid(i)) > 0) return true;
+  }
+  return false;
+}
+
+static void connectWifiProfile(bool rotateProfile = false) {
+  int bestProfile = -1;
+  int bestRssi = -1000;
+  if (rotateProfile) {
+    for (uint8_t step = 1; step <= 3; step++) {
+      uint8_t candidate = (currentWifiProfile + step) % 3;
+      if (wifiProfileSsid(candidate)[0]) { bestProfile = candidate; break; }
+    }
+  } else {
+    int count = WiFi.scanNetworks(false, true);
+    for (uint8_t profile = 0; profile < 3; profile++) {
+      const char* wanted = wifiProfileSsid(profile);
+      if (!wanted[0]) continue;
+      for (int network = 0; network < count; network++) {
+        if (WiFi.SSID(network) == wanted && WiFi.RSSI(network) > bestRssi) {
+          bestProfile = profile;
+          bestRssi = WiFi.RSSI(network);
+        }
+      }
+    }
+    WiFi.scanDelete();
+  }
+  if (bestProfile < 0) {
+    // No saved SSID was visible; rotate profiles in case it is hidden or the
+    // scan missed it. The connection timeout will move to the next profile.
+    for (uint8_t step = 1; step <= 3; step++) {
+      uint8_t candidate = (currentWifiProfile + step) % 3;
+      if (wifiProfileSsid(candidate)[0]) { bestProfile = candidate; break; }
+    }
+  }
+  if (bestProfile < 0) return;
+  currentWifiProfile = (uint8_t)bestProfile;
+  Serial.printf("Wi-Fi: connecting profile %u SSID=%s RSSI=%d\n",
+                currentWifiProfile + 1, wifiProfileSsid(currentWifiProfile), bestRssi);
+  WiFi.disconnect(false, false);
+  WiFi.begin(wifiProfileSsid(currentWifiProfile), wifiProfilePassword(currentWifiProfile));
+}
+
 void manageWiFi() {
   if(!wifiEnabled) return;
-  bool staEnabled = strlen(getWifiSSID()) > 0;
+  bool staEnabled = wifiStaEnabled();
   static bool wifiAvailable = false;
 
   if (!staEnabled) {
@@ -960,7 +1254,7 @@ void manageWiFi() {
   }
 
   static unsigned long previousAttemptTime = 0;
-  const unsigned long retryInterval = 10000;
+  const unsigned long retryInterval = 5000;
   unsigned long currentTime = millis();
 
   if (WiFi.status() != WL_CONNECTED)
@@ -973,7 +1267,8 @@ void manageWiFi() {
     }
 
     if (currentTime - previousAttemptTime >= retryInterval) {
-      Serial.printf("WiFi connection missing, status=%d, waiting for auto-reconnect...\n", (int)WiFi.status());
+      Serial.printf("WiFi connection missing, status=%d; trying saved profiles...\n", (int)WiFi.status());
+      connectWifiProfile(true);
       previousAttemptTime = currentTime;
     }
   }
@@ -1005,12 +1300,20 @@ void manageWiFi() {
 void wifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
   Serial.printf("[WiFi-event] event=%d\n", (int)event);
   if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
+    lastWifiDisconnectReason = (int)info.wifi_sta_disconnected.reason;
     Serial.printf("  STA disconnected, reason=%d\n", (int)info.wifi_sta_disconnected.reason);
   }
 }
 
 void setup() {
   Serial.begin(115200);
+  // Arduino loopTask runs on core 1. Keep recovery on core 0 so a blocking
+  // HTTP/network call cannot also starve the task responsible for rebooting.
+  BaseType_t supervisorResult = xTaskCreatePinnedToCore(
+      loopSupervisorTask, "loop-watch", 3072, nullptr, 1, nullptr, 0);
+  if (supervisorResult != pdPASS) {
+    Serial.println("### ERROR: failed to start cross-core loop supervisor ###");
+  }
   Serial.printf("### Leaf Control %s: %s ###\n", LEAF_FIRMWARE_VERSION, LEAF_FIRMWARE_DESCRIPTION);
   WiFi.onEvent(wifiEvent);
   initConfiguration();
@@ -1023,7 +1326,7 @@ void setup() {
     restoreFromRtc();
   }
 
-  bool staEnabled = strlen(getWifiSSID()) > 0;
+  bool staEnabled = wifiStaEnabled();
   bool apEnabled = strlen(getApSSID()) > 0;
 
   if (apEnabled) {
@@ -1050,14 +1353,14 @@ void setup() {
       }
       Serial.printf("AP status=%d SSID=%s IP=%s\n", (int)WiFi.softAPgetStationNum(),
                     getApSSID(), WiFi.softAPIP().toString().c_str());
-      WiFi.setAutoReconnect(true);
-      WiFi.begin(getWifiSSID(), getWifiPassword());
+      WiFi.setAutoReconnect(false);
+      connectWifiProfile();
       WiFi.setSleep(false);
       wifiEnabled = true;
   } else if (staEnabled) {
       WiFi.mode(WIFI_STA);
-      WiFi.setAutoReconnect(true);
-      WiFi.begin(getWifiSSID(), getWifiPassword());
+      WiFi.setAutoReconnect(false);
+      connectWifiProfile();
       WiFi.setSleep(false);
       wifiEnabled = true;
   } else if (apEnabled) {
@@ -1092,13 +1395,13 @@ void setup() {
   }
 
   setupMQTT();
+  setupOvmsV2();
   setupCAN();
   setupEvCAN();
 
   if (wokeFromTimer) {
     timerRefreshActive = true;
     if (startSequence(CanSequence::REFRESH, millis())) {
-      resetData();
       Serial.println("### Timer wake: automatic vehicle refresh started ###");
       logSequenceStart();
     } else {
@@ -1114,6 +1417,7 @@ void setup() {
 server.on("/leaf.webp", handleLeafImg);
 server.on("/leaf.png", handleLeafPngLegacy);
       server.on("/api/status", handleApiStatus);
+      server.on("/api/evscan", HTTP_POST, handleApiEvScan);
       server.on("/api/developer/login", HTTP_POST, handleDeveloperLogin);
       server.on("/api/developer/canlog", HTTP_GET, handleCanLogStatus);
       server.on("/api/developer/canlog/start", HTTP_POST, handleCanLogStart);
@@ -1124,6 +1428,7 @@ server.on("/leaf.png", handleLeafPngLegacy);
       server.on("/ota_update", HTTP_POST, handleOtaResult, handleOtaUpload);
       server.on("/settings", handleSettings);
       server.on("/settings_save", HTTP_POST, handleSettingsSave);
+      server.on("/api/wifi_profiles", HTTP_POST, handleWifiProfilesSave);
       // Commands are POST-only so a malicious page cannot trigger them via
       // <img src="http://leaf.local/lock"> style CSRF (GET) requests
       server.on("/refresh", HTTP_POST, handleRefresh);
@@ -1137,14 +1442,37 @@ server.on("/leaf.png", handleLeafPngLegacy);
       server.on("/hornlights", HTTP_POST, handleHornLights);
       server.on("/rhloff", HTTP_POST, handleRhlOff);
       server.onNotFound([]() {
-        if (captivePortalActive && server.method() == HTTP_GET) {
-          String host = server.hostHeader();
-          if (host.length() == 0) host = WiFi.softAPIP().toString();
-          server.sendHeader("Location", String("http://") + host + "/", true);
-          server.send(303, "text/plain", "");
-        } else {
-          server.send(404, "text/plain", "Not found");
+        const String& path = server.uri();
+        if (server.method() == HTTP_GET &&
+            (path == "/refresh" || path == "/hvac_on" || path == "/hvac_off" ||
+             path == "/charge_on" || path == "/charge_off" || path == "/unlock" ||
+             path == "/lock" || path == "/lights" || path == "/hornlights" ||
+             path == "/rhloff")) {
+          server.sendHeader("Allow", "POST");
+          server.send(405, "application/json", "{\"error\":\"method_not_allowed\"}");
+          return;
         }
+        if (captivePortalActive && server.method() == HTTP_GET) {
+          // Redirect only captive-portal probes (or a foreign Host), and always
+          // to the AP's literal IP. Redirecting every unknown GET to the same
+          // host loops forever and turns asset 404s into HTML, which is why the
+          // page failed to load when connected straight to the board's AP.
+          const String& uri = server.uri();
+          bool probe = uri == "/generate_204" || uri == "/gen_204" ||
+                       uri == "/hotspot-detect.html" || uri == "/library/test/success.html" ||
+                       uri == "/ncsi.txt" || uri == "/connecttest.txt" ||
+                       uri == "/canonical.html" || uri == "/success.txt";
+          String host = server.hostHeader();
+          bool foreignHost = host.length() > 0 &&
+                             host != WiFi.softAPIP().toString() &&
+                             host != "leaf.local";
+          if (probe || foreignHost) {
+            server.sendHeader("Location", String("http://") + WiFi.softAPIP().toString() + "/", true);
+            server.send(302, "text/plain", "");
+            return;
+          }
+        }
+        server.send(404, "text/plain", "Not found");
       });
       server.begin();
       if ((WiFi.getMode() & WIFI_AP) != 0) {
@@ -1154,27 +1482,47 @@ server.on("/leaf.png", handleLeafPngLegacy);
           Serial.printf("Captive portal DNS active at %s\n", WiFi.softAPIP().toString().c_str());
       }
   }
+  loopHeartbeatMs = millis();
+  setupComplete = true;
 }
 
 void loop() {
+  loopHeartbeatMs = millis();
+  {
+    uint32_t nowTick = loopHeartbeatMs;
+    uint32_t gap = nowTick - lastLoopTickMs;
+    if (lastLoopTickMs != 0 && gap > maxLoopGapMs) maxLoopGapMs = gap;
+    lastLoopTickMs = nowTick;
+  }
   static uint16_t lastPublishedHvacMinutes = 0;
   // Signed compare handles millis() wraparound; no reboot during OTA upload
   if (rebootPendingAt != 0 && !otaInProgress && (long)(millis() - rebootPendingAt) >= 0) {
     Serial.println("### Rebooting after settings save ###");
+    lastSoftwareRestart = rebootPendingReason;
     delay(100);
     ESP.restart();
   }
   server.handleClient();
   if (captivePortalActive) dnsServer.processNextRequest();
-  manageMQTT();
+  // Remote network calls can block on a broken link. Keep
+  // HTTP responsive and command cadence deterministic while CAN is active.
+  // Never start MQTT/OVMS connect work while a firmware upload is running:
+  // a broker connect blocks the loop for seconds, which starves the HTTP
+  // server task and aborts the multipart upload mid-transfer.
+  if (activeSequence == CanSequence::NONE && !otaInProgress) {
+    manageMQTT();
+    manageOvmsV2();
+  }
   modemTick();
   if (wifiEnabled && WiFi.status() == WL_CONNECTED) {
     if (!arduinoOtaBegun) setupArduinoOTA();
     if (arduinoOtaBegun) ArduinoOTA.handle();
   }
   if (!otaInProgress) {
+    canMaintainBus();
     readAndHandleCANMessage();
     manageEvCAN();
+    manageBmsDiagnostics(millis());
     manageVinQuery(millis());
     CanSeqResult seqRes = manageCANSequence(millis());
     if (seqRes == CanSeqResult::WAKE_SUCCESS) {

@@ -131,10 +131,16 @@ void canLoggerSendDownload() {
   if (full) textLength += strlen("# BUFFER FULL - recording stopped automatically\r\n");
   input.seek(0);
 
+  NetworkClient& client = server.client();
+  client.setTimeout(750);
   server.sendHeader("Content-Disposition", "attachment; filename=leaf-can-log.txt");
   server.setContentLength(textLength);
   server.send(200, "text/plain; charset=utf-8", "");
-  server.sendContent(header);
+  if (!client.connected() || client.write((const uint8_t*)header, sizeof(header) - 1) != sizeof(header) - 1) {
+    input.close();
+    client.stop();
+    return;
+  }
 
   String chunk;
   chunk.reserve(1024);
@@ -149,12 +155,22 @@ void canLoggerSendDownload() {
     snprintf(line + used, sizeof(line) - used, "\r\n");
     chunk += line;
     if (chunk.length() >= 900) {
-      server.sendContent(chunk);
+      if (!client.connected() || client.write((const uint8_t*)chunk.c_str(), chunk.length()) != chunk.length()) {
+        input.close();
+        client.stop();
+        return;
+      }
       chunk = "";
       delay(0);
     }
   }
   input.close();
-  if (chunk.length()) server.sendContent(chunk);
-  if (full) server.sendContent("# BUFFER FULL - recording stopped automatically\r\n");
+  if (chunk.length() && client.connected()) {
+    client.write((const uint8_t*)chunk.c_str(), chunk.length());
+  }
+  if (full && client.connected()) {
+    static const char fullMessage[] = "# BUFFER FULL - recording stopped automatically\r\n";
+    client.write((const uint8_t*)fullMessage, sizeof(fullMessage) - 1);
+  }
+  client.stop();
 }

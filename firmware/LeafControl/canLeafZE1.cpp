@@ -66,13 +66,13 @@ void handleHVACSetpointMessage(const uint8_t* data, uint8_t len) {
     (void)len;
     float setpoint = extractScaledValue(data, hvac_setpoint_field, setpoint_scaling);
     handleHVACSetpoint(setpoint);
-    // ZE1 0x54A byte 7 tracks ambient with an offset of +41. On this car
-    // raw 0x2F (47) was observed at about +6 C, confirming raw - 41.
-    uint8_t ambRaw = data[7];
-    if (ambRaw != 0x00 && ambRaw != 0xFF) {
-        float ambient = (float)ambRaw - 41.0f;
-        if (ambient >= -40.0f && ambient <= 60.0f) handleEvAmbient(ambient);
-    }
+}
+
+void handleAmbientTempMessage(const uint8_t* data, uint8_t len) {
+    (void)len;
+    if (data[6] == 0xFF) return;
+    float ambient = data[6] * 0.5f - 40.0f;
+    if (ambient >= -40.0f && ambient <= 60.0f) handleEvAmbient(ambient);
 }
 
 VentilationMode decodeVentilationMode(uint8_t byte2) {
@@ -118,31 +118,33 @@ void handleDoorsAndLocksMessage(const uint8_t* data, uint8_t len) {
     bool fl = extractBool(data, door_fl_field);
     bool locked = extractBool(data, locked_field);
     bool lightsOn = extractBool(data, headlight_dip_field) || extractBool(data, headlight_main_field);
+    // OVMS derives the car state from 0x60D bits 1-2 of byte 1:
+    // 0 = off, 1 = accessory, 2 = on, 3 = ready.
+    uint8_t carState = (data[1] >> 1) & 0x03;
 
     handleDoorStatus(fl, fr, rl, rr, trunk);
     handleLockStatus(locked);
     handleHeadlightsStatus(lightsOn);
+    if (carState == 3) handleEvVehicleOn(true);
+    else if (carState == 0) handleEvVehicleOn(false);
+    // OVMS stops repeating as soon as the requested lock state is observed.
+    if ((activeSequence == CanSequence::LOCK_DOORS && locked) ||
+        (activeSequence == CanSequence::UNLOCK_DOORS && !locked)) {
+        activeSequence = CanSequence::NONE;
+    }
 }
 
 void handleRangeInstrumentMessage(const uint8_t* data, uint8_t len) {
     (void)len;
-    // 0x5A9 RangeInstrument (CAR-CAN, 13 bits, Motorola, start bit 15).
-    // The ZE1 logs so far only contain "blank" frames (raw 0x1000 / 0x1FFF)
-    // and the km scale is not confirmed for this car yet, so the value is kept
-    // for diagnostics only — never published as a range.
-    uint16_t raw = ((uint16_t)data[1] << 5) | (data[2] >> 3);
+    // ZE1 dashboard range confirmed on this car: 05 10 -> 162 km while the
+    // cluster displayed 162 km. The OVMS /5 formula is incorrect for ZE1.
+    uint16_t raw = ((uint16_t)(data[1] & 0x7F) << 5) | (data[2] >> 3);
     extern uint16_t lastRangeRawA9;
     if (raw != lastRangeRawA9) {
         lastRangeRawA9 = raw;
-        Serial.printf("0x5A9 range raw=%u (uncalibrated, not displayed)\n", raw);
+        Serial.printf("0x5A9 dashboard range=%u km\n", raw);
     }
-    // Clear a stale retained dashboard range once: older firmware published
-    // 0x5A9 as km and the PWA would keep showing that value after an update.
-    static bool staleRangeCleared = false;
-    if (!staleRangeCleared) {
-        staleRangeCleared = true;
-        handleInstrumentRange(0);
-    }
+    if (raw > 0 && raw < 1000) handleInstrumentRange(raw);
 }
 
 uint16_t lastRangeRawA9 = 0;
@@ -181,6 +183,16 @@ void handleBatteryTempHvbMessage(const uint8_t* data, uint8_t len) {
     if (temp >= -40.0f && temp <= 80.0f) handleBatteryTemp(temp);
 }
 
+void handlePackStatusMessage(const uint8_t* data, uint8_t len) {
+    (void)len;
+    int voltRaw = (data[2] << 2) | (data[3] >> 6);
+    int curRaw = (data[0] << 3) | (data[1] >> 5);
+    if (curRaw & 0x400) curRaw -= 0x800;
+    float voltage = voltRaw * 0.5f;
+    float current = curRaw * -0.5f;
+    if (voltage >= 200.0f && voltage <= 500.0f) handleEvPackStatus(voltage, current);
+}
+
 // 0x5B3 — VCM pack temperature, 0.25 C/bit. Present on IT-CAN in every log,
 // used as a fallback while 0x5C0 carries no temperature mux.
 void handleBatteryTempVcmMessage(const uint8_t* data, uint8_t len) {
@@ -210,9 +222,161 @@ static uint8_t vinLength = 0;
 static uint8_t vinNextFrame = 1;
 static bool vinPending = false;
 static unsigned long lastVinRequestMs = 0;
+static uint32_t vinRequestCount = 0;
+static uint32_t vinResponseCount = 0;
+static uint8_t vinInvalidCount = 0;
+static bool vinDisabled = false;
+static uint32_t bmsRequestCount = 0;
+static uint32_t bmsResponseCount = 0;
+static uint16_t bmsLastExpected = 0;
+static uint8_t bmsLastGroup = 0;
+static uint32_t bmsFirstFrameCount = 0;
+
+enum class BmsQuery : uint8_t { NONE, CELLS, TEMPERATURES, BATTERY, SOH };
+static BmsQuery bmsQuery = BmsQuery::NONE;
+static uint8_t bmsIsoTp[340];   // group 0x61 (SOH) is 329 bytes
+static uint16_t bmsExpectedLength = 0;
+static uint16_t bmsReceivedLength = 0;
+static uint8_t bmsNextFrame = 1;
+static unsigned long bmsQueryStartedMs = 0;
+static unsigned long lastBmsQueryMs = 0;
+// OVMS polls four ZE1 groups: 0x01 battery (SOC/Hx/Ah), 0x02 cells,
+// 0x04 temperatures, 0x61 SOH. Rotating through all of them gives the same
+// data set as upstream instead of only cells/temperatures.
+static const uint8_t kBmsGroups[] = {0x02, 0x04, 0x01, 0x61};
+static const BmsQuery kBmsQueryTypes[] = {
+    BmsQuery::CELLS, BmsQuery::TEMPERATURES, BmsQuery::BATTERY, BmsQuery::SOH
+};
+static uint8_t bmsGroupIndex = 0;
+static uint8_t bmsRequestedGroup = 0;
+static uint8_t bmsFailStreak = 0;
+
+static void advanceBmsGroup() {
+    bmsGroupIndex = (uint8_t)((bmsGroupIndex + 1) %
+                              (sizeof(kBmsGroups) / sizeof(kBmsGroups[0])));
+    bmsFailStreak = 0;
+}
+
+static void finishBmsQuery() {
+    bmsQuery = BmsQuery::NONE;
+    bmsExpectedLength = 0;
+    bmsReceivedLength = 0;
+}
+
+static void decodeBmsReply() {
+    bmsLastGroup = bmsExpectedLength >= 2 ? bmsIsoTp[1] : 0;
+    if (bmsExpectedLength < 2 || bmsReceivedLength < bmsExpectedLength ||
+        bmsIsoTp[0] != 0x61) {
+        finishBmsQuery();
+        return;
+    }
+    uint8_t group = bmsIsoTp[1];
+    const uint8_t* payload = bmsIsoTp + 2;
+    uint16_t payloadLength = bmsExpectedLength - 2;
+
+    if (bmsQuery == BmsQuery::CELLS && group == 0x02 && payloadLength >= 192) {
+        // Cell voltages are 16-bit pairs. Big-endian is the documented layout,
+        // but clone LBC firmware has been seen packing them little-endian, so
+        // accept whichever order yields 96 plausible cells.
+        uint16_t minMv = 0, maxMv = 0;
+        uint8_t validCells = 0;
+        for (uint8_t pass = 0; pass < 2; pass++) {
+            bool little = (pass == 1);
+            minMv = UINT16_MAX;
+            maxMv = 0;
+            validCells = 0;
+            for (uint8_t i = 0; i < 96; i++) {
+                uint16_t lo = payload[i * 2];
+                uint16_t hi = payload[i * 2 + 1];
+                uint16_t mv = little ? (uint16_t)(lo | (hi << 8))
+                                     : (uint16_t)((lo << 8) | hi);
+                if (mv >= 2000 && mv < 5000) {
+                    minMv = min(minMv, mv);
+                    maxMv = max(maxMv, mv);
+                    validCells++;
+                }
+            }
+            if (validCells == 96) break;
+        }
+        if (validCells == 96) handleCellDelta((int)maxMv - (int)minMv);
+        if (payloadLength >= 194) {
+            uint16_t packCentivolts = ((uint16_t)payload[192] << 8) | payload[193];
+            handlePackVoltage(packCentivolts / 100.0f);
+        }
+        advanceBmsGroup();
+    } else if (bmsQuery == BmsQuery::TEMPERATURES && group == 0x04 &&
+               (payloadLength == 14 || payloadLength == 29)) {
+        float hottest = -99.0f;
+        for (uint8_t i = 0; i < 4; i++) {
+            uint16_t be = ((uint16_t)payload[i * 3] << 8) | payload[i * 3 + 1];
+            uint16_t le = (uint16_t)(payload[i * 3] | (payload[i * 3 + 1] << 8));
+            for (uint8_t pass = 0; pass < 2; pass++) {
+                uint16_t thermistor = pass == 0 ? be : le;
+                if (thermistor == 0xFFFF || thermistor == 0) continue;
+                float temp = -0.102f * ((int)thermistor - 710);
+                if (temp >= -40.0f && temp <= 80.0f) {
+                    hottest = max(hottest, temp);
+                    break;
+                }
+            }
+        }
+        if (hottest > -99.0f) handleBatteryTemp(hottest);
+        advanceBmsGroup();
+    } else if (bmsQuery == BmsQuery::BATTERY && group == 0x01 && payloadLength >= 51) {
+        // ZE1 51-byte reply: Hx [28..29]/102.4, SOC [31..33]/10000,
+        // usable Ah [35..37]/10000 (matches OVMS PollReply_Battery).
+        uint32_t socRaw = ((uint32_t)payload[31] << 16) |
+                          ((uint32_t)payload[32] << 8) | payload[33];
+        float soc = socRaw / 10000.0f;
+        if (soc > 0.0f && soc <= 100.0f) handleEvBmsSOC(soc);
+        advanceBmsGroup();
+    } else if (bmsQuery == BmsQuery::SOH && group == 0x61 && payloadLength >= 4) {
+        uint16_t raw = ((uint16_t)payload[2] << 8) | payload[3];
+        int soh = (int)(raw / 100);
+        if (soh > 0 && soh <= 100) handleEvSOH(soh);
+        advanceBmsGroup();
+    }
+    finishBmsQuery();
+}
+
+void handleBmsResponse(const uint8_t* data, uint8_t len) {
+    if (bmsQuery == BmsQuery::NONE || len < 2) return;
+    bmsResponseCount++;
+    uint8_t frameType = data[0] & 0xF0;
+    if (frameType == 0x10) {
+        uint16_t total = ((uint16_t)(data[0] & 0x0F) << 8) | data[1];
+        bmsLastExpected = total;
+        bmsFirstFrameCount++;
+        uint8_t expectedGroup = bmsRequestedGroup;
+        if (total > sizeof(bmsIsoTp) || len < 4 || data[2] != 0x61 || data[3] != expectedGroup) {
+            finishBmsQuery();
+            return;
+        }
+        bmsExpectedLength = total;
+        bmsReceivedLength = 0;
+        bmsNextFrame = 1;
+        for (uint8_t i = 2; i < len && bmsReceivedLength < total; i++)
+            bmsIsoTp[bmsReceivedLength++] = data[i];
+        // Plain flow control: some LBC firmware aborts when STmin is not 0.
+        // The dedicated drain in manageBmsDiagnostics keeps the frames from
+        // being lost to Wi-Fi work instead.
+        const uint8_t flowControl[8] = {0x30, 0x00, 0x00, 0, 0, 0, 0, 0};
+        if (!sendCAN(0x79B, flowControl, sizeof(flowControl))) finishBmsQuery();
+    } else if (frameType == 0x20 && (data[0] & 0x0F) == (bmsNextFrame & 0x0F)) {
+        bmsNextFrame++;
+        for (uint8_t i = 1; i < len && bmsReceivedLength < bmsExpectedLength; i++)
+            bmsIsoTp[bmsReceivedLength++] = data[i];
+        if (bmsReceivedLength >= bmsExpectedLength) decodeBmsReply();
+    } else {
+        // A missing consecutive frame breaks the sequence; keeping the state
+        // around only wastes the whole reply, so drop it and retry later.
+        finishBmsQuery();
+    }
+}
 
 void handleVinResponse(const uint8_t* data, uint8_t len) {
     if (!vinPending || len < 2) return;
+    vinResponseCount++;
     if ((data[0] & 0xF0) == 0x10 && len >= 5 && data[2] == 0x61 && data[3] == 0x81) {
         vinLength = 0;
         vinNextFrame = 1;
@@ -225,7 +389,31 @@ void handleVinResponse(const uint8_t* data, uint8_t len) {
         if (vinLength == 17) {
             vinBuffer[17] = '\0';
             vinPending = false;
-            handleVin(vinBuffer);
+            // A real VIN is 17 alphanumerics without I/O/Q. Anything else is a
+            // stray frame on 0x79A (we have seen zero-filled ones); reject it
+            // and let the next poll try again.
+            bool valid = true;
+            for (uint8_t i = 0; i < 17; i++) {
+                char c = vinBuffer[i];
+                bool alnum = (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z');
+                if (!alnum || c == 'I' || c == 'O' || c == 'Q') { valid = false; break; }
+            }
+            if (valid) {
+                handleVin(vinBuffer);
+            } else {
+                vinBuffer[0] = '\0';
+                vinLength = 0;
+                lastVinRequestMs = 0;
+                // The car answers with blanks/spaces instead of a VIN. Retrying
+                // without a cooldown flooded 0x797 and stole time from the BMS
+                // polls, so give up after a few honest attempts.
+                if (++vinInvalidCount >= 3) {
+                    vinDisabled = true;
+                    Serial.println("VIN: car returns no usable VIN, polling disabled");
+                } else {
+                    lastVinRequestMs = millis() - 25000;
+                }
+            }
         }
     }
 }
@@ -238,18 +426,54 @@ static const MessageParser parsers[] = {
     CAN_PARSER(charger_status_readout, handleChargerMessage),
     CAN_PARSER(hvac_status_readout, handleHVACMessage),
     CAN_PARSER(hvac_setpoint_readout, handleHVACSetpointMessage),
+    CAN_PARSER(ambient_temp_readout, handleAmbientTempMessage),
     CAN_PARSER(doors_and_locks_readout, handleDoorsAndLocksMessage),
     CAN_PARSER(range_instrument_readout, handleRangeInstrumentMessage),
     CAN_PARSER(battery_capacity_readout, handleBatteryCapacityMessage),
     CAN_PARSER(battery_temp_hvb_readout, handleBatteryTempHvbMessage),
-    CAN_PARSER(battery_temp_vcm_readout, handleBatteryTempVcmMessage),
+    CAN_PARSER(battery_pack_readout, handlePackStatusMessage),
+    // 0x5B3 byte0 / 4 produced 20 C while LeafSpy battery sensors were
+    // 9.6-11.4 C on this ZE1. Do not publish that unverified fallback.
     CAN_PARSER(odometer_units_readout, handleOdometerUnitsMessage),
     CAN_PARSER(odometer_readout, handleOdometerMessage),
     { 0x79A, 1, handleVinResponse },
+    { 0x7BB, 1, handleBmsResponse },
 };
 
 // Can message reception handler, to be called when a CAN message is received
+// Last raw payload per diagnostic-relevant ID, for remote format debugging.
+struct DbgFrame {
+    uint32_t id;
+    uint8_t len;
+    bool seen;
+    uint8_t data[8];
+};
+static DbgFrame dbgFrames[] = {
+    {0x1DB, 0, false, {0}},
+    {0x5BC, 0, false, {0}},
+    {0x7BB, 0, false, {0}},
+    {0x79A, 0, false, {0}},
+};
+
+uint8_t dbgLastFrame(uint32_t id, uint8_t* out) {
+    for (auto& f : dbgFrames) {
+        if (f.id == id && f.seen) {
+            if (out) memcpy(out, f.data, sizeof(f.data));
+            return f.len;
+        }
+    }
+    return 0;
+}
+
 void handleReceivedMessage(uint32_t identifier, uint8_t* data, uint8_t len) {
+    for (auto& f : dbgFrames) {
+        if (f.id == identifier && data) {
+            f.len = len > 8 ? 8 : len;
+            memcpy(f.data, data, f.len);
+            f.seen = true;
+            break;
+        }
+    }
     for (const auto& p : parsers) {
         if (p.id == identifier && len >= p.expected_len) {
             p.handler(data, len);
@@ -323,28 +547,17 @@ static const SequenceStep seq_refresh[] = {
 // and release tails short so the cluster self-test/parking-brake lamp does not
 // keep blinking as it did with the old 136-frame sequence.
 static const SequenceStep seq_hvac_on[] = {
-    MSG_STEP(hvac_init, 8, 100),
-    MSG_MOD_STEP(hvac_on_legacy, 24, 100, hvacPayloadModifier),
-    MSG_WAIT_STEP(1000),
-    MSG_STEP(hvac_close_legacy, 1, 100),
-    MSG_MOD_STEP(hvac_on_idle, 4, 100, hvacPayloadModifier),
-    MSG_MOD_STEP(idle_data, 8, 100, hvacPayloadModifier)
+    MSG_STEP(hvac_on_legacy, 24, 100)
 };
 
 // Remote climate OFF: 0x54B flips to "off" on the first 56 08 0A frame, the
 // rest is the OEM release tail.
 static const SequenceStep seq_hvac_off[] = {
-    MSG_STEP(hvac_init, 1, 100),
-    MSG_BURST_STEP(hvac_off_data, 3, 100, 3, 800),
-    MSG_BURST_STEP(hvac_off_int, 3, 100, 3, 800),
-    MSG_BURST_STEP(hvac_off_data, 3, 100, 3, 800),
-    MSG_BURST_STEP(hvac_off_int, 2, 100, 3, 800),
-    MSG_STEP(idle_data, 3, 100)
+    MSG_STEP(hvac_off_ovms, 24, 100)
 };
 
 static const SequenceStep seq_charge_on[] = {
-    MSG_STEP(start_charge_data, 37, 110),   // OEM: 66 08 00 00 x37 over ~4 s
-    MSG_STEP(charge_ack_data, 1, 100)       // OEM: single A6 00 00 00, then nothing
+    MSG_STEP(start_charge_data, 24, 100)
 };
 
 // Experimental: withdraw the remote-charge request (RC bit cleared via init
@@ -365,27 +578,21 @@ static const SequenceStep seq_rhl_off[] = {
 // Unlock: OEM sets bit0 of byte0 (46 -> 47). In the capture the two request
 // frames are ~800 ms apart (not 100 ms), then the TCU returns to standby.
 static const SequenceStep seq_unlock_doors[] = {
-    MSG_STEP(tcu_standby, 1, 100),
-    MSG_STEP(unlock_doors_data, 1, 100),
-    MSG_WAIT_STEP(800),
-    MSG_STEP(unlock_doors_data, 1, 100),
-    MSG_STEP(tcu_standby, 2, 100)
+    MSG_STEP(unlock_doors_data, 24, 100)
 };
 
 // Lock: OEM sends exactly two 46 80 frames 100 ms apart, then standby.
 // The old 24x "60 80" burst was seen by the BCM as repeated lock events and
 // made the actuators click 8-10 times without latching.
 static const SequenceStep seq_lock_doors[] = {
-    MSG_STEP(tcu_standby, 1, 100),
-    MSG_STEP(lock_doors_data, 2, 100),
-    MSG_STEP(tcu_standby, 2, 100)
+    MSG_STEP(lock_doors_data, 24, 100)
 };
 
 static const SequenceStep seq_lights[] = {
-    MSG_BURST_STEP(hvac_init, 6, 100, 3, 800),
-    MSG_STEP(lights_data, 20, 100),
-    MSG_STEP(hvac_init, 4, 100),
-    MSG_STEP(idle_data, 3, 100)
+    // Short, bounded flash. hvac_init clears RHL afterwards without adding an
+    // unverified sleep/idle payload to the final TX whitelist.
+    MSG_STEP(lights_data, 6, 100),
+    MSG_STEP(hvac_init, 3, 100)
 };
 
 static const SequenceStep seq_horn_lights[] = {
@@ -415,7 +622,19 @@ static const SequenceDef sequence_map[] = {
 };
 
 bool startSequence(CanSequence seq, unsigned long currentTimeMs) {
+#if LEAF_CAN_RX_ONLY
+    (void)seq;
+    (void)currentTimeMs;
+    return false;
+#else
     if (seq == CanSequence::NONE) return false;
+    if (seq != CanSequence::REFRESH &&
+        seq != CanSequence::HVAC_ON && seq != CanSequence::HVAC_OFF &&
+        seq != CanSequence::CHARGE_ON && seq != CanSequence::UNLOCK_DOORS &&
+        seq != CanSequence::LOCK_DOORS && seq != CanSequence::LIGHTS) {
+        Serial.println("### Command blocked: not enabled in OVMS command build ###");
+        return false;
+    }
     if (activeSequence != CanSequence::NONE) return false; // busy: reject, report to caller
     resetCanLogTimestamps();
     
@@ -428,6 +647,7 @@ bool startSequence(CanSequence seq, unsigned long currentTimeMs) {
     carIsAwake = false;
     nextCANEventTime = currentTimeMs;
     return true;
+#endif
 }
 
 CanSeqResult manageCANSequence(unsigned long currentTimeMs) {
@@ -441,21 +661,25 @@ CanSeqResult manageCANSequence(unsigned long currentTimeMs) {
             // with 24 repeats of the actual command (RemoteCommandTimer).
             // So after a short wake burst we send the command regardless —
             // the vehicle wakes up and accepts one of the repeats.
-            if (carIsAwake || wakeAttempts >= 20) {
-                if (!carIsAwake) {
-                    Serial.println("### Wake: no reply, sending command anyway ###");
-                }
-                currentPhase = SeqPhase::WAKE_WAIT;
-                nextCANEventTime = currentTimeMs + (carIsAwake ? 50 : 100);
-                return carIsAwake ? CanSeqResult::WAKE_SUCCESS : CanSeqResult::WAKE_TIMEOUT;
-            } else {
-                sendCAN(wakeup_data);
-                wakeAttempts++;
-                nextCANEventTime = currentTimeMs + 15;
+            if (!sendCAN(wakeup_data)) {
+                activeSequence = CanSequence::NONE;
+                currentPhase = SeqPhase::IDLE;
+                return CanSeqResult::SEQUENCE_FINISHED;
             }
+            wakeAttempts = 1;
+            currentPhase = SeqPhase::WAKE_WAIT;
+            nextCANEventTime = currentTimeMs + 50;
             break;
             
         case SeqPhase::WAKE_WAIT:
+            if (!sendCAN(hvac_init)) {
+                activeSequence = CanSequence::NONE;
+                currentPhase = SeqPhase::IDLE;
+                return CanSeqResult::SEQUENCE_FINISHED;
+            }
+            // Continue into seq_refresh as well. A single OVMS wake pair is
+            // sufficient before a command burst, but this car needs the
+            // retained 0x56E keepalive sequence to stay awake for telemetry.
             currentPhase = SeqPhase::RUN_STEP;
             stepIndex = 0;
             repeatCount = 0;
@@ -533,23 +757,120 @@ CanSeqResult manageCANSequence(unsigned long currentTimeMs) {
 }
 
 void manageVinQuery(unsigned long currentTimeMs) {
+#if !LEAF_CAN_RX_ONLY
     extern uint32_t canFramesB;
-    if (vinBuffer[0] != '\0' || canFramesB == 0 || activeSequence != CanSequence::NONE) return;
+    // A VIN reply that never reaches 17 bytes used to leave vinPending set
+    // forever, which blocked every BMS diagnostic query after it.
+    if (vinPending && currentTimeMs - lastVinRequestMs > 5000) vinPending = false;
+    if (vinDisabled || vinBuffer[0] != '\0' || canFramesB == 0 ||
+        activeSequence != CanSequence::NONE) return;
     if (vinPending && currentTimeMs - lastVinRequestMs < 5000) return;
     if (lastVinRequestMs != 0 && currentTimeMs - lastVinRequestMs < 30000) return;
     const uint8_t request[8] = {0x02, 0x21, 0x81, 0, 0, 0, 0, 0};
     if (sendCAN(0x797, request, sizeof(request))) {
         vinPending = true;
+        vinRequestCount++;
         lastVinRequestMs = currentTimeMs;
         Serial.println("VIN request sent on IT-CAN");
     }
+#else
+    (void)currentTimeMs;
+#endif
 }
+
+void manageBmsDiagnostics(unsigned long currentTimeMs) {
+#if LEAF_CAN_RX_ONLY
+    (void)currentTimeMs;
+#else
+    extern uint32_t canFramesB;
+    extern uint32_t canFramesA;
+    extern bool isChargingNow;
+    static unsigned long lastActivitySampleMs = 0;
+    static uint32_t lastActivityFrames = 0;
+    static uint32_t lastActivityFramesA = 0;
+    static bool diagnosticWindow = false;
+    static unsigned long windowUntilMs = 0;
+
+    if (lastActivitySampleMs == 0 || currentTimeMs - lastActivitySampleMs >= 5000) {
+        uint32_t frameDelta = canFramesB - lastActivityFrames;
+        uint32_t evDelta = canFramesA - lastActivityFramesA;
+        // Either bus proves the car is awake. CAR-CAN can stop while the HV
+        // side still runs (remote climate), yet diagnostics keep answering;
+        // requiring only CAR-CAN cost us cells/temperature in that state.
+        bool busActive = isChargingNow || frameDelta >= 20 || evDelta >= 100;
+        if (busActive) windowUntilMs = currentTimeMs + 20000;
+        diagnosticWindow = busActive || currentTimeMs < windowUntilMs;
+        lastActivityFrames = canFramesB;
+        lastActivityFramesA = canFramesA;
+        lastActivitySampleMs = currentTimeMs;
+    }
+    if (bmsQuery != BmsQuery::NONE) {
+        if (currentTimeMs - bmsQueryStartedMs > 3000) {
+            // Keep asking the same group: a missed window must not push the
+            // rotation forward, or cells/temperature never get a second turn.
+            bmsFailStreak++;
+            if (bmsFailStreak >= 3) advanceBmsGroup();
+            finishBmsQuery();
+        }
+        return;
+    }
+    if (!diagnosticWindow || activeSequence != CanSequence::NONE || vinPending) return;
+    // Ask often while the car is awake: the gateway answers in short windows.
+    uint32_t spacing = diagnosticWindow ? 2500 : 30000;
+    if (lastBmsQueryMs != 0 && currentTimeMs - lastBmsQueryMs < spacing) return;
+
+    uint8_t group = kBmsGroups[bmsGroupIndex];
+    const uint8_t request[8] = {0x02, 0x21, group, 0, 0, 0, 0, 0};
+    if (sendCAN(0x79B, request, sizeof(request))) {
+        bmsQuery = kBmsQueryTypes[bmsGroupIndex];
+        bmsRequestedGroup = group;
+        bmsQueryStartedMs = currentTimeMs;
+        lastBmsQueryMs = currentTimeMs;
+        bmsRequestCount++;
+        Serial.printf("BMS diagnostic group 0x%02X requested on OBD CAN\n", group);
+        // Hold the loop on CAN reception until the reply is assembled. Some
+        // LBC firmware stops after an internal block and waits for another
+        // flow control, so re-send it whenever progress stalls. If nothing at
+        // all arrives, give up quickly instead of stalling the loop.
+        uint32_t waitStart = millis();
+        uint32_t respAtStart = bmsResponseCount;
+        uint16_t lastProgress = bmsLastReceivedLength();
+        uint32_t lastChange = millis();
+        while (bmsQuery != BmsQuery::NONE) {
+            uint32_t elapsed = millis() - waitStart;
+            bool gotSomething = bmsResponseCount > respAtStart;
+            if (elapsed >= (gotSomething ? 1500u : 300u)) break;
+            canDrainFor(5);
+            uint16_t now = bmsLastReceivedLength();
+            if (now != lastProgress) {
+                lastProgress = now;
+                lastChange = millis();
+            } else if (millis() - lastChange > 60) {
+                const uint8_t continueFlow[8] = {0x30, 0x00, 0x00, 0, 0, 0, 0, 0};
+                if (sendCAN(0x79B, continueFlow, sizeof(continueFlow))) {
+                    lastChange = millis();
+                }
+            }
+        }
+    }
+#endif
+}
+
+uint32_t bmsQueryRequests() { return bmsRequestCount; }
+uint32_t bmsQueryResponses() { return bmsResponseCount; }
+uint32_t vinQueryRequests() { return vinRequestCount; }
+uint32_t vinQueryResponses() { return vinResponseCount; }
+uint16_t bmsLastExpectedLength() { return bmsLastExpected; }
+uint16_t bmsLastReceivedLength() { return bmsReceivedLength; }
+uint8_t bmsLastGroupId() { return bmsLastGroup; }
+uint32_t bmsFirstFrames() { return bmsFirstFrameCount; }
 
 // Sustain the proven climate session with the same requested-temperature byte
 // used by its enable/release frames.
 static unsigned long lastHvacKeepaliveMs = 0;
 
 void manageHvacSessionKeepalive(unsigned long currentTimeMs, bool sessionActive) {
+#if LEAF_CAN_RX_ONLY
     if (!sessionActive) {
         lastHvacKeepaliveMs = 0;
         return;
@@ -566,4 +887,9 @@ void manageHvacSessionKeepalive(unsigned long currentTimeMs, bool sessionActive)
     if (sendCAN(idle_data.identifier, keepalive, sizeof(keepalive))) {
         lastHvacKeepaliveMs = currentTimeMs;
     }
+#else
+    // OVMS ZE1 sends a bounded 24-frame request and no continuous keepalive.
+    (void)currentTimeMs;
+    (void)sessionActive;
+#endif
 }

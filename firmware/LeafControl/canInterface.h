@@ -4,6 +4,10 @@
 #include <stddef.h>
 #include <inttypes.h>
 
+// Port A (MCP2515 EV-CAN) is always listen-only. Port B (TWAI CAR-CAN) may
+// transmit only explicitly whitelisted OVMS remote-command frames.
+#define LEAF_CAN_RX_ONLY 0
+
 // Field definition: bit_offset = byte_idx * 8 + bit_in_byte (0-63, bit 0 = MSB of byte)
 struct CANField {
     uint16_t bit_offset;
@@ -65,7 +69,7 @@ bool sendCAN(const CANMessage<N> &message) {
 extern bool canLogFrames;
 
 // Simple activity counters, printed by the 'status' CLI command
-extern uint32_t canFramesB;  // frames received on Port B (IT-CAN, TWAI)
+extern uint32_t canFramesB;  // frames received on Port B (TWAI; diagnostic target: CAR-CAN)
 extern uint32_t canFramesA;  // frames received on Port A (EV-CAN, MCP2515)
 
 template<size_t N>
@@ -78,6 +82,12 @@ void handleReceivedMessage(uint32_t identifier, uint8_t* data, uint8_t len);
 
 void setupCAN();
 void readAndHandleCANMessage();
+// Bus-off / stopped recovery for Port B, call every loop().
+void canMaintainBus();
+void canDrainFor(uint32_t ms);
+uint8_t canBusState();      // TWAI_STATE_* or 0xFF
+uint8_t canBusTxErrors();
+uint8_t canBusRxErrors();
 
 void resetCanLogTimestamps();
 
