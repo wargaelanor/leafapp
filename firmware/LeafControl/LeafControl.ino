@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.10.30.65-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "Dark theme, car status picture layers"
+#define LEAF_FIRMWARE_VERSION "FW-2026.10.30.66-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "Dark theme with visible controls, car picture layers"
 
 WebServer server(80);
 DNSServer dnsServer;

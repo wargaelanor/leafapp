@@ -29,20 +29,23 @@ if (m) document.documentElement.setAttribute('data-theme', m[1]);
 --bg:#f4f5f7; --surface:#fff; --surface-2:#f9f9f9; --chip:#eceef1;
 --text:#333; --text-2:#555; --text-strong:#13172c; --muted:#707070; --muted-2:#c1c1c1;
 --line:#f1f1f1; --accent:#0077ac; --accent-soft:rgba(0,119,172,.12);
+--btn-bg:#fff; --btn-border:#eee; --card-shadow:0 1px 3px rgba(0,0,0,.06); --btn-shadow:0 2px 8px rgba(0,0,0,.1);
 --hero-glow:#fff3c4; --hero-glow-2:#ffd166;
 }
 @media (prefers-color-scheme: dark){
 :root{
 --bg:#0f1216; --surface:#181c21; --surface-2:#1e232a; --chip:#232931;
 --text:#e6e9ed; --text-2:#b6bec7; --text-strong:#f3f6f9; --muted:#96a0aa; --muted-2:#5c646e;
---line:#282e36; --accent:#4aa8d8; --accent-soft:rgba(74,168,216,.16);
+--line:#2f3640; --accent:#4aa8d8; --accent-soft:rgba(74,168,216,.16);
+--btn-bg:#232a33; --btn-border:#3a434f; --card-shadow:0 1px 3px rgba(0,0,0,.55); --btn-shadow:0 2px 10px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.05);
 --hero-glow:#ffe9a3; --hero-glow-2:#ffc247;
 }
 }
 html[data-theme="dark"]{
 --bg:#0f1216; --surface:#181c21; --surface-2:#1e232a; --chip:#232931;
 --text:#e6e9ed; --text-2:#b6bec7; --text-strong:#f3f6f9; --muted:#96a0aa; --muted-2:#5c646e;
---line:#282e36; --accent:#4aa8d8; --accent-soft:rgba(74,168,216,.16);
+--line:#2f3640; --accent:#4aa8d8; --accent-soft:rgba(74,168,216,.16);
+--btn-bg:#232a33; --btn-border:#3a434f; --card-shadow:0 1px 3px rgba(0,0,0,.55); --btn-shadow:0 2px 10px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.05);
 --hero-glow:#ffe9a3; --hero-glow-2:#ffc247;
 }
 html[data-theme="light"]{
@@ -98,7 +101,7 @@ body{background:var(--bg);font-family:'NissanBrand',-apple-system,BlinkMacSystem
 .action-buttons{display:flex;justify-content:center;gap:32px;padding:16px 0 20px;background:var(--bg);margin:8px 16px;border-radius:8px}
 .action-btn{display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer}
 .action-btn[aria-disabled="true"],.feature-card[aria-disabled="true"]{opacity:.42;cursor:default}
-.action-btn .circle{width:68px;height:68px;border-radius:50%;background:var(--surface);box-shadow:0 1px 4px rgba(0,0,0,.1);display:flex;align-items:center;justify-content:center;transition:transform .18s,background .18s,box-shadow .18s}
+.action-btn .circle{width:68px;height:68px;border-radius:50%;background:var(--btn-bg);box-shadow:var(--btn-shadow);display:flex;align-items:center;justify-content:center;transition:transform .18s,background .18s,box-shadow .18s}
 .action-btn .circle svg{width:30px;height:30px;color:var(--text);transition:color .18s}
 .action-btn span{font-size:12px;color:var(--muted)}
 .action-btn .circle.on{background:#e9f7ef;box-shadow:0 0 0 2px #34c759 inset,0 1px 4px rgba(0,0,0,.1)}
@@ -122,7 +125,7 @@ body{background:var(--bg);font-family:'NissanBrand',-apple-system,BlinkMacSystem
 .remote-wrap{padding:0 20px}
 .remote-status{text-align:center;font-size:14px;color:var(--muted);padding:12px 32px;min-height:40px}
 .remote-pad{position:relative;height:340px;margin:4px 0 16px}
-.rbtn{position:absolute;border-radius:50%;background:var(--surface);box-shadow:0 2px 8px rgba(0,0,0,.1);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;border:1px solid var(--line)}
+.rbtn{position:absolute;border-radius:50%;background:var(--btn-bg);box-shadow:var(--btn-shadow);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;border:1px solid var(--btn-border)}
 .rbtn:active{background:var(--surface-2)}
 .rbtn svg{width:28px;height:28px;color:var(--text);margin-bottom:4px}
 .rbtn span{font-size:9px;color:var(--muted);letter-spacing:.5px;text-transform:uppercase}
@@ -258,7 +261,7 @@ scales them to the box). Missing files remove themselves, so the picture
 simply stays clean instead of showing a broken image. */
 .car-stage{position:relative;width:100%;max-width:290px;margin:0 auto;line-height:0}
 .car-stage .car-base{width:100%;height:auto;display:block}
-.car-layer{position:absolute;left:0;top:0;width:100%;height:100%;display:none;pointer-events:none}
+/* Two classes so this beats ".vehicle-hero img{display:block}". */.car-stage .car-layer{position:absolute;left:0;top:0;width:100%;height:100%;display:none;pointer-events:none}
 .car-layer img{position:absolute;left:0;top:0;width:100%;height:100%;display:block}
 .car-stage.lights   .car-layer[data-when="lights"]{display:block}
 .car-stage.charging .car-layer[data-when="cable"]{display:block}
@@ -275,10 +278,10 @@ reads as a rotating rim. Hidden as soon as one wheel frame loads. */
 .car-stage.moving.no-wheel-img .car-layer.spin-wheels{display:block}
 .car-layer.spin-wheels .wheel{position:absolute;width:17%;aspect-ratio:1/1;border-radius:50%;
 transform:translate(-50%,-50%);
-background:conic-gradient(from 0deg,rgba(255,255,255,.8) 0 10deg,transparent 10deg 60deg);
+background:conic-gradient(from 0deg,rgba(255,255,255,.9) 0 8deg,rgba(0,0,0,.55) 8deg 26deg,transparent 26deg 60deg);
 -webkit-mask:radial-gradient(circle,transparent 50%,#000 52%);
 mask:radial-gradient(circle,transparent 50%,#000 52%);
-opacity:.55;animation:wheelspin .45s steps(8) infinite}
+opacity:.75;animation:wheelspin .45s steps(8) infinite}
 .car-layer.spin-wheels .wheel.w1{left:42%;top:79%}
 .car-layer.spin-wheels .wheel.w2{left:83%;top:77%}
 @keyframes wheelspin{from{transform:translate(-50%,-50%) rotate(0)}to{transform:translate(-50%,-50%) rotate(360deg)}}
