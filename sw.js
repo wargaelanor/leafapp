@@ -1,12 +1,21 @@
-const CACHE = 'leaf-v19';
+const CACHE = 'leaf-v24';
 const ASSETS = [
-  './', './index.html', './manifest.webmanifest', './leaf.webp',
+  './', './index.html', './manifest.webmanifest', './leaf.png',
   './icon-192.png', './icon-512.png', './apple-touch-icon.png',
-  './fonts/nissan_regular.ttf', './fonts/nissan_light.ttf'
+  './fonts/nissan_regular.ttf', './fonts/nissan_light.ttf',
+  // car status overlays — optional, but pre-cached when present
+  './car-lights.png', './car-cable.png',
+  './car-wheel1.png', './car-wheel2.png', './car-wheel3.png', './car-wheel4.png'
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  // Add assets one by one: the optional car overlays may not exist yet, and a
+  // single 404 must not break the whole service worker install.
+  e.waitUntil(
+    caches.open(CACHE)
+      .then(c => Promise.all(ASSETS.map(a => c.add(a).catch(() => null))))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', e => {
