@@ -59,6 +59,10 @@ static const uint32_t kScanSlowAfterMs  = 120000UL;
 static const uint32_t kLockFrames       = 25;    // frames needed to accept a timing
 static const uint32_t kAutoScanAfterMs  = 20000;
 static const uint32_t kRescanIntervalMs = 300000UL;
+// While nothing is locked the sweep must retry often: after a reboot the car
+// can still be asleep, and the old 5-minute pause left EV-CAN deaf for minutes
+// after it woke up (voltage/current showed "--" with both buses silent).
+static const uint32_t kUnlockedRescanMs = 30000UL;
 static const uint32_t kStaleLockSeconds = 60;    // locked but silent -> re-scan
 
 static uint8_t  activeTiming = 0;
@@ -224,7 +228,15 @@ static void finishScan() {
   } else emptySweeps = 0;
   // Keep listening on the best-looking candidate, otherwise restore the
   // stored/default one so decoding resumes immediately when traffic starts.
-  if (scanBestIndex < kTimingCount) activeTiming = scanBestIndex;
+  // A handful of phantom frames from a wrong timing is not a candidate: this
+  // ZE1 EV-CAN is 16 MHz / 500 kbps, so fall back to that instead of parking
+  // on garbage until the next sweep.
+  if (scanBestIndex < kTimingCount && scanBestFrames >= kLockFrames) {
+    activeTiming = scanBestIndex;
+  } else {
+    activeTiming = 0;
+    storeTiming(0);
+  }
   applyTiming(activeTiming);
   refreshErrorCounters();
   Serial.printf("EV-CAN: sweep finished, no timing locked (best %s / %s: %lu frames)\n",
@@ -358,7 +370,7 @@ void manageEvCAN() {
                     kTimings[activeTiming].clockName, kTimings[activeTiming].speedName);
     } else if (evCanLastFrameAgeSec() > 20) {
       bool dueAfterBoot = !scanCompleted && millis() > kAutoScanAfterMs;
-      bool dueAgain = scanCompleted && (millis() - lastScanEndMs > kRescanIntervalMs);
+      bool dueAgain = scanCompleted && (millis() - lastScanEndMs > kUnlockedRescanMs);
       if (dueAfterBoot || dueAgain) evCanRequestScan();
     }
   } else if (evCanLastFrameAgeSec() > kStaleLockSeconds) {

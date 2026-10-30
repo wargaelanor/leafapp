@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.10.30.62-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "Separate MQTT vehicle id, .59 BMS window, no cell delta"
+#define LEAF_FIRMWARE_VERSION "FW-2026.10.30.63-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "EV-CAN falls back to 16MHz/500k and rescans every 30 s"
 
 WebServer server(80);
 DNSServer dnsServer;
