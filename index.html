@@ -253,7 +253,7 @@ body{background:var(--bg);font-family:'NissanBrand',-apple-system,BlinkMacSystem
    simply stays clean instead of showing a broken image. */
 .car-stage{position:relative;width:100%;max-width:290px;margin:0 auto;line-height:0}
 .car-stage .car-base{width:100%;height:auto;display:block}
-.car-layer{position:absolute;left:0;top:0;width:100%;height:100%;display:none;pointer-events:none}
+/* Two classes so this beats ".vehicle-hero img{display:block}". */.car-stage .car-layer{position:absolute;left:0;top:0;width:100%;height:100%;display:none;pointer-events:none}
 .car-layer img{position:absolute;left:0;top:0;width:100%;height:100%;display:block}
 .car-stage.lights   .car-layer[data-when="lights"]{display:block}
 .car-stage.charging .car-layer[data-when="cable"]{display:block}
@@ -272,10 +272,10 @@ body{background:var(--bg);font-family:'NissanBrand',-apple-system,BlinkMacSystem
 .car-stage.moving.no-wheel-img .car-layer.spin-wheels{display:block}
 .car-layer.spin-wheels .wheel{position:absolute;width:17%;aspect-ratio:1/1;border-radius:50%;
   transform:translate(-50%,-50%);
-  background:conic-gradient(from 0deg,rgba(255,255,255,.8) 0 10deg,transparent 10deg 60deg);
+  background:conic-gradient(from 0deg,rgba(255,255,255,.9) 0 8deg,rgba(0,0,0,.55) 8deg 26deg,transparent 26deg 60deg);
   -webkit-mask:radial-gradient(circle,transparent 50%,#000 52%);
   mask:radial-gradient(circle,transparent 50%,#000 52%);
-  opacity:.55;animation:wheelspin .45s steps(8) infinite}
+  opacity:.75;animation:wheelspin .45s steps(8) infinite}
 .car-layer.spin-wheels .wheel.w1{left:42%;top:79%}
 .car-layer.spin-wheels .wheel.w2{left:83%;top:77%}
 @keyframes wheelspin{from{transform:translate(-50%,-50%) rotate(0)}to{transform:translate(-50%,-50%) rotate(360deg)}}
