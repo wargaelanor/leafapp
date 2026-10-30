@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.10.30.59-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "BMS cadence+cooldown, Wi-Fi recovery, OTA stall watchdog"
+#define LEAF_FIRMWARE_VERSION "FW-2026.10.30.60-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "BMS window on CAR-CAN gateway activity, temp refresh 45 s"
 
 WebServer server(80);
 DNSServer dnsServer;

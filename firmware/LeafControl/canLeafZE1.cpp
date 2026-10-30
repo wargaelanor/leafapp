@@ -269,7 +269,7 @@ static uint8_t bmsFailStreak = 0;
 // LBC answer two groups and then ignore everything for minutes, which looked
 // like "temperature never shows up". Keep a per-group slot and back a silent
 // group off instead of flooding the gateway.
-static const uint16_t kBmsPeriodSec[] = {60, 180, 60, 900};
+static const uint16_t kBmsPeriodSec[] = {20, 45, 60, 600};
 static const uint16_t kBmsBackoffMaxSec = 240;
 static unsigned long bmsGroupDueMs[BMS_GROUP_COUNT] = {0, 0, 0, 0};
 static uint16_t bmsGroupBackoffSec[BMS_GROUP_COUNT] = {0, 0, 0, 0};
@@ -940,12 +940,27 @@ void manageBmsDiagnostics(unsigned long currentTimeMs) {
     if (lastActivitySampleMs == 0 || currentTimeMs - lastActivitySampleMs >= 5000) {
         uint32_t frameDelta = canFramesB - lastActivityFrames;
         uint32_t evDelta = canFramesA - lastActivityFramesA;
-        // Either bus proves the car is awake. CAR-CAN can stop while the HV
-        // side still runs (remote climate), yet diagnostics keep answering;
-        // requiring only CAR-CAN cost us cells/temperature in that state.
-        bool busActive = isChargingNow || frameDelta >= 20 || evDelta >= 100;
+        (void)evDelta;
+        // BMS diagnostics travel to the LBC through the CAR-CAN gateway, so
+        // EV-CAN traffic proves nothing. Measured on this car: with the
+        // gateway asleep CAR-CAN shows ~1 frame per 10 s and every request is
+        // ignored (zero replies, only failures), while the EV-CAN side keeps
+        // streaming ~2500 frames per 10 s. Right after a wake command CAR-CAN
+        // jumped to ~3000 frames per 10 s and cells, temperatures and SOH all
+        // answered within seconds.
+        bool wasWindow = diagnosticWindow;
+        bool busActive = isChargingNow || frameDelta >= 10;
         if (busActive) windowUntilMs = currentTimeMs + 20000;
         diagnosticWindow = busActive || currentTimeMs < windowUntilMs;
+        if (diagnosticWindow && !wasWindow) {
+            // Fresh wake of the gateway: ask every group once, quickly, then
+            // fall back to the per-group periods.
+            for (uint8_t i = 0; i < BMS_GROUP_COUNT; i++) {
+                bmsGroupDueMs[i] = currentTimeMs + (unsigned long)i * 2500UL;
+            }
+            bmsCooldownUntilMs = 0;
+            bmsFailStreak = 0;
+        }
         lastActivityFrames = canFramesB;
         lastActivityFramesA = canFramesA;
         lastActivitySampleMs = currentTimeMs;
