@@ -151,6 +151,8 @@ uint32_t bmsFirstFrames();
 uint32_t bmsLastReplyAgeSec();
 uint32_t bmsFailureCount();
 uint8_t bmsRequestedGroupId();
+// Seconds left before the poller retries after the gateway went silent.
+uint32_t bmsCooldownLeftSec();
 
 // The OEM TCU keeps sending 0x56E "86 00 0A 00" about once per second while a
 // remote climate session is running. Calling this from loop() while a remote

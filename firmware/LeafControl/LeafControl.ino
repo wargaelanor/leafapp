@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.10.30.57-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "BMS cadence, Wi-Fi recovery, VIN probe, OTA without TLS stalls"
+#define LEAF_FIRMWARE_VERSION "FW-2026.10.30.58-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "OVMS BMS cadence, silence cooldown, Wi-Fi recovery"
 
 WebServer server(80);
 DNSServer dnsServer;
@@ -338,7 +338,7 @@ void handleApiStatus() {
     "\"r1db\":\"%s\",\"r5bc\":\"%s\",\"r7bb\":\"%s\",\"r79a\":\"%s\","
     "\"r5c0\":\"%s\",\"r1dba\":\"%s\","
     "\"bmslen\":%u,\"bmsgot\":%u,\"bmsgrp\":%u,\"bmsff\":%lu,"
-    "\"bmsage\":%lu,\"bmsfail\":%lu,\"bmsreq\":%u,"
+    "\"bmsage\":%lu,\"bmsfail\":%lu,\"bmsreq\":%u,\"bmscd\":%lu,"
     "\"modem\":\"%s\",\"uptime\":%lu,\"free_heap\":%lu,\"reset_reason\":%d,\"software_restart\":%u,"
     "\"remote_mode\":%d,\"mqtt_connected\":%d,\"ovms_v2_connected\":%d,\"ovms_v2_paranoid\":%d,"
     "\"wifi_status\":%d,\"wifi_rssi\":%d,\"wifi_profile\":%u,\"wifi_disconnect\":%d,"
@@ -370,7 +370,7 @@ void handleApiStatus() {
     (unsigned)bmsLastExpectedLength(), (unsigned)bmsLastReceivedLength(),
     (unsigned)bmsLastGroupId(), (unsigned long)bmsFirstFrames(),
     (unsigned long)bmsLastReplyAgeSec(), (unsigned long)bmsFailureCount(),
-    (unsigned)bmsRequestedGroupId(),
+    (unsigned)bmsRequestedGroupId(), (unsigned long)bmsCooldownLeftSec(),
     modemGetStateStr(), (unsigned long)(millis() / 1000UL),
     (unsigned long)ESP.getFreeHeap(), (int)esp_reset_reason(), (unsigned int)lastSoftwareRestart,
     (int)getRemoteTransport(), mqttIsConnected() ? 1 : 0, ovmsV2IsConnected() ? 1 : 0,

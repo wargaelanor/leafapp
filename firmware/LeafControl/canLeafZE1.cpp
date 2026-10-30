@@ -269,12 +269,20 @@ static uint8_t bmsFailStreak = 0;
 // LBC answer two groups and then ignore everything for minutes, which looked
 // like "temperature never shows up". Keep a per-group slot and back a silent
 // group off instead of flooding the gateway.
-static const uint16_t kBmsPeriodSec[] = {30, 120, 60, 600};
+static const uint16_t kBmsPeriodSec[] = {60, 180, 60, 900};
 static const uint16_t kBmsBackoffMaxSec = 240;
 static unsigned long bmsGroupDueMs[BMS_GROUP_COUNT] = {0, 0, 0, 0};
 static uint16_t bmsGroupBackoffSec[BMS_GROUP_COUNT] = {0, 0, 0, 0};
 static unsigned long bmsLastReplyMs = 0;
 static uint32_t bmsFailCount = 0;
+// Measured on the car: the LBC answers two groups right after the car wakes up
+// and then ignores the gateway for minutes no matter how slowly the next
+// request comes. That is a cooldown on the diagnostic channel, not a payload
+// problem, so after repeated silence we stop polling entirely for a while and
+// let the channel recover instead of piling more requests on it.
+static unsigned long bmsCooldownUntilMs = 0;
+static const unsigned long kBmsCooldownMs = 180000UL;
+static const uint8_t kBmsFailStreakLimit = 2;
 
 // Schedule the group that just finished: its normal period when it answered,
 // an exponential backoff when it did not.
@@ -282,6 +290,7 @@ static void bmsGroupDone(bool answered) {
     uint8_t index = bmsGroupIndex;
     if (index >= BMS_GROUP_COUNT) return;
     if (answered) {
+        bmsFailStreak = 0;
         bmsGroupBackoffSec[index] = 0;
         bmsGroupDueMs[index] = millis() + (unsigned long)kBmsPeriodSec[index] * 1000UL;
         bmsLastReplyMs = millis();
@@ -292,6 +301,15 @@ static void bmsGroupDone(bool answered) {
         if (backoff > kBmsBackoffMaxSec) backoff = kBmsBackoffMaxSec;
         bmsGroupBackoffSec[index] = backoff;
         bmsGroupDueMs[index] = millis() + (unsigned long)backoff * 1000UL;
+        // Silence across several groups means the diagnostic channel is shut.
+        // Give it minutes instead of adding requests it will not answer.
+        if (bmsFailStreak >= kBmsFailStreakLimit) {
+            bmsCooldownUntilMs = millis() + kBmsCooldownMs;
+            bmsFailStreak = 0;
+            for (uint8_t i = 0; i < BMS_GROUP_COUNT; i++) {
+                bmsGroupDueMs[i] = bmsCooldownUntilMs;
+            }
+        }
     }
 }
 
@@ -945,9 +963,19 @@ void manageBmsDiagnostics(unsigned long currentTimeMs) {
         return;
     }
     if (!diagnosticWindow || activeSequence != CanSequence::NONE || vinPending) return;
+    if ((long)(currentTimeMs - bmsCooldownUntilMs) < 0) return;
     // Never queue two requests back to back: the gateway needs a breath
     // between ISO-TP transfers.
     if (lastBmsQueryMs != 0 && currentTimeMs - lastBmsQueryMs < 3000) return;
+
+    // First pass after boot: stagger the groups instead of firing all four
+    // inside twelve seconds. A burst like that is what made the LBC answer
+    // cells and temperatures and then shut the channel.
+    for (uint8_t i = 0; i < BMS_GROUP_COUNT; i++) {
+        if (bmsGroupDueMs[i] == 0) {
+            bmsGroupDueMs[i] = currentTimeMs + (unsigned long)i * 15000UL;
+        }
+    }
 
     // Ask the group whose slot is due. Each group keeps its own deadline, so a
     // group that stops answering can no longer starve the rest.
@@ -1024,6 +1052,13 @@ uint32_t bmsLastReplyAgeSec() {
 uint32_t bmsFailureCount() { return bmsFailCount; }
 
 uint8_t bmsRequestedGroupId() { return bmsRequestedGroup; }
+
+uint32_t bmsCooldownLeftSec() {
+    if (bmsCooldownUntilMs == 0) return 0;
+    unsigned long now = millis();
+    if ((long)(now - bmsCooldownUntilMs) >= 0) return 0;
+    return (bmsCooldownUntilMs - now) / 1000UL;
+}
 
 // Sustain the proven climate session with the same requested-temperature byte
 // used by its enable/release frames.
