@@ -283,6 +283,9 @@ static uint32_t bmsFailCount = 0;
 static unsigned long bmsCooldownUntilMs = 0;
 static const unsigned long kBmsCooldownMs = 180000UL;
 static const uint8_t kBmsFailStreakLimit = 2;
+// Set by bmsRequestImmediateBurst(): keep the poll window open without waiting
+// for the next activity sample.
+static unsigned long bmsForceWindowUntilMs = 0;
 
 // Schedule the group that just finished: its normal period when it answered,
 // an exponential backoff when it did not.
@@ -944,7 +947,8 @@ void manageBmsDiagnostics(unsigned long currentTimeMs) {
         // keeps the diagnostic window open.
         bool busActive = isChargingNow || frameDelta >= 20 || evDelta >= 100;
         if (busActive) windowUntilMs = currentTimeMs + 20000;
-        diagnosticWindow = busActive || currentTimeMs < windowUntilMs;
+        diagnosticWindow = busActive || currentTimeMs < windowUntilMs ||
+                           currentTimeMs < bmsForceWindowUntilMs;
         lastActivityFrames = canFramesB;
         lastActivityFramesA = canFramesA;
         lastActivitySampleMs = currentTimeMs;
@@ -1057,6 +1061,21 @@ uint32_t bmsCooldownLeftSec() {
     unsigned long now = millis();
     if ((long)(now - bmsCooldownUntilMs) >= 0) return 0;
     return (bmsCooldownUntilMs - now) / 1000UL;
+}
+
+// Called right after a wake/command sequence finishes: the gateway answers
+// diagnostics for only a few seconds after it is woken (measured: CAR-CAN
+// bursts ~5 s and then goes quiet again), so the groups must be asked now
+// rather than at the next 5 s activity sample.
+void bmsRequestImmediateBurst() {
+    unsigned long now = millis();
+    for (uint8_t i = 0; i < BMS_GROUP_COUNT; i++) {
+        bmsGroupDueMs[i] = now + (unsigned long)i * 2000UL;
+        bmsGroupBackoffSec[i] = 0;
+    }
+    bmsCooldownUntilMs = 0;
+    bmsFailStreak = 0;
+    bmsForceWindowUntilMs = now + 15000UL;
 }
 
 // Sustain the proven climate session with the same requested-temperature byte

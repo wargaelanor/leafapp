@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.10.30.63-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "EV-CAN falls back to 16MHz/500k and rescans every 30 s"
+#define LEAF_FIRMWARE_VERSION "FW-2026.10.30.64-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "EV-CAN timing fallback, BMS burst right after a wake command"
 
 WebServer server(80);
 DNSServer dnsServer;
@@ -1629,10 +1629,14 @@ void loop() {
     CanSeqResult seqRes = manageCANSequence(millis());
     if (seqRes == CanSeqResult::WAKE_SUCCESS) {
         Serial.println("### Car is awake! ###");
+        bmsRequestImmediateBurst();
     } else if (seqRes == CanSeqResult::WAKE_TIMEOUT) {
         Serial.println("### Car wake timeout! ###");
     } else if (seqRes == CanSeqResult::SEQUENCE_FINISHED) {
         Serial.println("### Sequence Complete ###");
+        // The gateway only answers diagnostics for a few seconds after the
+        // command that woke it, so do not wait for the 5 s activity sample.
+        bmsRequestImmediateBurst();
     }
     if (hvacTimerEndsMs != 0 && (long)(millis() - hvacTimerEndsMs) >= 0) {
       hvacTimerEndsMs = 0;
