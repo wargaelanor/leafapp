@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.10.30.58-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "OVMS BMS cadence, silence cooldown, Wi-Fi recovery"
+#define LEAF_FIRMWARE_VERSION "FW-2026.10.30.59-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "BMS cadence+cooldown, Wi-Fi recovery, OTA stall watchdog"
 
 WebServer server(80);
 DNSServer dnsServer;
@@ -474,6 +474,11 @@ void handleCanLogDownload() {
 
 // ---------- OTA ----------
 bool otaInProgress = false;
+// Last time an upload chunk arrived. The supervisor uses it to break out of a
+// dead transfer: when a client vanishes mid-upload the web server can keep the
+// main loop blocked for 10-12 minutes waiting on the half-open socket, and the
+// board looks offline for that whole time.
+static volatile uint32_t otaLastProgressMs = 0;
 bool arduinoOtaBegun = false;
 static volatile uint32_t loopHeartbeatMs = 0;
 static volatile bool setupComplete = false;
@@ -481,7 +486,20 @@ static volatile bool setupComplete = false;
 static void loopSupervisorTask(void*) {
   for (;;) {
     vTaskDelay(pdMS_TO_TICKS(5000));
-    if (!setupComplete || otaInProgress) continue;
+    if (!setupComplete) continue;
+    if (otaInProgress) {
+      // A client that disappears mid-upload (weak link) leaves the web server
+      // waiting on a half-open socket, which stalls the loop for minutes and
+      // makes the board unreachable. Reboot instead: the running image is
+      // untouched because Update.end() was never reached.
+      if (otaLastProgressMs != 0 && millis() - otaLastProgressMs > 120000UL) {
+        Serial.println("### Supervisor: OTA stalled for 2 min, rebooting ###");
+        lastSoftwareRestart = 3;
+        delay(100);
+        ESP.restart();
+      }
+      continue;
+    }
     uint32_t heartbeat = loopHeartbeatMs;
     if (heartbeat != 0 && millis() - heartbeat > 60000UL) {
       Serial.println("### Supervisor: main loop stalled, rebooting ###");
@@ -511,6 +529,7 @@ void handleOtaUpload() {
   HTTPUpload& upload = server.upload();
   if (upload.status == UPLOAD_FILE_START) {
     otaInProgress = true;
+    otaLastProgressMs = millis();
     Serial.printf("### OTA upload start: %s ###\n", upload.filename.c_str());
     // A TLS connect that started just before the upload blocks the main loop
     // for its whole timeout (~30 s at -90 dBm). During that stall the upload
@@ -522,6 +541,7 @@ void handleOtaUpload() {
       Update.printError(Serial);
     }
   } else if (upload.status == UPLOAD_FILE_WRITE) {
+    otaLastProgressMs = millis();
     if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
       Update.printError(Serial);
     }
@@ -532,9 +552,11 @@ void handleOtaUpload() {
       Update.printError(Serial);
     }
     otaInProgress = false;
+    otaLastProgressMs = 0;
   } else if (upload.status == UPLOAD_FILE_ABORTED) {
     Update.abort();
     otaInProgress = false;
+    otaLastProgressMs = 0;
     Serial.println("### OTA aborted ###");
   }
 }
