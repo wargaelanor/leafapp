@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.10.30.69-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "Reverse wheel frame order so motion reads forwards"
+#define LEAF_FIRMWARE_VERSION "FW-2026.10.30.70-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "Serve fonts from flash too, reversed wheel frames"
 
 WebServer server(80);
 DNSServer dnsServer;
@@ -284,9 +284,9 @@ void handleLeafImg() {
 // whichever are embedded, 404 for the rest (the page hides a missing layer).
 void handleWebAppImage() {
   String path = server.uri();
-  for (size_t i = 0; i < WEBAPP_IMAGE_COUNT; i++) {
-    if (path == WEBAPP_IMAGES[i].path) {
-      streamProgmemImage(WEBAPP_IMAGES[i].data, WEBAPP_IMAGES[i].len, WEBAPP_IMAGES[i].type);
+  for (size_t i = 0; i < WEBAPP_ASSET_COUNT; i++) {
+    if (path == WEBAPP_ASSETS[i].path) {
+      streamProgmemImage(WEBAPP_ASSETS[i].data, WEBAPP_ASSETS[i].len, WEBAPP_ASSETS[i].type);
       return;
     }
   }
@@ -1528,8 +1528,8 @@ void setup() {
 server.on("/leaf.webp", handleLeafImg);
 server.on("/leaf.png", handleLeafImg);
 // status-picture overlays (only the ones present in the build are served)
-for (size_t i = 0; i < WEBAPP_IMAGE_COUNT; i++) {
-  server.on(WEBAPP_IMAGES[i].path, HTTP_GET, handleWebAppImage);
+for (size_t i = 0; i < WEBAPP_ASSET_COUNT; i++) {
+  server.on(WEBAPP_ASSETS[i].path, HTTP_GET, handleWebAppImage);
 }
       server.on("/api/status", handleApiStatus);
       server.on("/api/evscan", HTTP_POST, handleApiEvScan);

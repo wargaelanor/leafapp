@@ -1,4 +1,4 @@
-# Generates webapp_html.h from the PWA (index.html + vehicle picture) for ESP32 PROGMEM.
+# Generates webapp_html.h from the PWA (index.html + pictures + fonts) for ESP32 PROGMEM.
 # Usage: powershell -File tools/mkwebapp.ps1 [-Out <path\to\webapp_html.h>]
 param([string]$Out)
 $ErrorActionPreference = 'Stop'
@@ -16,9 +16,9 @@ if ($html -match '\)"rawliteral') { throw 'index.html contains rawliteral termin
 $html = [regex]::Replace($html, '(?m)^[ \t]+', '')
 $html = [regex]::Replace($html, '(?m)^\r?\n', '')
 
-# Vehicle picture: prefer WebP (16.9 KB) over the source PNG (23.5 KB).
+# Vehicle picture: the measured 660x367 PNG.
 $imgFile = 'leaf.png'; $imgType = 'image/png'
-if (-not (Test-Path (Join-Path $app $imgFile))) { $imgFile = 'leaf.png'; $imgType = 'image/png' }
+if (-not (Test-Path (Join-Path $app $imgFile))) { throw "missing $imgFile" }
 $img = [System.IO.File]::ReadAllBytes((Join-Path $app $imgFile))
 $hex = for ($i = 0; $i -lt $img.Length; $i++) {
   if ($i % 16 -eq 0) { "`n  " } else { ' ' }
@@ -40,11 +40,22 @@ $sb = New-Object System.Text.StringBuilder
 [void]$sb.AppendLine(('static const char LEAF_IMG_TYPE[] PROGMEM = "{0}";' -f $imgType))
 [void]$sb.AppendLine()
 
-# Optional status-picture overlays, served from the board itself so the UI works
-# without any external files. Missing files are simply skipped.
-$overlays = @('car-lights.png', 'car-cable.png', 'car-wheel1.png', 'car-wheel2.png', 'car-wheel3.png', 'car-wheel4.png')
+# Status-picture overlays and the two web fonts. Everything is served from the
+# board itself, so the UI works without any external files. Missing files are
+# skipped: the page hides a layer that fails to load and falls back to a system
+# font when a ttf is absent.
+$assets = [ordered]@{
+    'car-lights.png'           = 'image/png'
+    'car-cable.png'            = 'image/png'
+    'car-wheel1.png'           = 'image/png'
+    'car-wheel2.png'           = 'image/png'
+    'car-wheel3.png'           = 'image/png'
+    'car-wheel4.png'           = 'image/png'
+    'fonts/nissan_regular.ttf' = 'font/ttf'
+    'fonts/nissan_light.ttf'   = 'font/ttf'
+}
 $entries = @()
-foreach ($name in $overlays) {
+foreach ($name in $assets.Keys) {
     $file = Join-Path $app $name
     if (-not (Test-Path $file)) { continue }
     $bytes = [System.IO.File]::ReadAllBytes($file)
@@ -54,18 +65,18 @@ foreach ($name in $overlays) {
         '0x{0:x2},' -f $bytes[$i]
     }
     [void]$sb.AppendLine(('static const unsigned char {0}[] PROGMEM = {{{1}}};' -f $var, ($h -join '')))
-    $entries += ('  {{"/{0}", {1}, sizeof({1}), "image/png"}},' -f $name, $var)
-    Write-Host ("  overlay {0}: {1} bytes" -f $name, $bytes.Length)
+    $entries += ('  {{"/{0}", {1}, sizeof({1}), "{2}"}},' -f $name, $var, $assets[$name])
+    Write-Host ("  asset {0}: {1} bytes" -f $name, $bytes.Length)
 }
-[void]$sb.AppendLine('struct WebAppImage { const char* path; const unsigned char* data; size_t len; const char* type; };')
+[void]$sb.AppendLine('struct WebAppAsset { const char* path; const unsigned char* data; size_t len; const char* type; };')
 if ($entries.Count -gt 0) {
-    [void]$sb.AppendLine('static const WebAppImage WEBAPP_IMAGES[] = {')
+    [void]$sb.AppendLine('static const WebAppAsset WEBAPP_ASSETS[] = {')
     foreach ($e in $entries) { [void]$sb.AppendLine($e) }
     [void]$sb.AppendLine('};')
-    [void]$sb.AppendLine(('static const size_t WEBAPP_IMAGE_COUNT = {0};' -f $entries.Count))
+    [void]$sb.AppendLine(('static const size_t WEBAPP_ASSET_COUNT = {0};' -f $entries.Count))
 } else {
-    [void]$sb.AppendLine('static const WebAppImage WEBAPP_IMAGES[] = {{"/none", nullptr, 0, "text/plain"}};')
-    [void]$sb.AppendLine('static const size_t WEBAPP_IMAGE_COUNT = 0;')
+    [void]$sb.AppendLine('static const WebAppAsset WEBAPP_ASSETS[] = {{"/none", nullptr, 0, "text/plain"}};')
+    [void]$sb.AppendLine('static const size_t WEBAPP_ASSET_COUNT = 0;')
 }
 [void]$sb.AppendLine()
 [void]$sb.AppendLine('#endif')
