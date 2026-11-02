@@ -51,7 +51,7 @@ html[data-theme="light"]{
 @font-face{font-family:'NissanBrand';src:url('fonts/nissan_regular.ttf') format('truetype');font-weight:400;font-style:normal}
 @font-face{font-family:'NissanBrand';src:url('fonts/nissan_light.ttf') format('truetype');font-weight:300;font-style:normal}
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{height:100%;overscroll-behavior-y:contain}
+html,body{height:100%;overflow:hidden;overscroll-behavior-y:contain}
 /* Inputs inherited the browser's black text on dark surfaces: set both the
    text colour and the WebKit fill colour (password dots ignore `color`). */
 input,select,textarea{color:var(--text);background:var(--surface-2);font-family:inherit}
@@ -70,7 +70,8 @@ body{background:var(--bg);font-family:'NissanBrand',-apple-system,BlinkMacSystem
 .conn.on i{background:#34c759}
 .conn.off i{background:#ff3b30}
 .conn.warn i{background:#ff9500}
-.screens{flex:1;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.screens{flex:1;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;-webkit-overflow-scrolling:touch;
+  overscroll-behavior-y:contain;touch-action:pan-y}
 .screens::-webkit-scrollbar{display:none}
 .screen{display:none;min-height:100%;padding-bottom:72px}
 .screen.active{display:block}
@@ -203,9 +204,9 @@ html[data-theme="dark"] .dur-btns button.on{color:#08121a}
 .gps-row{display:none;margin:0 16px 8px;gap:8px;align-items:center}
 .gps-row a{flex:1;text-align:center;background:var(--surface);color:var(--accent);font-size:13px;padding:9px 6px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.06);text-decoration:none}
 .gps-row span{font-size:11px;color:var(--muted);white-space:nowrap}
-.modal{position:absolute;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-end;justify-content:center;z-index:200}
+.modal{position:absolute;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-end;justify-content:center;z-index:200;overscroll-behavior:contain}
 .modal.show{display:flex}
-.modal .sheet{background:var(--surface);border-radius:16px 16px 0 0;width:100%;max-height:88%;overflow-y:auto;padding:20px 20px calc(20px + env(safe-area-inset-bottom))}
+.modal .sheet{background:var(--surface);border-radius:16px 16px 0 0;width:100%;max-height:88%;overflow-y:auto;padding:20px 20px calc(20px + env(safe-area-inset-bottom));overscroll-behavior-y:contain}
 .modal h2{font-size:18px;color:var(--text);margin-bottom:4px;font-weight:400}
 .modal p.hint{font-size:12px;color:var(--muted);margin-bottom:16px}
 .modal label{display:block;font-size:12px;color:var(--muted);margin:12px 0 4px}
