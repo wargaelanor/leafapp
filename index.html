@@ -677,6 +677,11 @@ body.demo .demo-banner{display:block}
         Для разработчика
         <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
       </div>
+      <div class="more-item" id="more-lite" style="display:none" onclick="location.href='/lite'">
+        <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h16M4 12h10M4 18h13"/></svg></div>
+        Упрощённая страница
+        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+      </div>
       <div class="more-item" onclick="openAbout()">
         <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></div>
         О приложении
@@ -793,6 +798,7 @@ body.demo .demo-banner{display:block}
           <li><strong>Четыре режима связи.</strong> Без подключения (только локально), MQTT-брокер, OVMS Server V2 или только звонок — выбирается в настройках платы. Приложение ставится на главный экран телефона.</li>
           <li><strong>История.</strong> Поездки и сеансы зарядки хранятся на телефоне: до 500 поездок и 300 зарядок, старые удаляются сами. Для поездок можно включить запись трека и видеть маршрут в карточке.</li>
           <!--DEMO-BEGIN--><li><strong>Демо-режим.</strong> Позволяет пройтись по всем экранам и кнопкам без автомобиля — данные условные, команды никуда не отправляются.</li><!--DEMO-END-->
+          <li><strong>Две версии страницы.</strong> Полное приложение и упрощённая страница <code>/lite</code> — только заряд, напряжение, ток, температуры и четыре команды. Она весит несколько килобайт и открывается даже при очень слабом сигнале; из неё есть ссылка на полную версию.</li>
           <li><strong>Обновление по Wi-Fi.</strong> Прошивка обновляется со страницы платы, разбирать устройство не нужно.</li>
           <li><strong>Для разработчика.</strong> CAN-монитор: по строке на каждый ID, подсветка изменений, фильтр по ID и счётчик нажатий — сразу видно, какие кадры реагируют на кнопку в машине. Кадр можно сохранить под своим названием и отправить обратно после явного разрешения (10 минут).</li>
         </ul>
@@ -2348,6 +2354,7 @@ function enableBoardUi(){
   $('more-settings-label').textContent='Настройки платы';
   $('more-ota').style.display='flex';
   $('more-developer').style.display='flex';
+  $('more-lite').style.display='flex';
 }
 async function boot(){
   if(DEMO){ demoStart(); return; }
