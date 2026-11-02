@@ -256,6 +256,14 @@ body.demo .demo-banner{display:block}
 .trip-active-banner{margin:0 16px 8px;padding:10px 14px;background:#e9f7ef;border:1px solid #34c759;border-radius:8px;font-size:12px;color:#1a7f37;display:none;align-items:center;gap:8px}
 .trip-active-banner.show{display:flex}
 .trip-active-banner i{width:8px;height:8px;border-radius:50%;background:#34c759;flex-shrink:0}
+.trip-toggle{display:flex;align-items:center;gap:10px;margin:0 16px 8px;padding:11px 14px;background:var(--surface);border-radius:8px;box-shadow:var(--card-shadow);font-size:13px;color:var(--text);cursor:pointer;user-select:none}
+.trip-toggle .mi{width:20px;height:20px;color:var(--muted);display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.trip-toggle .mi svg{width:18px;height:18px}
+.trip-toggle .lbl{flex:1}
+.trip-toggle .sw{width:40px;height:22px;border-radius:11px;background:var(--chip);position:relative;transition:background .18s;flex:0 0 auto}
+.trip-toggle .sw i{position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .18s;box-shadow:0 1px 2px rgba(0,0,0,.25)}
+.trip-toggle.on .sw{background:var(--accent)}
+.trip-toggle.on .sw i{transform:translateX(18px)}
 .trip-list{margin:0 16px}
 .trip-item{background:var(--surface);border-radius:8px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,.06);padding:14px}
 .trip-item .t-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
@@ -588,6 +596,11 @@ body.demo .demo-banner{display:block}
         <div class="cell"><div class="num" id="ts-kwh">0</div><div class="lbl">кВт·ч</div></div>
       </div>
       <div class="trip-active-banner" id="trip-active-banner"><i></i><span>Идёт поездка…</span></div>
+      <div class="trip-toggle" id="trip-toggle" onclick="toggleTracks()">
+        <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 20l-6-2V4l6 2m0 14l6-2m-6 2V6m6 12l6 2V6l-6-2m0 14V4M9 6l6-2"/></svg></div>
+        <span class="lbl">Записывать трек поездок</span>
+        <span class="sw"><i></i></span>
+      </div>
       <div class="trip-list" id="trip-list"></div>
       <div class="trip-empty" id="trip-empty">Поездки появятся автоматически при движении с включённым зажиганием</div>
       <button class="trip-clear" id="trip-clear" style="display:none" onclick="clearTrips()">Очистить историю</button>
@@ -1509,6 +1522,20 @@ function tripDistanceKm(t, sum){
 // Compress the recorded points into a small polyline for the map preview:
 // at most ROUTE_MAX_POINTS pairs, ~5 decimal places (about one metre).
 const ROUTE_MAX_POINTS = 80;
+// Tracks are optional: some owners do not need a map and prefer the smaller
+// records. The choice is stored per device.
+let tracksOn = true;
+try { tracksOn = localStorage.getItem('leaftracks') !== '0'; } catch(e) {}
+function updateTracksToggle(){
+  const el = document.getElementById('trip-toggle');
+  if(el) el.classList.toggle('on', tracksOn);
+}
+function toggleTracks(){
+  tracksOn = !tracksOn;
+  try { localStorage.setItem('leaftracks', tracksOn ? '1' : '0'); } catch(e) {}
+  updateTracksToggle();
+  toast(tracksOn ? 'Треки поездок включены' : 'Треки поездок выключены');
+}
 function tripBuildRoute(points){
   const pts = (points||[]).filter(p=>p.lat!=null && p.lon!=null);
   if(pts.length < 2) return null;
@@ -1562,7 +1589,7 @@ function tripEnd(now, reason){
   // tripStart() already wrote, otherwise it came back later as a 0 km trip
   if(durSec<20 && (trip.distKm||0)<0.05){ const id=trip.id; trip=null; tripDelete([id]); return; }
   // keep a compressed track before the raw points are dropped
-  trip.route=tripBuildRoute(trip.points);
+  trip.route = tracksOn ? tripBuildRoute(trip.points) : null;
   // The summary is final; the points are the bulk of the record (a long trip is
   // hundreds of them). Keeping only the summary keeps history small forever.
   trip.points=[];
@@ -2021,6 +2048,7 @@ async function boot(){
   if(loadCfg()){ mqttConnect(); $('more-mode').textContent='MQTT'; }
   else { updateBadge(); $('more-mode').textContent='Не настроено — нажмите Настройки'; openSettings(); }
 }
+updateTracksToggle();
 boot();
 </script>
 </body>

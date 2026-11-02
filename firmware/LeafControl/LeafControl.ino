@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.02.78-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "Call-only remote mode with modem sleep"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.02.79-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "Optional trip tracks switch"
 
 WebServer server(80);
 DNSServer dnsServer;
