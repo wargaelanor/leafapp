@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.04.90-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "Lite page: hold to send, honest busy replies"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.04.91-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "Report ui_lite in status"
 
 WebServer server(80);
 DNSServer dnsServer;
@@ -398,7 +398,7 @@ void handleApiStatus() {
     "\"bmslen\":%u,\"bmsgot\":%u,\"bmsgrp\":%u,\"bmsff\":%lu,"
     "\"bmsage\":%lu,\"bmsfail\":%lu,\"bmsreq\":%u,\"bmscd\":%lu,"
     "\"modem\":\"%s\",\"uptime\":%lu,\"free_heap\":%lu,\"reset_reason\":%d,\"software_restart\":%u,"
-    "\"remote_mode\":%d,\"mqtt_connected\":%d,\"ovms_v2_connected\":%d,\"ovms_v2_paranoid\":%d,"
+    "\"remote_mode\":%d,\"ui_lite\":%d,\"mqtt_connected\":%d,\"ovms_v2_connected\":%d,\"ovms_v2_paranoid\":%d,"
     "\"wifi_status\":%d,\"wifi_rssi\":%d,\"wifi_profile\":%u,\"wifi_disconnect\":%d,"
     "\"wifi_down_s\":%lu,"
     "\"sleep_on\":%d,\"sleep_after_h\":%d,\"wake_fast_min\":%d,\"idle_s\":%lu,"
@@ -431,7 +431,7 @@ void handleApiStatus() {
     (unsigned)bmsRequestedGroupId(), (unsigned long)bmsCooldownLeftSec(),
     modemGetStateStr(), (unsigned long)(millis() / 1000UL),
     (unsigned long)ESP.getFreeHeap(), (int)esp_reset_reason(), (unsigned int)lastSoftwareRestart,
-    (int)getRemoteTransport(), mqttIsConnected() ? 1 : 0, ovmsV2IsConnected() ? 1 : 0,
+    (int)getRemoteTransport(), getUiLite() ? 1 : 0, mqttIsConnected() ? 1 : 0, ovmsV2IsConnected() ? 1 : 0,
     ovmsV2ParanoidIsActive() ? 1 : 0,
     (int)WiFi.status(), WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0,
     (unsigned int)(currentWifiProfile + 1), lastWifiDisconnectReason,
