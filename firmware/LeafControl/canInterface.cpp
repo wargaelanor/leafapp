@@ -270,7 +270,7 @@ struct CanWatchEntry {
   bool used;
 };
 
-static const uint16_t CAN_WATCH_MAX = 64;
+static const uint16_t CAN_WATCH_MAX = 128;
 static CanWatchEntry canWatch[CAN_WATCH_MAX];
 
 void canWatchReset() {

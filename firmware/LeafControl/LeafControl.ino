@@ -18,7 +18,7 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.02.80-CMD"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.02.81-CMD"
 #define LEAF_FIRMWARE_DESCRIPTION "Developer CAN monitor: one row per ID"
 
 WebServer server(80);
