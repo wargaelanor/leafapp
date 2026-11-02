@@ -1177,6 +1177,7 @@ async function pollLocal(){
     S.btemp=(j.btemp===undefined)?-99:j.btemp; S.cdelta=(j.cdelta===undefined)?-1:j.cdelta;
     S.fage=(j.fage===undefined)?-1:j.fage;
     S.odo=j.odo||0; S.vin=j.vin||''; S.hvacTimer=j.hvac_timer||0;
+    S.epoch=(j.epoch===undefined)?0:j.epoch;   // board clock, 0 until NTP syncs
     S.lights = (j.lights===undefined) ? -1 : (j.lights?1:0);
     if(j.gps && j.gps.lat && j.gps.lon && j.gps.age < 900)
       S.gps = { lat:j.gps.lat, lon:j.gps.lon, spd:(j.gps.spd||0)*1.852, at:Date.now()-j.gps.age*1000 };
@@ -1600,13 +1601,14 @@ function tripComputeSummary(points){
         if(d<50) distKm+=d; // guard vs GPS jump
       }
       if(p.v!=null&&p.i!=null&&q.v!=null&&q.i!=null){
+        // The sign of the pack current differs between firmware builds, and a
+        // trip always consumes energy, so the final value is taken modulo.
         const avgW=((p.v*p.i)+(q.v*q.i))/2;
-        // i is charge-positive, so discharge (driving consumption) yields negative
-        energyWh -= avgW*dtH; // consume-positive convention
+        energyWh += avgW*dtH;
       }
     }
   }
-  return {distKm, energyWh, maxSpd, startSoc, endSoc, startLat, startLon, endLat, endLon};
+  return {distKm, energyWh: Math.abs(energyWh), maxSpd, startSoc, endSoc, startLat, startLon, endLat, endLon};
 }
 
 // Distance for a trip: the odometer is the honest source (it comes from the car
@@ -1710,9 +1712,14 @@ function tripRecordPoint(now){
   tripPut(trip); // persist on every point so a reload doesn't lose the trip
 }
 
+// Timestamps for history come from the board's clock when it is synchronised
+// (NTP), so records made from different phones agree. Falls back to the phone.
+function nowMs(){
+  return (onBoard && S.epoch && S.epoch > 1600000000) ? S.epoch * 1000 : Date.now();
+}
 function tripTick(){
   if(!tripDB) return;
-  const now=Date.now();
+  const now=nowMs();
   const odo = (S.odo>0 ? S.odo : null);
   const moved = tripHasGps() && ((S.gps.spd||0)>2);
   // detect movement from coordinate delta too (local mode has no spd)
@@ -1930,7 +1937,7 @@ function chargeRecordPoint(now){
 }
 function chargeTick(){
   if(!chgDB) return;
-  const now=Date.now();
+  const now=nowMs();
   if(!chg){
     // Also start when the app is opened in the middle of a charge: waiting for
     // the 0->1 edge lost whole sessions.
