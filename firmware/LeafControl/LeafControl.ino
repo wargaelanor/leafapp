@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.02.75-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "Trip distance from odometer, sane charge history"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.02.76-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "Bounded history: retention, no points, junk cleanup"
 
 WebServer server(80);
 DNSServer dnsServer;
