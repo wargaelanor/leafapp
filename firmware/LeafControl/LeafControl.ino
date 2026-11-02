@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.02.73-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "Gzip page, AP-aware Wi-Fi, no demo in firmware"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.02.74-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "Gzip page enabled (Accept-Encoding finally visible)"
 
 WebServer server(80);
 DNSServer dnsServer;
@@ -1542,6 +1542,10 @@ void setup() {
   if (wifiEnabled) {
       const char* trackedHeaders[] = {"Cookie"};
       server.collectHeaders(trackedHeaders, 1);
+      // collectHeaders() narrows the set to the listed keys, which silently
+      // dropped Accept-Encoding and disabled the gzip path. Ask for everything:
+      // this core has no per-request cost worth worrying about here.
+      server.collectAllHeaders();
       server.on("/", handleRoot);
 server.on("/leaf.webp", handleLeafImg);
 server.on("/leaf.png", handleLeafImg);
