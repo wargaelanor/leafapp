@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.03.84-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "Press counter, readable inputs in dark theme"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.03.85-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "No pull-to-refresh anywhere, press counter"
 
 WebServer server(80);
 DNSServer dnsServer;
