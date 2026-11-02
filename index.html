@@ -455,7 +455,7 @@ body.demo .demo-banner{display:block}
         <div class="ft"><div class="ft-title">Дистанционные услуги</div><div class="ft-sub">Климат, зарядка, двери</div></div>
         <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
       </div>
-      <div class="feature-card" id="find-car" aria-disabled="true">
+      <div class="feature-card" id="find-car">
         <div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2a7 7 0 00-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 00-7-7zm0 9.5A2.5 2.5 0 1112 6.5a2.5 2.5 0 010 5z"/></svg></div>
         <div class="ft"><div class="ft-title">Поиск моей машины</div><div class="ft-sub" id="find-car-sub">Недоступно</div></div>
         <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
@@ -512,7 +512,7 @@ body.demo .demo-banner{display:block}
           <div class="hp-label">Климат выключится через <b id="hp-left">—</b></div>
         </div>
         <div class="remote-pad">
-          <div class="rbtn a" id="rb-horn" aria-disabled="true">
+          <div class="rbtn a" id="rb-horn">
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0014 7.97v8.05A4.47 4.47 0 0016.5 12zM14 3.23v2.06a7 7 0 010 13.42v2.06a9 9 0 000-17.54z"/></svg>
             <span>Сигнал и фары</span>
           </div>
@@ -677,7 +677,7 @@ body.demo .demo-banner{display:block}
         Для разработчика
         <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
       </div>
-      <div class="more-item" id="more-lite" style="display:none" onclick="location.href='/lite'">
+      <div class="more-item" id="more-lite" style="display:none" onclick="location.href='/ui?mode=lite'">
         <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h16M4 12h10M4 18h13"/></svg></div>
         Упрощённая страница
         <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
@@ -798,7 +798,7 @@ body.demo .demo-banner{display:block}
           <li><strong>Четыре режима связи.</strong> Без подключения (только локально), MQTT-брокер, OVMS Server V2 или только звонок — выбирается в настройках платы. Приложение ставится на главный экран телефона.</li>
           <li><strong>История.</strong> Поездки и сеансы зарядки хранятся на телефоне: до 500 поездок и 300 зарядок, старые удаляются сами. Для поездок можно включить запись трека и видеть маршрут в карточке.</li>
           <!--DEMO-BEGIN--><li><strong>Демо-режим.</strong> Позволяет пройтись по всем экранам и кнопкам без автомобиля — данные условные, команды никуда не отправляются.</li><!--DEMO-END-->
-          <li><strong>Две версии страницы.</strong> Полное приложение и упрощённая страница <code>/lite</code> — только заряд, напряжение, ток, температуры и четыре команды. Она весит несколько килобайт и открывается даже при очень слабом сигнале; из неё есть ссылка на полную версию.</li>
+          <li><strong>Две версии страницы.</strong> По умолчанию открывается упрощённая — только заряд, запас хода, напряжение, ток, температуры и основные команды; весит несколько килобайт и работает даже при очень слабом сигнале. Кнопка «Красивый вид» включает полное приложение, выбор запоминается в плате.</li>
           <li><strong>Обновление по Wi-Fi.</strong> Прошивка обновляется со страницы платы, разбирать устройство не нужно.</li>
           <li><strong>Для разработчика.</strong> CAN-монитор: по строке на каждый ID, подсветка изменений, фильтр по ID и счётчик нажатий — сразу видно, какие кадры реагируют на кнопку в машине. Кадр можно сохранить под своим названием и отправить обратно после явного разрешения (10 минут).</li>
         </ul>
@@ -1399,7 +1399,7 @@ function demoStart(){
 
 function cmd(type, quiet){
   if(DEMO) return demoCommand(type, quiet);
-  if(['chargeoff','hornlights','rhloff'].includes(type)){
+  if(['chargeoff'].includes(type)){
     if(!quiet) toast('Команда недоступна');
     return Promise.resolve(false);
   }
@@ -1489,10 +1489,10 @@ document.querySelectorAll('#dur-btns button').forEach(b=>{
 function updateFindCard(){
   const c=$('find-car'); if(!c) return;
   c.classList.remove('active');
-  $('find-car-sub').textContent = 'Недоступно';
+  $('find-car-sub').textContent = 'Свет и сигнал';
 }
 function findCar(){
-  toast('Команда недоступна');
+  cmd('hornlights');
 }
 function cancelRhl(){
   cmd('rhloff',true).then(ok=>{
