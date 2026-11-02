@@ -50,6 +50,30 @@ $gzHex = for ($i = 0; $i -lt $gzBytes.Length; $i++) {
   '0x{0:x2},' -f $gzBytes[$i]
 }
 
+# Lightweight page (/lite): a few kilobytes, no images, no service worker. It is
+# the entry point when the link is too poor for the full app.
+$litePath = Join-Path $app 'lite.html'
+$liteHtml = ''
+$liteGzBytes = @()
+$liteGzHex = @()
+if (Test-Path $litePath) {
+    $liteHtml = [System.IO.File]::ReadAllText($litePath, [System.Text.Encoding]::UTF8)
+    $liteHtml = [regex]::Replace($liteHtml, '(?m)^[ \t]+', '')
+    $liteHtml = [regex]::Replace($liteHtml, '(?m)^\r?\n', '')
+    if ($liteHtml -match '\)"rawliteral') { throw 'lite.html contains rawliteral terminator' }
+    $liteBytes = [System.Text.Encoding]::UTF8.GetBytes($liteHtml)
+    $lm = New-Object System.IO.MemoryStream
+    $lg = New-Object System.IO.Compression.GZipStream($lm, [System.IO.Compression.CompressionLevel]::Optimal, $true)
+    $lg.Write($liteBytes, 0, $liteBytes.Length)
+    $lg.Dispose()
+    $liteGzBytes = $lm.ToArray()
+    $lm.Dispose()
+    $liteGzHex = for ($i = 0; $i -lt $liteGzBytes.Length; $i++) {
+        if ($i % 16 -eq 0) { "`n  " } else { ' ' }
+        '0x{0:x2},' -f $liteGzBytes[$i]
+    }
+}
+
 $sb = New-Object System.Text.StringBuilder
 [void]$sb.AppendLine('// GENERATED FILE - do not edit. Run tools/mkwebapp.ps1')
 [void]$sb.AppendLine('#ifndef WEBAPP_HTML_H')
@@ -61,6 +85,17 @@ $sb = New-Object System.Text.StringBuilder
 [void]$sb.AppendLine(')rawliteral";')
 [void]$sb.AppendLine('static const unsigned char INDEX_HTML_GZ[] PROGMEM = {' + ($gzHex -join '') + '};')
 [void]$sb.AppendLine(('static const size_t INDEX_HTML_GZ_LEN = {0};' -f $gzBytes.Length))
+if ($liteHtml) {
+    [void]$sb.AppendLine('static const char LITE_HTML[] PROGMEM = R"rawliteral(')
+    [void]$sb.Append($liteHtml)
+    [void]$sb.AppendLine(')rawliteral";')
+    [void]$sb.AppendLine('static const unsigned char LITE_HTML_GZ[] PROGMEM = {' + ($liteGzHex -join '') + '};')
+    [void]$sb.AppendLine(('static const size_t LITE_HTML_GZ_LEN = {0};' -f $liteGzBytes.Length))
+} else {
+    [void]$sb.AppendLine('static const char LITE_HTML[] PROGMEM = "";')
+    [void]$sb.AppendLine('static const unsigned char LITE_HTML_GZ[] PROGMEM = {0};')
+    [void]$sb.AppendLine('static const size_t LITE_HTML_GZ_LEN = 0;')
+}
 [void]$sb.AppendLine()
 [void]$sb.AppendLine('static const unsigned char LEAF_IMG[] PROGMEM = {' + ($hex -join '') + '};')
 [void]$sb.AppendLine(('static const size_t LEAF_IMG_LEN = {0};' -f $img.Length))

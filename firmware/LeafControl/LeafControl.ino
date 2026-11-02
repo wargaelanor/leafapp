@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.03.86-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "Release point: monitor, saved commands, call mode"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.03.87-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "Add /lite lightweight page"
 
 WebServer server(80);
 DNSServer dnsServer;
@@ -235,6 +235,30 @@ const char* chargerStateStr(ChargerState s) {
     case ChargerState::WAITING: return "wait";
     default: return "";
   }
+}
+
+// Lightweight page for a poor link: a few kilobytes, no images, no scripts
+// beyond the polling loop. Also the fallback entry point from the OTA page.
+void handleLite() {
+  noteUserActivity();
+  NetworkClient& client = server.client();
+  client.setTimeout(2000);
+  String accept = server.header("Accept-Encoding");
+  accept.toLowerCase();
+  bool useGzip = accept.indexOf("gzip") >= 0;
+  const unsigned char* body = useGzip ? LITE_HTML_GZ : (const unsigned char*)LITE_HTML;
+  const size_t len = useGzip ? LITE_HTML_GZ_LEN : sizeof(LITE_HTML) - 1;
+  server.setContentLength(len);
+  server.sendHeader("Cache-Control", "no-store");
+  if (useGzip) server.sendHeader("Content-Encoding", "gzip");
+  server.send(200, "text/html; charset=utf-8", "");
+  for (size_t off = 0; off < len; off += 1024) {
+    if (!client.connected()) break;
+    size_t chunk = len - off;
+    if (chunk > 1024) chunk = 1024;
+    if (client.write_P((const char*)body + off, chunk) != chunk) break;
+  }
+  client.stop();
 }
 
 void handleRoot() {
@@ -1650,6 +1674,8 @@ void setup() {
       // this core has no per-request cost worth worrying about here.
       server.collectAllHeaders();
       server.on("/", handleRoot);
+      server.on("/lite", handleLite);
+      server.on("/lite.html", handleLite);
 server.on("/leaf.webp", handleLeafImg);
 server.on("/leaf.png", handleLeafImg);
 // status-picture overlays (only the ones present in the build are served)

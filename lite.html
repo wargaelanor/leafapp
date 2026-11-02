@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0f1216" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f4f5f7" media="(prefers-color-scheme: light)">
+<title>Leaf Control — просто</title>
+<style>
+:root{--bg:#f4f5f7;--card:#fff;--text:#22262b;--muted:#6f7780;--line:#e3e6ea;--accent:#0077ac;--ok:#34c759;--warn:#ff9500}
+@media (prefers-color-scheme: dark){:root{--bg:#0b0e11;--card:#161a1f;--text:#e8ecf1;--muted:#8f99a3;--line:#252b33;--accent:#4aa8d8}}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  padding:14px;display:flex;flex-direction:column;gap:12px;max-width:520px;margin:0 auto;min-height:100vh}
+header{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+header b{font-size:16px;letter-spacing:.3px}
+header span{font-size:11px;color:var(--muted)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+.main{display:flex;align-items:baseline;gap:6px}
+.main b{font-size:52px;font-weight:600;line-height:1}
+.main small{font-size:16px;color:var(--muted)}
+.sub{margin-top:6px;font-size:13px;color:var(--muted)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.grid div{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px}
+.grid b{display:block;font-size:16px;font-weight:600}
+.grid span{font-size:11px;color:var(--muted)}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+button{border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:10px;
+  padding:14px 10px;font:inherit;font-size:14px;cursor:pointer;transition:background .15s,border-color .15s}
+button:active{background:var(--bg)}
+button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+@media (prefers-color-scheme: dark){button.on{color:#08121a;font-weight:600}}
+button:disabled{opacity:.45}
+.hint{font-size:11.5px;color:var(--muted);line-height:1.5;text-align:center}
+.hint a{color:var(--accent);text-decoration:none;font-weight:600}
+.err{color:#ff3b30;font-size:12px;text-align:center;min-height:16px}
+</style>
+</head>
+<body>
+<header>
+  <b>Leaf Control</b>
+  <span id="upd">подключение…</span>
+</header>
+
+<div class="card">
+  <div class="main"><b id="soc">—</b><small>%</small></div>
+  <div class="sub"><span id="range">—</span> км · <span id="v">—</span> В · <span id="i">—</span> А</div>
+</div>
+
+<div class="grid">
+  <div><b id="power">—</b><span>мощность, кВт</span></div>
+  <div><b id="btemp">—</b><span>батарея, °C</span></div>
+  <div><b id="cabin">—</b><span>салон, °C</span></div>
+  <div><b id="state">—</b><span>состояние</span></div>
+</div>
+
+<div class="row">
+  <button id="b-hvac" onclick="send('hvac')">Климат</button>
+  <button id="b-charge" onclick="send('charge')">Зарядить</button>
+  <button id="b-lock" onclick="send('lock')">Закрыть</button>
+  <button onclick="poll(true)">Обновить</button>
+</div>
+
+<div class="err" id="err"></div>
+<p class="hint">Упрощённая страница: только цифры и четыре команды — грузится мгновенно даже при слабом сигнале.<br>
+Полное приложение с историей, настройками и картинкой: <a href="/">открыть</a></p>
+
+<script>
+'use strict';
+var S = {}, busy = false, timer = null;
+
+function fmt(v, digits){ return (v === null || v === undefined || v < 0) ? '—' : v.toFixed(digits === undefined ? 1 : digits); }
+
+function render(){
+  document.getElementById('soc').textContent = S.soc >= 0 ? Math.round(S.soc) : '—';
+  document.getElementById('range').textContent = S.irange >= 0 ? S.irange : (S.soc >= 0 ? Math.round(S.soc * 2.5) : '—');
+  document.getElementById('v').textContent = fmt(S.v);
+  document.getElementById('i').textContent = fmt(S.i);
+  document.getElementById('power').textContent = fmt(S.power);
+  document.getElementById('btemp').textContent = fmt(S.btemp);
+  document.getElementById('cabin').textContent = fmt(S.cabin);
+  document.getElementById('state').textContent = S.charging ? 'зарядка' : (S.hvac ? 'климат' : (S.on ? 'включён' : 'покой'));
+  var hv = document.getElementById('b-hvac');
+  hv.textContent = S.hvac ? 'Выкл климат' : 'Климат';
+  hv.classList.toggle('on', !!S.hvac);
+  var ch = document.getElementById('b-charge');
+  ch.textContent = S.charging ? 'Идёт зарядка' : 'Зарядить';
+  ch.classList.toggle('on', !!S.charging);
+  ch.disabled = !!S.charging;
+  var lk = document.getElementById('b-lock');
+  lk.textContent = S.lock === 0 ? 'Открыто' : 'Закрыть';
+  lk.classList.toggle('on', S.lock === 0);
+}
+
+function stamp(){
+  if(!S._at) return;
+  var sec = Math.round((Date.now() - S._at) / 1000);
+  document.getElementById('upd').textContent = sec < 6 ? 'данные свежие' : ('обновлено ' + sec + ' с назад');
+}
+
+function poll(manual){
+  if(busy) return;
+  busy = true;
+  fetch('/api/status', {cache:'no-store'}).then(function(r){ return r.json(); }).then(function(j){
+    S = j; S._at = Date.now();
+    document.getElementById('err').textContent = '';
+    render(); stamp();
+    if(manual){ document.getElementById('upd').textContent = 'обновлено сейчас'; }
+  }).catch(function(){
+    document.getElementById('err').textContent = 'нет связи с платой';
+  }).then(function(){ busy = false; });
+}
+
+function send(what){
+  var url = what === 'hvac' ? (S.hvac ? '/hvac_off' : '/hvac_on')
+          : what === 'charge' ? '/charge_on'
+          : (S.lock === 0 ? '/lock' : '/unlock');
+  fetch(url, {method:'POST'}).then(function(){ setTimeout(function(){ poll(true); }, 1200); })
+    .catch(function(){ document.getElementById('err').textContent = 'команда не отправлена'; });
+}
+
+poll();
+timer = setInterval(function(){ poll(); }, 4000);
+setInterval(stamp, 1000);
+document.addEventListener('visibilitychange', function(){ if(!document.hidden) poll(); });
+</script>
+</body>
+</html>
