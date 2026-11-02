@@ -81,6 +81,9 @@ ConfigStatus setMqttTls(bool value);
 
 bool getHassDiscoveryEnabled();
 ConfigStatus setHassDiscoveryEnabled(bool value);
+// true = the root URL serves the light page, false = the full app.
+bool getUiLite();
+ConfigStatus setUiLite(bool value);
 
 const char* getOvmsServer();
 ConfigStatus setOvmsServer(const char* value);

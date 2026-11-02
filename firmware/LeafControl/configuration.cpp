@@ -116,6 +116,9 @@ static ConfigString<64> conf_mqtt_vehicle_id("mqtt_vehicle_id", "");
 static ConfigBool       conf_locking_enabled("locking_enabled", false);
 static ConfigBool       conf_mqtt_tls("mqtt_tls", true);
 static ConfigBool       conf_hass_discovery("hass_discovery", true);
+// Which page the root URL serves. A fresh board starts with the light page:
+// it opens instantly even over a poor link, and the full app is one tap away.
+static ConfigBool       conf_ui_lite("ui_lite", true);
 static ConfigString<64> conf_ovms_server("ovms_server", "api.openvehicles.com");
 static ConfigInt        conf_ovms_port("ovms_port", 6870);
 static ConfigString<64> conf_ovms_password("ovms_password", "");
@@ -167,6 +170,7 @@ void initConfiguration() {
     conf_locking_enabled.load();
     conf_mqtt_tls.load();
     conf_hass_discovery.load();
+    conf_ui_lite.load();
     conf_ovms_server.load();
     conf_ovms_port.load();
     conf_ovms_password.load();
@@ -296,7 +300,9 @@ bool getMqttTls() { return conf_mqtt_tls.get(); }
 ConfigStatus setMqttTls(bool value) { return conf_mqtt_tls.set(value); }
 
 bool getHassDiscoveryEnabled() { return conf_hass_discovery.get(); }
+bool getUiLite() { return conf_ui_lite.get(); }
 ConfigStatus setHassDiscoveryEnabled(bool value) { return conf_hass_discovery.set(value); }
+ConfigStatus setUiLite(bool value) { return conf_ui_lite.set(value); }
 
 const char* getOvmsServer() { return conf_ovms_server.get(); }
 ConfigStatus setOvmsServer(const char* value) { return conf_ovms_server.set(value); }

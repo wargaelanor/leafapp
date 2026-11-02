@@ -54,7 +54,8 @@ static bool sendCANInternal(uint32_t id, const uint8_t* data, uint8_t len, bool 
     {0x66, 0x08, 0x12, 0x00}, // start charging
     {0x11, 0x00, 0x00, 0x00}, // unlock
     {0x60, 0x80, 0x00, 0x00}, // lock
-    {0x46, 0x09, 0x12, 0x10}  // captured ZE1 light flash (RHL=1)
+    {0x46, 0x09, 0x12, 0x10}, // captured ZE1 light flash (RHL=1)
+    {0x46, 0x0B, 0x12, 0x10}  // captured ZE1 horn + lights (RHL=3)
   };
   bool allowed = id == 0x68C && len == 1 && data && data[0] == 0x00;
   if (id == 0x56E && len == 4 && data) {

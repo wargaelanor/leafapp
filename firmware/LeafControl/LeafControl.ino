@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.03.88-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "Add /lite lightweight page"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.04.89-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "Lite UI by default, 15 flashes, horn enabled"
 
 WebServer server(80);
 DNSServer dnsServer;
@@ -259,6 +259,20 @@ void handleLite() {
     if (client.write_P((const char*)body + off, chunk) != chunk) break;
   }
   client.stop();
+}
+
+// Root page: the light one by default. A fresh board must open instantly even
+// over a poor link, and the full app is one tap away.
+void handleRootEntry() {
+  if (getUiLite()) handleLite(); else handleRoot();
+}
+
+// /ui?mode=lite|full — remembers the choice in NVS so it survives a reboot.
+void handleUiSwitch() {
+  bool lite = server.arg("mode") != "full";
+  setUiLite(lite);
+  server.sendHeader("Location", "/", true);
+  server.send(303, "text/plain", "");
 }
 
 void handleRoot() {
@@ -1675,7 +1689,9 @@ void setup() {
       // dropped Accept-Encoding and disabled the gzip path. Ask for everything:
       // this core has no per-request cost worth worrying about here.
       server.collectAllHeaders();
-      server.on("/", handleRoot);
+      server.on("/", handleRootEntry);
+      server.on("/app", handleRoot);
+      server.on("/ui", HTTP_GET, handleUiSwitch);
       server.on("/lite", handleLite);
       server.on("/lite.html", handleLite);
 server.on("/leaf.webp", handleLeafImg);

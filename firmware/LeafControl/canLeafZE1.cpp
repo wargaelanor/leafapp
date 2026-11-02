@@ -655,17 +655,23 @@ static const SequenceStep seq_lock_doors[] = {
     MSG_STEP(lock_doors_data, 24, 100)
 };
 
+// Flashing. The BCM reacts to each RHL request with a short burst, so one
+// request is not enough for "where is my car": 15 request/clear pairs give a
+// long, visible signal. 120 ms on, 380 ms off — close to a natural flasher.
+#define FLASH_PAIR MSG_STEP(lights_data, 1, 120), MSG_STEP(hvac_init, 1, 380),
 static const SequenceStep seq_lights[] = {
-    // Short, bounded flash. hvac_init clears RHL afterwards without adding an
-    // unverified sleep/idle payload to the final TX whitelist.
-    MSG_STEP(lights_data, 6, 100),
-    MSG_STEP(hvac_init, 3, 100)
+    FLASH_PAIR FLASH_PAIR FLASH_PAIR FLASH_PAIR FLASH_PAIR
+    FLASH_PAIR FLASH_PAIR FLASH_PAIR FLASH_PAIR FLASH_PAIR
+    FLASH_PAIR FLASH_PAIR FLASH_PAIR FLASH_PAIR FLASH_PAIR
+    MSG_STEP(idle_data, 3, 100)
 };
 
+// Horn + lights: same rhythm, one honk per pair.
+#define HORN_PAIR MSG_STEP(horn_light_data, 1, 300), MSG_STEP(hvac_init, 1, 400),
 static const SequenceStep seq_horn_lights[] = {
-    MSG_BURST_STEP(hvac_init, 6, 100, 3, 800),
-    MSG_STEP(horn_light_data, 20, 100),
-    MSG_STEP(hvac_init, 4, 100),
+    HORN_PAIR HORN_PAIR HORN_PAIR HORN_PAIR HORN_PAIR
+    HORN_PAIR HORN_PAIR HORN_PAIR HORN_PAIR HORN_PAIR
+    HORN_PAIR HORN_PAIR HORN_PAIR HORN_PAIR HORN_PAIR
     MSG_STEP(idle_data, 3, 100)
 };
 
