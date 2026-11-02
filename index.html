@@ -231,6 +231,28 @@ html[data-theme="dark"] .dur-btns button.on{color:#08121a}
 .dev-actions button:disabled{opacity:.45;cursor:default}
 .dev-download{display:block;margin-top:10px;padding:12px;text-align:center;border-radius:6px;background:var(--chip);color:var(--accent);text-decoration:none;font-size:14px}
 .dev-error{min-height:18px;margin-top:8px;color:#d93025;font-size:12px}
+/* CAN monitor: one row per identifier, updated in place */
+.dev-monitor{margin:16px 0;padding:14px;background:var(--surface-2);border:1px solid var(--line);border-radius:8px}
+.dm-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.dm-head strong{font-size:14px;color:var(--text)}
+.dm-actions{display:flex;gap:6px}
+.dm-actions button,.dm-filters button{border:1px solid var(--line);background:var(--surface);color:var(--text-2);border-radius:6px;font:inherit;font-size:11.5px;padding:5px 9px;cursor:pointer}
+.dm-actions button:hover,.dm-filters button:hover{border-color:var(--accent)}
+.dm-filters{display:flex;gap:6px;align-items:center;margin-bottom:8px}
+.dm-filters button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+@media (prefers-color-scheme: dark){.dm-filters button.on{color:#08121a}}
+html[data-theme="dark"] .dm-filters button.on{color:#08121a}
+.dm-count{margin-left:auto;font-size:11px;color:var(--muted)}
+.dm-wrap{max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
+.dm-table{width:100%;border-collapse:collapse;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px}
+.dm-table th{position:sticky;top:0;background:var(--chip);color:var(--muted);font-weight:600;text-align:left;padding:6px 8px;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px}
+.dm-table td{padding:5px 8px;border-top:1px solid var(--line);color:var(--text);white-space:nowrap}
+.dm-table tr.hot td{background:var(--accent-soft)}
+.dm-table tr.hot td:first-child{box-shadow:inset 2px 0 0 var(--accent)}
+.dm-table td.dm-data{color:var(--text-2);letter-spacing:.5px}
+.dm-table td.dm-age{color:var(--muted);text-align:right}
+.dm-table td.dm-n{text-align:right;color:var(--muted)}
+.dm-empty{text-align:center;color:var(--muted);padding:14px 0!important}
 .settings-groups{margin-top:14px;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .settings-group{border-bottom:1px solid var(--line);background:var(--surface)}
 .settings-group:last-child{border-bottom:0}
@@ -786,6 +808,29 @@ body.demo .demo-banner{display:block}
         <div class="dev-status"><strong id="firmware-state">Прошивка платы</strong><span id="firmware-details">—</span></div>
         <div class="dev-status"><strong id="canlog-state">Запись выключена</strong><span id="canlog-details">Кадров: 0</span></div>
         <div class="dev-status"><strong id="bus-state">Шины CAN</strong><span id="bus-details">—</span></div>
+        <div class="dev-monitor">
+          <div class="dm-head">
+            <strong>CAN-монитор</strong>
+            <div class="dm-actions">
+              <button id="dm-pause" type="button" onclick="canWatchTogglePause()">Пауза</button>
+              <button type="button" onclick="canWatchReset()">Сброс</button>
+              <button type="button" onclick="canWatchCopy()">Копировать</button>
+            </div>
+          </div>
+          <div class="dm-filters">
+            <button class="on" data-bus="all" onclick="canWatchFilter('all')">Все</button>
+            <button data-bus="B" onclick="canWatchFilter('B')">CAR</button>
+            <button data-bus="A" onclick="canWatchFilter('A')">EV</button>
+            <span class="dm-count" id="dm-count">0 ID</span>
+          </div>
+          <div class="dm-wrap">
+            <table class="dm-table">
+              <thead><tr><th>Шина</th><th>ID</th><th>Данные</th><th>Изм.</th><th>Δ</th></tr></thead>
+              <tbody id="dm-rows"><tr><td colspan="5" class="dm-empty">Ждём кадры…</td></tr></tbody>
+            </table>
+          </div>
+          <div class="hint" style="margin-top:8px">Каждая строка — один ID. Значение меняется на месте; подсвечивается строка, где изменения идут прямо сейчас. Нажмите кнопку в машине несколько раз и смотрите, какие ID реагируют.</div>
+        </div>
         <p class="hint">Нажмите «Начать запись», выполните действия штатным ключом, затем остановите запись и скачайте файл. Новая запись удаляет предыдущую.</p>
         <div class="dev-actions">
           <button class="primary" id="canlog-start" onclick="canLogAction('start')">Начать запись</button>
@@ -1923,6 +1968,7 @@ function closeDeveloper(event){
   if(event && event.target!==$('developer-modal')) return;
   $('developer-modal').classList.remove('show');
   if(developerStatusTimer){ clearInterval(developerStatusTimer); developerStatusTimer=null; }
+  canWatchStop();
 }
 function developerShowLogin(){
   $('developer-login').style.display='block';
@@ -1938,6 +1984,7 @@ async function developerLogin(){
     $('developer-panel').style.display='block';
     await refreshCanLogStatus();
     developerStatusTimer=setInterval(refreshCanLogStatus,2000);
+    canWatchStart();
   }catch(e){ $('developer-login-error').textContent='Нет связи с платой'; }
 }
 async function refreshCanLogStatus(){
@@ -1977,6 +2024,98 @@ async function canLogAction(action){
     if(!r.ok) throw new Error();
     await refreshCanLogStatus();
   }catch(e){ $('canlog-error').textContent='Команда не выполнена'; }
+}
+
+// ---------- CAN monitor ----------
+// Polls /api/developer/canwatch: one row per identifier, updated in place.
+// Rows that changed recently are highlighted, so pressing a button in the car
+// shows exactly which IDs react.
+let canWatchTimer = null;
+let canWatchPaused = false;
+let canWatchBus = 'all';
+let canWatchData = [];
+
+function canWatchStart(){
+  if(canWatchTimer) return;
+  canWatchPoll();
+  canWatchTimer = setInterval(canWatchPoll, 700);
+}
+function canWatchStop(){
+  if(canWatchTimer){ clearInterval(canWatchTimer); canWatchTimer = null; }
+}
+function canWatchTogglePause(){
+  canWatchPaused = !canWatchPaused;
+  const b = $('dm-pause');
+  if(b) b.textContent = canWatchPaused ? 'Продолжить' : 'Пауза';
+  if(!canWatchPaused) canWatchPoll();
+}
+async function canWatchPoll(){
+  if(canWatchPaused) return;
+  try{
+    const r = await fetch('/api/developer/canwatch', {cache:'no-store'});
+    if(r.status === 401){ developerShowLogin(); canWatchStop(); return; }
+    canWatchData = await r.json();
+    canWatchRender();
+  }catch(e){}
+}
+function canWatchFilter(bus){
+  canWatchBus = bus;
+  document.querySelectorAll('.dm-filters button').forEach(btn=>{
+    btn.classList.toggle('on', btn.dataset.bus === bus);
+  });
+  canWatchRender();
+}
+function canWatchAge(ms){
+  if(ms < 1000) return 'сейчас';
+  if(ms < 60000) return (ms/1000).toFixed(1)+' с';
+  return Math.round(ms/60000)+' мин';
+}
+function canWatchRows(){
+  return canWatchData.filter(row => canWatchBus === 'all' || row.b === canWatchBus);
+}
+function canWatchRender(){
+  const body = $('dm-rows');
+  if(!body) return;
+  const rows = canWatchRows();
+  $('dm-count').textContent = rows.length + ' ID';
+  if(!rows.length){
+    body.innerHTML = '<tr><td colspan="5" class="dm-empty">Ждём кадры…</td></tr>';
+    return;
+  }
+  body.innerHTML = rows.map(row=>{
+    const hot = row.ms < 1200 ? ' class="hot"' : '';
+    return '<tr'+hot+'>'+
+      '<td>'+row.b+'</td>'+
+      '<td>'+('000'+row.id.toString(16).toUpperCase()).slice(-3)+'</td>'+
+      '<td class="dm-data">'+(row.d||'—')+'</td>'+
+      '<td class="dm-n">'+row.n+'</td>'+
+      '<td class="dm-age">'+canWatchAge(row.ms)+'</td>'+
+      '</tr>';
+  }).join('');
+}
+async function canWatchReset(){
+  try{
+    const r = await fetch('/api/developer/canwatch/reset',{method:'POST'});
+    if(r.status === 401){ developerShowLogin(); return; }
+    canWatchData = [];
+    canWatchRender();
+    toast('Монитор очищен');
+  }catch(e){}
+}
+function canWatchCopy(){
+  const rows = canWatchRows();
+  if(!rows.length){ toast('Пока нечего копировать'); return; }
+  const lines = rows.map(row =>
+    ['CAN'+row.b, '0x'+row.id.toString(16).toUpperCase().padStart(3,'0'),
+     row.d||'', 'изм. '+row.n].join('\t'));
+  const text = 'ID\tшина\tданные\tизменений\n' + rows.map(row =>
+    ['0x'+row.id.toString(16).toUpperCase().padStart(3,'0'), 'CAN'+row.b,
+     row.d||'', row.n].join('\t')).join('\n');
+  navigator.clipboard.writeText(text).then(
+    ()=>toast('Скопировано в буфер'),
+    ()=>toast('Браузер не дал доступ к буферу')
+  );
+  return lines.length;
 }
 document.addEventListener('keydown',event=>{
   if(event.key==='Escape'){ closeAbout(); closeDeveloper(); }

@@ -91,4 +91,21 @@ uint8_t canBusRxErrors();
 
 void resetCanLogTimestamps();
 
+// --- live CAN watch table -------------------------------------------------
+// One row per identifier, updated in place: a CAN log that grows forever is
+// useless when you press a button twenty times and want to see which frames
+// actually changed. Used by the developer monitor in the web UI.
+struct CanWatchRow {
+  uint32_t id;
+  char bus;             // 'B' = CAR-CAN (Port B), 'A' = EV-CAN (Port A)
+  uint8_t dlc;
+  uint8_t data[8];
+  uint32_t changes;     // payload changes since reset
+  uint32_t ageMs;       // milliseconds since the last change
+};
+void canWatchRecord(char bus, uint32_t id, const uint8_t* data, uint8_t dlc);
+void canWatchReset();
+uint16_t canWatchCount();
+bool canWatchGet(uint16_t index, CanWatchRow* out);
+
 #endif

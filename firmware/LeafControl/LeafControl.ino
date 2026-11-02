@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.02.79-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "Optional trip tracks switch"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.02.80-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "Developer CAN monitor: one row per ID"
 
 WebServer server(80);
 DNSServer dnsServer;
@@ -447,6 +447,41 @@ void handleVinProbe() {
   requestVinObdProbe();
   server.send(200, "application/json",
               "{\"ok\":true,\"probe\":\"obd09_02\",\"request\":\"0x7DF\",\"reply\":\"0x7E8\"}");
+}
+
+// Live CAN watch: one JSON row per identifier, updated in place on the board.
+// The page polls this while the developer monitor is open.
+void handleCanWatch() {
+  if (!requireDeveloperAuth()) return;
+  server.sendHeader("Cache-Control", "no-store");
+  server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+  server.send(200, "application/json", "");
+  char buf[192];
+  server.sendContent("[");
+  uint16_t count = canWatchCount();
+  for (uint16_t i = 0; i < count; i++) {
+    CanWatchRow row;
+    if (!canWatchGet(i, &row)) continue;
+    char hex[26];
+    int pos = 0;
+    for (uint8_t b = 0; b < row.dlc && pos < (int)sizeof(hex) - 3; b++) {
+      pos += snprintf(hex + pos, sizeof(hex) - pos, "%02X ", row.data[b]);
+    }
+    if (pos > 0) hex[pos - 1] = '\0'; else hex[0] = '\0';
+    snprintf(buf, sizeof(buf),
+             "%s{\"b\":\"%c\",\"id\":%lu,\"dlc\":%u,\"d\":\"%s\",\"n\":%lu,\"ms\":%lu}",
+             i ? "," : "", row.bus, (unsigned long)row.id, (unsigned)row.dlc, hex,
+             (unsigned long)row.changes, (unsigned long)row.ageMs);
+    server.sendContent(buf);
+  }
+  server.sendContent("]");
+  server.sendContent("");
+}
+
+void handleCanWatchReset() {
+  if (!requireDeveloperAuth()) return;
+  canWatchReset();
+  server.send(200, "application/json", "{\"ok\":true}");
 }
 
 void handleCanLogStatus() {
@@ -1557,6 +1592,8 @@ for (size_t i = 0; i < WEBAPP_ASSET_COUNT; i++) {
       server.on("/api/evscan", HTTP_POST, handleApiEvScan);
       server.on("/api/developer/login", HTTP_POST, handleDeveloperLogin);
       server.on("/api/developer/canlog", HTTP_GET, handleCanLogStatus);
+      server.on("/api/developer/canwatch", HTTP_GET, handleCanWatch);
+      server.on("/api/developer/canwatch/reset", HTTP_POST, handleCanWatchReset);
       server.on("/api/developer/vin_probe", HTTP_POST, handleVinProbe);
       server.on("/api/developer/canlog/start", HTTP_POST, handleCanLogStart);
       server.on("/api/developer/canlog/stop", HTTP_POST, handleCanLogStop);

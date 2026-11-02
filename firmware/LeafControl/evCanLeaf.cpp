@@ -3,6 +3,7 @@
 #include <Preferences.h>
 #include "mcp2515.h"
 #include "canLogger.h"
+#include "canInterface.h"
 
 // T-2CAN Port A pins (LilyGO pin_config.h)
 #define EVCAN_SPI_SCLK 12
@@ -342,6 +343,7 @@ void manageEvCAN() {
     lastEvFrameMs = millis();
     evFrameSeen = true;
     canLoggerAppend('A', '<', frame.can_id, frame.data, frame.can_dlc);
+    canWatchRecord('A', frame.can_id, frame.data, frame.can_dlc);
     handleEvFrame(frame.can_id, frame.can_dlc, frame.data);
   }
 

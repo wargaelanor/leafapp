@@ -185,6 +185,7 @@ void readAndHandleCANMessage() {
   // loop() overflows the queue on a busy bus.
   while (drained < 32 && twai_receive(&message, 0) == ESP_OK) {
     handleReceivedMessage(message.identifier, message.data, message.data_length_code);
+    canWatchRecord('B', message.identifier, message.data, message.data_length_code);
     canFramesB++;
     canLoggerAppend('B', '<', message.identifier, message.data, message.data_length_code);
     if (canLogFrames) {
@@ -252,4 +253,88 @@ uint8_t canBusRxErrors() {
 
 void resetCanLogTimestamps() {
   logStartTime = millis();
+}
+
+// --- live CAN watch table -------------------------------------------------
+// One row per (bus, identifier). The payload is compared with the previous
+// frame: identical frames only refresh counters, real changes bump the change
+// count and the timestamp, which is what the UI highlights.
+struct CanWatchEntry {
+  uint32_t id;
+  uint8_t bus;
+  uint8_t dlc;
+  uint8_t data[8];
+  uint32_t changes;
+  uint32_t lastChangeMs;
+  uint32_t firstSeenMs;
+  bool used;
+};
+
+static const uint16_t CAN_WATCH_MAX = 64;
+static CanWatchEntry canWatch[CAN_WATCH_MAX];
+
+void canWatchReset() {
+  memset(canWatch, 0, sizeof(canWatch));
+}
+
+void canWatchRecord(char bus, uint32_t id, const uint8_t* data, uint8_t dlc) {
+  if (dlc > 8) dlc = 8;
+  uint32_t now = millis();
+  int16_t freeIndex = -1;
+  int16_t oldestIndex = 0;
+  for (uint16_t i = 0; i < CAN_WATCH_MAX; i++) {
+    CanWatchEntry& e = canWatch[i];
+    if (!e.used) {
+      if (freeIndex < 0) freeIndex = (int16_t)i;
+      continue;
+    }
+    if (e.id == id && e.bus == (uint8_t)bus) {
+      if (e.dlc != dlc || memcmp(e.data, data, dlc) != 0) {
+        e.dlc = dlc;
+        memcpy(e.data, data, dlc);
+        e.changes++;
+        e.lastChangeMs = now;
+      }
+      return;
+    }
+    if ((int32_t)(now - canWatch[oldestIndex].lastChangeMs) >
+        (int32_t)(now - e.lastChangeMs)) {
+      oldestIndex = (int16_t)i;
+    }
+  }
+  int16_t slot = freeIndex >= 0 ? freeIndex : oldestIndex;
+  CanWatchEntry& e = canWatch[slot];
+  e.id = id;
+  e.bus = (uint8_t)bus;
+  e.dlc = dlc;
+  memcpy(e.data, data, dlc);
+  e.changes = 1;
+  e.lastChangeMs = now;
+  e.firstSeenMs = now;
+  e.used = true;
+}
+
+uint16_t canWatchCount() {
+  uint16_t n = 0;
+  for (uint16_t i = 0; i < CAN_WATCH_MAX; i++) if (canWatch[i].used) n++;
+  return n;
+}
+
+bool canWatchGet(uint16_t index, CanWatchRow* out) {
+  // Entries keep their insertion order so rows do not jump in the UI.
+  uint16_t seen = 0;
+  uint32_t now = millis();
+  for (uint16_t i = 0; i < CAN_WATCH_MAX; i++) {
+    const CanWatchEntry& e = canWatch[i];
+    if (!e.used) continue;
+    if (seen++ != index) continue;
+    out->id = e.id;
+    out->bus = (char)e.bus;
+    out->dlc = e.dlc;
+    memcpy(out->data, e.data, sizeof(out->data));
+    out->changes = e.changes;
+    out->ageMs = now - e.lastChangeMs;
+    return true;
+  }
+  return false;
 }
