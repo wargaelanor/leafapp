@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.04.92-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "NTP clock, trip energy sign fix"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.04.93-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "UI switch via POST (no prefetch flip)"
 
 WebServer server(80);
 DNSServer dnsServer;
@@ -1707,7 +1707,7 @@ void setup() {
       server.collectAllHeaders();
       server.on("/", handleRootEntry);
       server.on("/app", handleRoot);
-      server.on("/ui", HTTP_GET, handleUiSwitch);
+      server.on("/ui", HTTP_POST, handleUiSwitch);
       server.on("/lite", handleLite);
       server.on("/lite.html", handleLite);
 server.on("/leaf.webp", handleLeafImg);
