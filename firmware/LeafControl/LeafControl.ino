@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.02.74-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "Gzip page enabled (Accept-Encoding finally visible)"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.02.75-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "Trip distance from odometer, sane charge history"
 
 WebServer server(80);
 DNSServer dnsServer;

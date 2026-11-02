@@ -1398,6 +1398,7 @@ let trip=null;           // active trip record
 let tripPrevOn=-1;
 let tripLastPointMs=0;
 let tripLastMoveMs=0;    // last time we saw real movement
+let tripLastOdo=null;    // previous odometer reading, for movement detection
 let tripStaleTimer=null;
 
 function tripOpenDB(){
@@ -1467,9 +1468,21 @@ function tripComputeSummary(points){
   return {distKm, energyWh, maxSpd, startSoc, endSoc, startLat, startLon, endLat, endLon};
 }
 
+// Distance for a trip: the odometer is the honest source (it comes from the car
+// over CAN), GPS is only a fallback. Without this every trip showed "0.0 км",
+// because most boards have no GPS module.
+function tripDistanceKm(t, sum){
+  if(t.odoStart!=null && t.odoEnd!=null){
+    const d=t.odoEnd-t.odoStart;
+    if(d>0.01) return d;
+  }
+  return sum.distKm;
+}
+
 function tripStart(now){
   trip={ id:'trip_'+now.toString(36)+'_'+Math.random().toString(36).slice(2,6),
-    startMs:now, endMs:null, points:[] };
+    startMs:now, endMs:null, points:[],
+    odoStart:(S.odo>0?S.odo:null) };
   tripLastMoveMs=now;
   tripLastPointMs=now;
   tripPut(trip);
@@ -1480,9 +1493,11 @@ function tripEnd(now, reason){
   const sum=tripComputeSummary(trip.points);
   trip.endMs=now;
   trip.endReason=reason;
+  trip.odoEnd=(S.odo>0?S.odo:null);
   Object.assign(trip,sum);
-  // discard junk trips (too short, no movement)
-  if(durSec<20 && sum.distKm<0.05){ trip=null; return; }
+  trip.distKm=tripDistanceKm(trip, sum);
+  // discard junk trips (too short and no distance)
+  if(durSec<20 && (trip.distKm||0)<0.05){ trip=null; return; }
   tripPut(trip);
   trip=null;
   refreshTripsScreen();
@@ -1500,6 +1515,7 @@ function tripRecordPoint(now){
 function tripTick(){
   if(!tripDB) return;
   const now=Date.now();
+  const odo = (S.odo>0 ? S.odo : null);
   const moved = tripHasGps() && ((S.gps.spd||0)>2);
   // detect movement from coordinate delta too (local mode has no spd)
   if(!moved && trip && trip.points.length){
@@ -1509,22 +1525,28 @@ function tripTick(){
       if(d>0.02) moved=true; // 20m in one tick = movement
     }
   }
-  if(moved) tripLastMoveMs=now;
+  // Odometer is the movement source when there is no GPS: the car is "driving"
+  // only if the reading grew. Start on movement, not on the ignition edge, so
+  // a parked car does not create empty trips and opening the app mid-drive
+  // still starts one.
+  const odoMoved = (odo!=null && tripLastOdo!=null && odo - tripLastOdo > 0.02);
+  if(moved || odoMoved) tripLastMoveMs=now;
 
   if(!trip){
-    // start when ignition turns on and we have data flowing
-    if(S.on===1 && tripPrevOn!==1 && lastUpdate){
+    if(S.on===1 && (moved || odoMoved) && lastUpdate){
       tripStart(now);
+      if(odo!=null && trip) trip.odoStart = tripLastOdo!=null ? tripLastOdo : odo;
     }
   } else {
     const noMoveMs = now - tripLastMoveMs;
     const end = (S.on===0) || (noMoveMs>15*60*1000); // off, or no movement 15min
     if(end){
       tripEnd(now, S.on===0?'off':'idle');
-    } else if(now-tripLastPointMs>=5000){
+    } else if(now-tripLastPointMs>=5000 || odoMoved){
       tripRecordPoint(now);
     }
   }
+  tripLastOdo=odo;
   tripPrevOn=S.on;
 }
 
@@ -1572,10 +1594,11 @@ async function refreshTripsScreen(){
     const dur=(t.endMs-t.startMs)/1000;
     const socStr=(t.startSoc!=null&&t.endSoc!=null)?(t.startSoc.toFixed(0)+'→'+t.endSoc.toFixed(0)+'%'):'';
     const route=(t.startLat!=null)?'<span class="route" onclick="openTripRoute('+t.startLat+','+t.startLon+')">Маршрут</span>':'';
+    const spdCell=(t.maxSpd>0)?'<span><span class="m-val">'+t.maxSpd.toFixed(0)+'</span> км/ч</span>':'';
     return '<div class="trip-item">'+
       '<div class="t-head"><span class="t-date">'+dstr+'</span><span class="t-dur">'+fmtDur(dur)+'</span></div>'+
       '<div class="t-metrics"><span><span class="m-val">'+(t.distKm||0).toFixed(1)+'</span> км</span>'+
-      '<span><span class="m-val">'+(t.maxSpd||0).toFixed(0)+'</span> км/ч</span>'+
+      spdCell+
       '<span><span class="m-val">'+((t.energyWh||0)/1000).toFixed(2)+'</span> кВт·ч</span></div>'+
       '<div class="t-meta">'+(socStr?'<span>Заряд: '+socStr+'</span>':'')+route+'</div>'+
       '</div>';
@@ -1643,10 +1666,15 @@ function chgComputeSummary(points){
       if(p.v!=null&&p.i!=null&&q.v!=null&&q.i!=null){
         const dtH=(p.t-q.t)/3600000;
         const avgW=((p.v*p.i)+(q.v*q.i))/2;
-        energyWh += avgW*dtH; // charge-positive current → energy into battery
+        energyWh += avgW*dtH;
       }
     }
   }
+  // The datagram sign differs between firmware builds (some report charging as
+  // a negative current), and a charge session never means "energy left the
+  // battery", so the magnitude is what matters here. Without this the list
+  // showed negative kWh.
+  energyWh = Math.abs(energyWh);
   return {energyWh, startSoc, endSoc, maxV};
 }
 function chargeStart(now){
@@ -1679,7 +1707,9 @@ function chargeTick(){
   if(!chgDB) return;
   const now=Date.now();
   if(!chg){
-    if(S.charging && !chgPrevCharging && lastUpdate) chargeStart(now);
+    // Also start when the app is opened in the middle of a charge: waiting for
+    // the 0->1 edge lost whole sessions.
+    if(S.charging && lastUpdate) chargeStart(now);
   } else {
     if(!S.charging) chargeEnd(now,'stopped');
     else if(now-chgLastPointMs>=30000) chargeRecordPoint(now); // 30s, charging is slow
@@ -1721,7 +1751,11 @@ async function refreshChargesScreen(){
     const dstr=d.toLocaleDateString('ru-RU',{day:'2-digit',month:'short'})+' '+d.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
     const dur=(c.endMs-c.startMs)/1000;
     const socStr=(c.startSoc!=null&&c.endSoc!=null)?(c.startSoc.toFixed(0)+'→'+c.endSoc.toFixed(0)+'%'):'';
-    const st=c.endState?(' · '+({'done':'завершено','stopped':'прервано','wait':'ожидание'}[c.endState]||c.endState)):'';
+    // endReason is our own enum; endState is a raw charger state and used to
+    // leak English words like "charging" into the list.
+    const reasonTxt = c.endReason==='stopped' ? 'остановлена'
+                    : (c.endReason==='orphan' ? 'без завершения' : '');
+    const st = reasonTxt ? ' · '+reasonTxt : '';
     return '<div class="trip-item">'+
       '<div class="t-head"><span class="t-date">'+dstr+'</span><span class="t-dur">'+fmtDur(dur)+'</span></div>'+
       '<div class="t-metrics"><span><span class="m-val">'+((c.energyWh||0)/1000).toFixed(2)+'</span> кВт·ч</span>'+
