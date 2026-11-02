@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.04.91-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "Report ui_lite in status"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.04.92-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "NTP clock, trip energy sign fix"
 
 WebServer server(80);
 DNSServer dnsServer;
@@ -36,6 +36,8 @@ static unsigned long developerSessionSeenMs = 0;
 static const unsigned long DEVELOPER_SESSION_MS = 15UL * 60UL * 1000UL;
 static uint8_t currentWifiProfile = 0;
 static volatile int lastWifiDisconnectReason = 0;
+// Set once NTP was started after the first successful Wi-Fi connection.
+static bool timeSyncStarted = false;
 // Milliseconds since the STA link went down (0 while connected). Reported as
 // wifi_down_s so a "board alive but unreachable" state is visible at a glance.
 static unsigned long wifiStaDownSinceMs = 0;
@@ -263,6 +265,12 @@ void handleLite() {
 
 // Root page: the light one by default. A fresh board must open instantly even
 // over a poor link, and the full app is one tap away.
+// Seconds since the Unix epoch, or 0 while NTP has not answered yet.
+unsigned long boardEpoch() {
+  time_t now = time(nullptr);
+  return (now > 1600000000) ? (unsigned long)now : 0UL;
+}
+
 void handleRootEntry() {
   if (getUiLite()) handleLite(); else handleRoot();
 }
@@ -397,7 +405,7 @@ void handleApiStatus() {
     "\"r5c0\":\"%s\",\"r1dba\":\"%s\","
     "\"bmslen\":%u,\"bmsgot\":%u,\"bmsgrp\":%u,\"bmsff\":%lu,"
     "\"bmsage\":%lu,\"bmsfail\":%lu,\"bmsreq\":%u,\"bmscd\":%lu,"
-    "\"modem\":\"%s\",\"uptime\":%lu,\"free_heap\":%lu,\"reset_reason\":%d,\"software_restart\":%u,"
+    "\"modem\":\"%s\",\"uptime\":%lu,\"epoch\":%lu,\"free_heap\":%lu,\"reset_reason\":%d,\"software_restart\":%u,"
     "\"remote_mode\":%d,\"ui_lite\":%d,\"mqtt_connected\":%d,\"ovms_v2_connected\":%d,\"ovms_v2_paranoid\":%d,"
     "\"wifi_status\":%d,\"wifi_rssi\":%d,\"wifi_profile\":%u,\"wifi_disconnect\":%d,"
     "\"wifi_down_s\":%lu,"
@@ -429,7 +437,7 @@ void handleApiStatus() {
     (unsigned)bmsLastGroupId(), (unsigned long)bmsFirstFrames(),
     (unsigned long)bmsLastReplyAgeSec(), (unsigned long)bmsFailureCount(),
     (unsigned)bmsRequestedGroupId(), (unsigned long)bmsCooldownLeftSec(),
-    modemGetStateStr(), (unsigned long)(millis() / 1000UL),
+    modemGetStateStr(), (unsigned long)(millis() / 1000UL), (unsigned long)boardEpoch(),
     (unsigned long)ESP.getFreeHeap(), (int)esp_reset_reason(), (unsigned int)lastSoftwareRestart,
     (int)getRemoteTransport(), getUiLite() ? 1 : 0, mqttIsConnected() ? 1 : 0, ovmsV2IsConnected() ? 1 : 0,
     ovmsV2ParanoidIsActive() ? 1 : 0,
@@ -1546,6 +1554,14 @@ void manageWiFi() {
     retryStep = 0;
     previousAttemptTime = currentTime;
     Serial.println("\nWi-Fi connected!");
+    if (!timeSyncStarted) {
+      // No RTC on the board: without NTP all timestamps are "since boot". The
+      // trip history is timestamped by the client, but the board's own clock is
+      // what the app uses when it is opened from the board itself.
+      configTime(0, 0, "pool.ntp.org", "time.cloudflare.com");
+      timeSyncStarted = true;
+      Serial.println("NTP: time sync started");
+    }
   
     if (!MDNS.begin(getHostName())) {
       Serial.println("Error starting mDNS service!");
