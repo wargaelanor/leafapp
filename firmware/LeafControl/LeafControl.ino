@@ -18,7 +18,7 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.03.87-CMD"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.03.88-CMD"
 #define LEAF_FIRMWARE_DESCRIPTION "Add /lite lightweight page"
 
 WebServer server(80);
@@ -669,6 +669,8 @@ void handleOtaPage() {
     "</form>"
     "<p id='st' style='color:#666'>Ожидание файла…</p>"
     "<script>document.forms[0].onsubmit=function(){document.getElementById('st').textContent='Прошивка, не выключайте плату…';}</script>"
+    "<p style='color:#666;font-size:13px;max-width:340px;margin:14px auto'>Если основная страница открывается медленно, "
+    "есть упрощённая: <a href='/lite'>/lite</a> — несколько килобайт, только цифры и четыре команды.</p>"
     "<a href='/'>Назад</a></body></html>");
 }
 
