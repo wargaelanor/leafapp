@@ -7,7 +7,7 @@
 <meta name="theme-color" content="#f4f5f7" media="(prefers-color-scheme: light)">
 <title>Leaf Control — просто</title>
 <style>
-:root{--bg:#f4f5f7;--card:#fff;--text:#22262b;--muted:#6f7780;--line:#e3e6ea;--accent:#0077ac;--ok:#34c759}
+:root{--bg:#f4f5f7;--card:#fff;--text:#22262b;--muted:#6f7780;--line:#e3e6ea;--accent:#0077ac;--ok:#34c759;--warn:#ff9500;--err:#ff3b30}
 @media (prefers-color-scheme: dark){:root{--bg:#0b0e11;--card:#161a1f;--text:#e8ecf1;--muted:#8f99a3;--line:#252b33;--accent:#4aa8d8}}
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
@@ -31,14 +31,17 @@ header span{font-size:11px;color:var(--muted)}
 .grid span{font-size:11px;color:var(--muted)}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 button{border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:11px;
-  padding:14px 8px;font:inherit;font-size:14px;cursor:pointer;transition:background .15s,border-color .15s}
-button:active{background:var(--bg)}
+  padding:14px 8px;font:inherit;font-size:14px;cursor:pointer;position:relative;overflow:hidden;
+  transition:background .15s,border-color .15s,transform .1s;touch-action:manipulation;-webkit-user-select:none;user-select:none;
+  -webkit-touch-callout:none}
 button.on{background:var(--accent);border-color:var(--accent);color:#fff}
 @media (prefers-color-scheme: dark){button.on{color:#08121a;font-weight:600}}
+button.holding{background:var(--accent);border-color:var(--accent);color:#fff;transform:scale(.97)}
 button:disabled{opacity:.45}
 .hint{font-size:11.5px;color:var(--muted);line-height:1.5;text-align:center}
-.hint a{color:var(--accent);text-decoration:none;font-weight:600}
-.err{color:#ff3b30;font-size:12px;text-align:center;min-height:16px}
+.err{font-size:12px;text-align:center;min-height:16px;color:var(--muted)}
+.err.bad{color:var(--err)}
+.err.good{color:var(--ok)}
 .full{display:block;text-align:center;padding:12px;border:1px solid var(--accent);color:var(--accent);
   border-radius:11px;text-decoration:none;font-size:13.5px;font-weight:600}
 </style>
@@ -66,23 +69,29 @@ button:disabled{opacity:.45}
 </div>
 
 <div class="row">
-  <button id="b-hvac" onclick="send('hvac')">Климат</button>
-  <button id="b-charge" onclick="send('charge')">Зарядить</button>
-  <button id="b-lights" onclick="send('lights')">Свет</button>
-  <button id="b-horn" onclick="send('horn')">Свет + сигнал</button>
-  <button id="b-lock" onclick="send('lock')">Закрыть</button>
-  <button onclick="poll(true)">Обновить</button>
+  <button id="b-hvac" data-act="hvac">Климат</button>
+  <button id="b-charge" data-act="charge">Зарядить</button>
+  <button id="b-lights" data-act="lights">Свет</button>
+  <button id="b-horn" data-act="horn">Свет + сигнал</button>
+  <button id="b-lock" data-act="lock">Закрыть</button>
+  <button id="b-refresh">Обновить</button>
 </div>
 
-<div class="err" id="err"></div>
+<div class="err" id="msg">команды выполняются удержанием кнопки</div>
 <a class="full" href="/ui?mode=full">Красивый вид</a>
 <p class="hint">Упрощённая страница: цифры и основные команды, открывается мгновенно даже при слабом сигнале.</p>
 
 <script>
 'use strict';
-var S = {}, busy = false;
+var S = {}, busy = false, cmdBusy = false, holdTimer = null, holdBtn = null;
 
 function fmt(v, digits){ return (v === null || v === undefined || v < 0) ? '—' : v.toFixed(digits === undefined ? 1 : digits); }
+
+function msg(text, kind){
+  var el = document.getElementById('msg');
+  el.textContent = text;
+  el.className = 'err' + (kind ? ' ' + kind : '');
+}
 
 function render(){
   document.getElementById('soc').textContent = S.soc >= 0 ? Math.round(S.soc) : '—';
@@ -100,7 +109,7 @@ function render(){
   var ch = document.getElementById('b-charge');
   ch.textContent = S.charging ? 'Идёт зарядка' : 'Зарядить';
   ch.classList.toggle('on', !!S.charging);
-  ch.disabled = !!S.charging;
+  ch.disabled = !!S.charging || cmdBusy;
   var lk = document.getElementById('b-lock');
   lk.textContent = S.lock === 0 ? 'Открыто' : 'Закрыть';
   lk.classList.toggle('on', S.lock === 0);
@@ -117,28 +126,67 @@ function poll(manual){
   busy = true;
   fetch('/api/status', {cache:'no-store'}).then(function(r){ return r.json(); }).then(function(j){
     S = j; S._at = Date.now();
-    document.getElementById('err').textContent = '';
     render(); stamp();
     if(manual) document.getElementById('upd').textContent = 'обновлено сейчас';
   }).catch(function(){
-    document.getElementById('err').textContent = 'нет связи с платой';
+    document.getElementById('upd').textContent = 'нет связи с платой';
   }).then(function(){ busy = false; });
 }
 
-function send(what){
-  var url;
-  if(what === 'hvac') url = S.hvac ? '/hvac_off' : '/hvac_on';
-  else if(what === 'charge') url = '/charge_on';
-  else if(what === 'lights') url = '/lights';
-  else if(what === 'horn') url = '/hornlights';
-  else url = (S.lock === 0) ? '/lock' : '/unlock';
-  if(what === 'lights' || what === 'horn'){
-    document.getElementById('err').textContent = 'выполняется — около 8 секунд';
-  }
-  fetch(url, {method:'POST'}).then(function(){
-    setTimeout(function(){ poll(true); document.getElementById('err').textContent = ''; }, 2000);
-  }).catch(function(){ document.getElementById('err').textContent = 'команда не отправлена'; });
+function urlFor(what){
+  if(what === 'hvac') return S.hvac ? '/hvac_off' : '/hvac_on?setpoint=22&minutes=15';
+  if(what === 'charge') return '/charge_on';
+  if(what === 'lights') return '/lights';
+  if(what === 'horn') return '/hornlights';
+  return (S.lock === 0) ? '/lock' : '/unlock';
 }
+
+function run(what){
+  if(cmdBusy) { msg('плата занята — дождитесь окончания', 'bad'); return; }
+  cmdBusy = true;
+  var long = (what === 'lights' || what === 'horn');
+  msg(long ? 'выполняется — около 8 секунд' : 'команда отправлена…');
+  render();
+  fetch(urlFor(what), {method:'POST', cache:'no-store'}).then(function(r){
+    if(r.status === 409){ msg('плата занята предыдущей командой', 'bad'); return; }
+    if(r.status === 400){ msg('команда отклонена платой', 'bad'); return; }
+    if(!r.ok && r.status !== 303 && r.status !== 200){ msg('ошибка ' + r.status, 'bad'); return; }
+    msg(long ? 'выполняется — около 8 секунд' : 'выполнено', 'good');
+    setTimeout(function(){ poll(true); }, long ? 9000 : 1500);
+  }).catch(function(){
+    msg('команда не отправлена', 'bad');
+  }).then(function(){
+    setTimeout(function(){ cmdBusy = false; render(); }, long ? 9000 : 1500);
+  });
+}
+
+// Commands need a short hold: it protects from an accidental touch in a pocket.
+function attachHold(btn){
+  var act = btn.dataset.act;
+  if(!act) return;
+  function start(e){
+    if(btn.disabled || cmdBusy) return;
+    e.preventDefault();
+    holdBtn = btn; btn.classList.add('holding');
+    holdTimer = setTimeout(function(){
+      holdTimer = null; holdBtn = null; btn.classList.remove('holding');
+      if(navigator.vibrate) try { navigator.vibrate(30); } catch(err) {}
+      run(act);
+    }, 600);
+  }
+  function cancel(){
+    if(holdTimer){ clearTimeout(holdTimer); holdTimer = null; }
+    if(holdBtn){ holdBtn.classList.remove('holding'); holdBtn = null; }
+  }
+  btn.addEventListener('pointerdown', start);
+  btn.addEventListener('pointerup', cancel);
+  btn.addEventListener('pointerleave', cancel);
+  btn.addEventListener('pointercancel', cancel);
+  btn.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+}
+
+document.querySelectorAll('button[data-act]').forEach(attachHold);
+document.getElementById('b-refresh').addEventListener('click', function(){ poll(true); });
 
 poll();
 setInterval(function(){ poll(); }, 4000);
