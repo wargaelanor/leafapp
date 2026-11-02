@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.02.82-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "Saved CAN commands with armed replay"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.03.83-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "Monitor: ID filter, no pull-to-refresh, clearer save"
 
 WebServer server(80);
 DNSServer dnsServer;
