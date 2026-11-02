@@ -52,6 +52,12 @@ html[data-theme="light"]{
 @font-face{font-family:'NissanBrand';src:url('fonts/nissan_light.ttf') format('truetype');font-weight:300;font-style:normal}
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;overscroll-behavior-y:contain}
+/* Inputs inherited the browser's black text on dark surfaces: set both the
+   text colour and the WebKit fill colour (password dots ignore `color`). */
+input,select,textarea{color:var(--text);background:var(--surface-2);font-family:inherit}
+input::placeholder,textarea::placeholder{color:var(--muted);opacity:1}
+input[type=password],input[type=search]{-webkit-text-fill-color:var(--text)}
+input[type=range]{background:transparent}
 body{background:var(--bg);font-family:'NissanBrand',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:var(--text);display:flex;justify-content:center}
 .app{width:100%;max-width:480px;height:100vh;height:100dvh;background:var(--bg);display:flex;flex-direction:column;position:relative;overflow:hidden}
 .appbar{height:48px;background:var(--surface-2);display:flex;align-items:center;padding:0 16px;flex-shrink:0;border-bottom:1px solid var(--line)}
@@ -233,9 +239,9 @@ html[data-theme="dark"] .dur-btns button.on{color:#08121a}
 .dev-error{min-height:18px;margin-top:8px;color:#d93025;font-size:12px}
 /* CAN monitor: one row per identifier, updated in place */
 .dev-monitor{margin:16px 0;padding:14px;background:var(--surface-2);border:1px solid var(--line);border-radius:8px}
-.dm-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.dm-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap}
 .dm-head strong{font-size:14px;color:var(--text)}
-.dm-actions{display:flex;gap:6px}
+.dm-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .dm-actions button,.dm-filters button{border:1px solid var(--line);background:var(--surface);color:var(--text-2);border-radius:6px;font:inherit;font-size:11.5px;padding:5px 9px;cursor:pointer}
 .dm-actions button:hover,.dm-filters button:hover{border-color:var(--accent)}
 .dm-filters{display:flex;gap:6px;align-items:center;margin-bottom:8px}
@@ -261,6 +267,9 @@ html[data-theme="dark"] .dm-filters button.on{color:#08121a}
 .dm-idfilter{flex:1;min-width:0;max-width:120px;margin-left:auto;padding:5px 8px;font:inherit;font-size:12px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text)}
 .dm-idfilter:focus{outline:none;border-color:var(--accent)}
 .dm-nosend{display:inline-block;width:32px;text-align:center;color:var(--muted-2)}
+.dm-hits{text-align:center;color:var(--muted)}
+.dm-hits.has{color:var(--accent);font-weight:700}
+.dm-marks{margin:-2px 0 8px;font-size:11px;color:var(--muted)}
 .dm-count{margin-left:8px;font-size:11px;color:var(--muted);white-space:nowrap}
 .rp-list{display:grid;gap:6px}
 .rp-empty{font-size:12px;color:var(--muted);text-align:center;padding:10px 0}
@@ -836,6 +845,7 @@ body.demo .demo-banner{display:block}
             <strong>CAN-монитор</strong>
             <div class="dm-actions">
               <button id="dm-pause" type="button" onclick="canWatchTogglePause()">Пауза</button>
+              <button id="dm-mark" type="button" onclick="canWatchMark()">Отметить нажатие</button>
               <button type="button" onclick="canWatchReset()">Сброс</button>
               <button type="button" onclick="canWatchCopy()">Копировать</button>
             </div>
@@ -848,13 +858,15 @@ body.demo .demo-banner{display:block}
                    placeholder="ID" oninput="canWatchSetIdFilter(this.value)">
             <span class="dm-count" id="dm-count">0 ID</span>
           </div>
+          <div class="dm-marks" id="dm-marks">Отметок: 0 · нажмите «Отметить нажатие» перед каждым нажатием кнопки в машине</div>
           <div class="dm-wrap">
             <table class="dm-table">
-              <thead><tr><th>Шина</th><th>ID</th><th>Данные</th><th>Изм.</th><th>Δ</th><th></th></tr></thead>
+              <thead><tr><th>Шина</th><th>ID</th><th>Данные</th><th>Изм.</th><th>Δ</th><th>Наж.</th><th></th></tr></thead>
               <tbody id="dm-rows"><tr><td colspan="5" class="dm-empty">Ждём кадры…</td></tr></tbody>
             </table>
           </div>
           <div class="hint" style="margin-top:8px">Каждая строка — один ID. Значение меняется на месте; подсвечивается строка, где изменения идут прямо сейчас. Нажмите кнопку в машине несколько раз и смотрите, какие ID реагируют.</div>
+          <div class="hint" style="margin-top:4px">Кнопка <b>«Отметить нажатие»</b> открывает окно 1,5 с: все ID, которые изменились в этот момент, получают отметку в колонке <b>«Наж.»</b>. Нажмите её перед каждым нажатием кнопки в машине — и сразу видно, какие ID реагируют.</div>
           <div class="hint" style="margin-top:4px">Чтобы сохранить кадр как команду, нажмите <b>«＋»</b> справа в нужной строке и введите название. Фильтр по ID — в поле рядом с кнопками CAR/EV (достаточно части номера, например <b>1D6</b>).</div>
         </div>
         <div class="dev-monitor">
@@ -2075,6 +2087,44 @@ let canWatchBus = 'all';
 let canWatchIdFilter = '';
 let canWatchData = [];
 
+// Press tracking: each "Отметить нажатие" opens a 1.5 s window; every ID whose
+// value changed inside that window gets a hit for this press. That is how you
+// tell which frames belong to the button you keep pressing in the car.
+const MARK_WINDOW_MS = 1500;
+let markWindows = [];
+let markHits = {};
+let markCount = 0;
+
+function canWatchMark(){
+  const now = Date.now();
+  markWindows.push({ t0: now, t1: now + MARK_WINDOW_MS, seen: {} });
+  if(markWindows.length > 40) markWindows.shift();
+  markCount++;
+  canWatchMarkLine();
+  if(navigator.vibrate) try { navigator.vibrate(30); } catch(e) {}
+}
+function canWatchScoreMarks(){
+  if(!markWindows.length) return;
+  const now = Date.now();
+  for(const row of canWatchData){
+    const last = now - row.ms;
+    const key = row.b + ':' + row.id;
+    for(const w of markWindows){
+      if(last < w.t0 || last > w.t1 || w.seen[key]) continue;
+      w.seen[key] = true;
+      markHits[key] = (markHits[key] || 0) + 1;
+    }
+  }
+  markWindows = markWindows.filter(w => now <= w.t1);
+}
+function canWatchMarkLine(){
+  const el = $('dm-marks');
+  if(!el) return;
+  el.textContent = markCount
+    ? 'Отметок: ' + markCount + ' · колонка «Наж.» показывает, на скольких нажатиях менялся ID'
+    : 'Отметок: 0 · нажмите «Отметить нажатие» перед каждым нажатием кнопки в машине';
+}
+
 function canWatchStart(){
   if(canWatchTimer) return;
   canWatchPoll();
@@ -2095,6 +2145,7 @@ async function canWatchPoll(){
     const r = await fetch('/api/developer/canwatch', {cache:'no-store'});
     if(r.status === 401){ developerShowLogin(); canWatchStop(); return; }
     canWatchData = await r.json();
+    canWatchScoreMarks();
     canWatchRender();
   }catch(e){}
 }
@@ -2130,7 +2181,7 @@ function canWatchRender(){
   const rows = canWatchRows();
   $('dm-count').textContent = rows.length + ' ID';
   if(!rows.length){
-    body.innerHTML = '<tr><td colspan="6" class="dm-empty">Ждём кадры…</td></tr>';
+    body.innerHTML = '<tr><td colspan="7" class="dm-empty">Ждём кадры…</td></tr>';
     return;
   }
   body.innerHTML = rows.map(row=>{
@@ -2139,12 +2190,14 @@ function canWatchRender(){
     const addCell = row.b === 'B'
       ? '<button type="button" title="Сохранить как команду" onclick="replaySaveRow(\''+row.b+'\','+row.id+',\''+(row.d||'')+'\')">＋</button>'
       : '<span class="dm-nosend" title="EV-CAN работает только на приём">—</span>';
+    const hits = markHits[row.b + ':' + row.id] || 0;
     return '<tr'+hot+'>'+
       '<td>'+row.b+'</td>'+
       '<td>'+('000'+row.id.toString(16).toUpperCase()).slice(-3)+'</td>'+
       '<td class="dm-data">'+(row.d||'—')+'</td>'+
       '<td class="dm-n">'+row.n+'</td>'+
       '<td class="dm-age">'+canWatchAge(row.ms)+'</td>'+
+      '<td class="dm-hits'+(hits?' has':'')+'">'+(hits||'')+'</td>'+
       '<td class="dm-add">'+addCell+'</td>'+
       '</tr>';
   }).join('');
@@ -2154,6 +2207,10 @@ async function canWatchReset(){
     const r = await fetch('/api/developer/canwatch/reset',{method:'POST'});
     if(r.status === 401){ developerShowLogin(); return; }
     canWatchData = [];
+    markWindows = [];
+    markHits = {};
+    markCount = 0;
+    canWatchMarkLine();
     canWatchRender();
     toast('Монитор очищен');
   }catch(e){}
