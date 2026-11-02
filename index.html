@@ -1426,6 +1426,26 @@ function tripGetAll(){
     r.onerror=()=>rej(r.error);
   });
 }
+// History is kept in the phone's browser storage, so it must not grow forever.
+// Points are dropped when a trip closes; the list itself is capped here.
+const TRIP_KEEP=500;        // trips kept on the phone
+const TRIP_MAX_POINTS=4000; // sanity cap for one very long drive
+function tripDelete(ids){
+  return new Promise((res,rej)=>{
+    if(!tripDB||!ids.length) return res();
+    const tx=tripDB.transaction(TRIP_STORE,'readwrite');
+    const st=tx.objectStore(TRIP_STORE);
+    ids.forEach(id=>st.delete(id));
+    tx.oncomplete=()=>res();
+    tx.onerror=()=>rej(tx.error);
+  });
+}
+async function tripPrune(){
+  const all=await tripGetAll();
+  const done=all.filter(t=>t.endMs!=null).sort((a,b)=>b.startMs-a.startMs);
+  if(done.length<=TRIP_KEEP) return;
+  await tripDelete(done.slice(TRIP_KEEP).map(t=>t.id));
+}
 function tripClearAll(){
   return new Promise((res,rej)=>{
     if(!tripDB) return res();
@@ -1496,13 +1516,19 @@ function tripEnd(now, reason){
   trip.odoEnd=(S.odo>0?S.odo:null);
   Object.assign(trip,sum);
   trip.distKm=tripDistanceKm(trip, sum);
-  // discard junk trips (too short and no distance)
-  if(durSec<20 && (trip.distKm||0)<0.05){ trip=null; return; }
+  // discard junk trips (too short and no distance) — and delete the stub that
+  // tripStart() already wrote, otherwise it came back later as a 0 km trip
+  if(durSec<20 && (trip.distKm||0)<0.05){ const id=trip.id; trip=null; tripDelete([id]); return; }
+  // The summary is final; the points are the bulk of the record (a long trip is
+  // hundreds of them). Keeping only the summary keeps history small forever.
+  trip.points=[];
   tripPut(trip);
   trip=null;
   refreshTripsScreen();
+  tripPrune();
 }
 function tripRecordPoint(now){
+  if(trip.points.length>=TRIP_MAX_POINTS) return;   // long drive: keep the first ones
   const p={ t:now,
     lat: tripHasGps()?S.gps.lat:null, lon: tripHasGps()?S.gps.lon:null,
     spd:(S.gps&&S.gps.spd)||0, v:S.packValid?S.v:null, i:S.packValid?S.i:null,
@@ -1646,6 +1672,24 @@ function chgGetAll(){
     r.onerror=()=>rej(r.error);
   });
 }
+const CHG_KEEP=300;
+const CHG_MAX_POINTS=4000;
+function chgDelete(ids){
+  return new Promise((res,rej)=>{
+    if(!chgDB||!ids.length) return res();
+    const tx=chgDB.transaction(CHG_STORE,'readwrite');
+    const st=tx.objectStore(CHG_STORE);
+    ids.forEach(id=>st.delete(id));
+    tx.oncomplete=()=>res();
+    tx.onerror=()=>rej(tx.error);
+  });
+}
+async function chgPrune(){
+  const all=await chgGetAll();
+  const done=all.filter(c=>c.endMs!=null).sort((a,b)=>b.startMs-a.startMs);
+  if(done.length<=CHG_KEEP) return;
+  await chgDelete(done.slice(CHG_KEEP).map(c=>c.id));
+}
 function chgClearAll(){
   return new Promise((res,rej)=>{
     if(!chgDB) return res();
@@ -1691,13 +1735,16 @@ function chargeEnd(now, reason){
   chg.endReason=reason;
   chg.endState=S.charger||'';
   Object.assign(chg,sum);
-  // discard junk sessions (too short / no energy)
-  if(durSec<30 && (sum.energyWh||0)<0.01){ chg=null; return; }
+  // discard junk sessions (too short / no energy) and remove the stub record
+  if(durSec<30 && (sum.energyWh||0)<0.01){ const id=chg.id; chg=null; chgDelete([id]); return; }
+  chg.points=[];   // the summary is what the list shows
   chgPut(chg);
   chg=null;
   refreshChargesScreen();
+  chgPrune();
 }
 function chargeRecordPoint(now){
+  if(chg.points.length>=CHG_MAX_POINTS) return;
   chg.points.push({ t:now, soc:S.soc>=0?S.soc:null,
     v:S.packValid?S.v:null, i:S.packValid?S.i:null });
   chgLastPointMs=now;
@@ -1896,9 +1943,14 @@ async function boot(){
   setDuration(parseInt(localStorage.getItem('leafdur'),10));
   render();
   tripOpenDB().then(db=>{ tripDB=db; return tripCleanupOrphans(); })
+    .then(()=>tripPrune())
     .then(()=>refreshTripsScreen()).catch(()=>{});
   chargeOpenDB().then(db=>{ chgDB=db; return chargeCleanupOrphans(); })
+    .then(()=>chgPrune())
     .then(()=>refreshChargesScreen()).catch(()=>{});
+  // Ask the browser to keep the stored history instead of evicting it when the
+  // phone runs low on space.
+  if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{});
   setInterval(()=>{ tripTick(); chargeTick(); updateBadge(); }, 15000); // stale/idle check even when no messages arrive
   if('serviceWorker' in navigator && location.protocol==='https:'){
     navigator.serviceWorker.register('sw.js').catch(()=>{});
