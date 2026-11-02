@@ -106,7 +106,10 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, bool ovmsConnected,
   server.sendContent(F("><span>MQTT-брокер</span></label>\n"
     "<label class='remote-choice'><input type='radio' name='remote_mode' value='2'"));
   if (remoteMode == RemoteTransport::OVMS_V2) server.sendContent(F(" checked"));
-  server.sendContent(F("><span>OVMS Server V2</span></label></div>\n"
+  server.sendContent(F("><span>OVMS Server V2</span></label>\n"
+    "<label class='remote-choice'><input type='radio' name='remote_mode' value='3'"));
+  if (remoteMode == RemoteTransport::CALL) server.sendContent(F(" checked"));
+  server.sendContent(F("><span>Только звонок</span></label></div>\n"
     "<div class='remote-panel' data-remote-panel='1' hidden>\n"
     "<div class='remote-panel-title'>MQTT-брокер</div>\n"));
 
@@ -190,6 +193,13 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, bool ovmsConnected,
   server.sendContent(F("</div>\n"
     "<div class='hint'>Server password — пароль автомобиля на сервере. Пароль модуля должен совпадать с полем Module Password в приложении и включает paranoid-шифрование данных и команд.</div>\n"
     "<div class='hint'>TLS доступен через Wi-Fi. Текущий SIM800 TCP-клиент поддерживает OVMS V2 только без TLS.</div>\n"
+    "</div>\n"
+    "<div class='remote-panel' data-remote-panel='3' hidden>\n"
+    "<div class='remote-panel-title'>Только звонок</div>\n"
+    "<div class='hint'>Управление идёт только голосовым звонком с разрешённого номера: климат включается и выключается по звонку, приложение и интернет-сервисы не используются. "
+    "Модем между звонками спит и просыпается сам при входящем вызове, поэтому расход энергии минимальный. "
+    "Wi-Fi при этом остаётся включённым: страница платы и интернет через вашу сеть работают как обычно.</div>\n"
+    "<div class='hint'>Разрешённые номера задаются в разделе «Модем и звонки». Без номера в списке звонок будет отклонён.</div>\n"
     "</div>\n"
     "<button type='submit' class='btn btn-save'>Сохранить и перезагрузить</button>\n"
     "</div></details>\n"

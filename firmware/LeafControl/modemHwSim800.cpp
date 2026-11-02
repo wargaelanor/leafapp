@@ -253,6 +253,14 @@ void hwBegin() {
 
 bool hwTestAt(uint32_t timeoutMs) { return commandOk("AT", timeoutMs); }
 
+// SIM800 sleep. CSCLK=2 lets the module sleep on its own and wake when the
+// host sends data or when a call/SMS arrives, so polling still works and RI
+// signals an incoming call. It needs no DTR line, which this board lacks.
+void hwSetSleep(bool enable) {
+  commandOk(enable ? "AT+CSCLK=2" : "AT+CSCLK=0", 1500);
+  Serial.printf("[call] modem sleep %s\n", enable ? "on (CSCLK=2)" : "off");
+}
+
 bool hwSimReady() {
   String response;
   return commandOk("AT+CPIN?", 3000, &response) && response.indexOf("READY") >= 0;

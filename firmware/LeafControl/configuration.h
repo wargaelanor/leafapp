@@ -20,7 +20,10 @@ void factoryReset();
 enum class RemoteTransport : uint8_t {
     OFF = 0,
     MQTT = 1,
-    OVMS_V2 = 2
+    OVMS_V2 = 2,
+    // Only the GSM module is used, and only to receive calls that trigger
+    // commands. No data connection at all; the web UI still works over Wi-Fi.
+    CALL = 3
 };
 
 RemoteTransport getRemoteTransport();

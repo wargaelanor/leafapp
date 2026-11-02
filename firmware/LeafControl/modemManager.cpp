@@ -16,6 +16,9 @@ static const uint32_t ATTACH_SIM_TIMEOUT_MS = 15000;
 static const uint32_t ATTACH_NET_TIMEOUT_MS = 120000;
 static const uint8_t SIM800_RI_PIN = 37;
 static const uint32_t CALL_POLL_MS = 1000;
+// In call-only mode the modem is polled rarely unless the RI line says a call
+// is coming in; the module itself can sleep in between.
+static const uint32_t CALL_POLL_SLOW_MS = 15000;
 
 static volatile uint8_t stateVal = (uint8_t)ModemState::OFF;
 static volatile bool taskBusy = false;
@@ -64,8 +67,18 @@ static bool hwGprsConnect(const char* apn, const char* u, const char* p) {
 }
 static bool hwGprsDisconnect() { return modem800::hwGprsDisconnect(); }
 
+static bool callOnlyMode() {
+  return getRemoteTransport() == RemoteTransport::CALL;
+}
+
+// In call-only mode the modem must run even if the generic modem switch is off:
+// it exists solely to receive calls.
+static bool modemShouldRun() {
+  return getModemEnable() || callOnlyMode();
+}
+
 static bool callControlEnabled() {
-  return getModemEnable() && getModemCallEnabled();
+  return callOnlyMode() || (getModemEnable() && getModemCallEnabled());
 }
 
 static String normalizePhone(const char* value) {
@@ -100,7 +113,8 @@ static void attachTask(void*) {
   setState(ModemState::STARTING);
   Serial.println("[modem] attach start (SIM800)");
 
-  bool needData = WiFi.status() != WL_CONNECTED;
+  // Call-only mode never needs a data connection, even without Wi-Fi.
+  bool needData = (WiFi.status() != WL_CONNECTED) && !callOnlyMode();
   if (needData && strlen(apnFor()) == 0) {
     attachFailed("[modem] APN empty — cannot attach");
     return;
@@ -199,6 +213,9 @@ static void standbyTask(void*) {
   mqttDisconnect();
   hwGprsDisconnect();
   modem800::hwPrepareVoiceCalls();
+  // Call-only mode: let the module sleep between calls. It wakes by itself on
+  // an incoming call (RI) or when we send the next AT command.
+  if (callOnlyMode()) modem800::hwSetSleep(true);
   setState(ModemState::STANDBY);
   wifiUpSinceMs = 0;
   taskBusy = false;
@@ -229,6 +246,8 @@ static void callTask(void*) {
   }
 
   setState(WiFi.status() == WL_CONNECTED ? ModemState::STANDBY : ModemState::READY);
+  // Back to sleep right after the call so the module is not left awake.
+  if (callOnlyMode()) modem800::hwSetSleep(true);
   taskBusy = false;
   vTaskDelete(NULL);
 }
@@ -248,7 +267,7 @@ static bool startTask(TaskFunction_t fn) {
 }
 
 void modemInit() {
-  if (!getModemEnable()) {
+  if (!modemShouldRun()) {
     Serial.println("[modem] disabled");
     return;
   }
@@ -285,7 +304,7 @@ void modemTick() {
     }
   }
 
-  if (!getModemEnable()) {
+  if (!modemShouldRun()) {
     if ((st == ModemState::READY || st == ModemState::STANDBY || st == ModemState::FAILED) && !taskBusy) {
       startTask(stopTask);
     }
@@ -296,15 +315,22 @@ void modemTick() {
   unsigned long now = millis();
 
   if (callControlEnabled() && (st == ModemState::READY || st == ModemState::STANDBY) &&
-      !taskBusy && now - lastCallPollMs >= CALL_POLL_MS) {
-    lastCallPollMs = now;
-    String caller;
-    if (modem800::hwIncomingCaller(&caller, 700)) {
-      pendingCaller = caller;
-      Serial.printf("[call] incoming caller %s detected by AT+CLCC\n", caller.c_str());
-      mqttDisconnect();
-      startTask(callTask);
-      return;
+      !taskBusy) {
+    // RI goes low while the phone rings. Watching the pin costs nothing and
+    // lets the module stay in its own sleep mode between calls; without a ring
+    // the modem is polled rarely instead of every second.
+    bool ringing = (digitalRead(SIM800_RI_PIN) == LOW);
+    unsigned long pollMs = callOnlyMode() ? CALL_POLL_SLOW_MS : CALL_POLL_MS;
+    if (ringing || now - lastCallPollMs >= pollMs) {
+      lastCallPollMs = now;
+      String caller;
+      if (modem800::hwIncomingCaller(&caller, 700)) {
+        pendingCaller = caller;
+        Serial.printf("[call] incoming caller %s detected by AT+CLCC\n", caller.c_str());
+        mqttDisconnect();
+        startTask(callTask);
+        return;
+      }
     }
   }
 
