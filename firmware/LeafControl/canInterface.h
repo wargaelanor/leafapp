@@ -59,6 +59,8 @@ struct CANMessage {
 // Can implementation interface (definitions platform specific):
 // Returns false if the frame was dropped (bus-off / stopped / TX full).
 bool sendCAN(uint32_t id, const uint8_t* data, uint8_t len);
+// Bypasses the TX whitelist. Only for the armed developer replay path.
+bool sendCANForced(uint32_t id, const uint8_t* data, uint8_t len);
 
 template <size_t N>
 bool sendCAN(const CANMessage<N> &message) {

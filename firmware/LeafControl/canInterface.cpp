@@ -36,7 +36,7 @@ void print_can_message(twai_message_t &message) {
 
 // Helper function to send CAN message. Returns false if the frame was dropped
 // (bus-off / stopped / TX queue full) so callers can retry the step.
-bool sendCAN(uint32_t id,const uint8_t* data, uint8_t len) {
+static bool sendCANInternal(uint32_t id, const uint8_t* data, uint8_t len, bool bypassWhitelist) {
 #if LEAF_CAN_RX_ONLY
   // Software interlock in addition to TWAI_MODE_LISTEN_ONLY. This blocks web,
   // MQTT, modem/call, timer refresh, VIN/ISO-TP and sequence TX paths.
@@ -101,7 +101,7 @@ bool sendCAN(uint32_t id,const uint8_t* data, uint8_t len) {
     allowed = memcmp(data, vinObdRequest, sizeof(vinObdRequest)) == 0 ||
               memcmp(data, vinObdFlowControl, sizeof(vinObdFlowControl)) == 0;
   }
-  if (!allowed) {
+  if (!allowed && !bypassWhitelist) {
     Serial.printf("! CAN TX blocked by whitelist: 0x%03lX len=%u\n",
                   (unsigned long)id, len);
     canLoggerAppend('B', '!', id, data, len);
@@ -251,6 +251,16 @@ uint8_t canBusRxErrors() {
   return status.rx_error_counter;
 }
 
+bool sendCAN(uint32_t id, const uint8_t* data, uint8_t len) {
+  return sendCANInternal(id, data, len, false);
+}
+
+// Research path: used only by the developer "saved commands" feature, which is
+// armed explicitly for a short time from the web UI. Everything else in the
+// firmware still goes through the whitelist above.
+bool sendCANForced(uint32_t id, const uint8_t* data, uint8_t len) {
+  return sendCANInternal(id, data, len, true);
+}
 void resetCanLogTimestamps() {
   logStartTime = millis();
 }

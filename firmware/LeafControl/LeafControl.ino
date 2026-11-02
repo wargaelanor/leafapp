@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.02.81-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "Developer CAN monitor: one row per ID"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.02.82-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "Saved CAN commands with armed replay"
 
 WebServer server(80);
 DNSServer dnsServer;
@@ -482,6 +482,74 @@ void handleCanWatchReset() {
   if (!requireDeveloperAuth()) return;
   canWatchReset();
   server.send(200, "application/json", "{\"ok\":true}");
+}
+
+// --- developer: armed frame replay ---------------------------------------
+// Saved commands are stored in the browser. The board only sends them while
+// the user explicitly armed replay for ten minutes, and only on CAR-CAN.
+static unsigned long replayArmedUntilMs = 0;
+
+static bool replayArmed() {
+  return replayArmedUntilMs != 0 && (int32_t)(replayArmedUntilMs - millis()) > 0;
+}
+
+void handleReplayArm() {
+  if (!requireDeveloperAuth()) return;
+  replayArmedUntilMs = millis() + 10UL * 60UL * 1000UL;
+  server.send(200, "application/json", "{\"ok\":true,\"minutes\":10}");
+}
+
+void handleReplayDisarm() {
+  if (!requireDeveloperAuth()) return;
+  replayArmedUntilMs = 0;
+  server.send(200, "application/json", "{\"ok\":true}");
+}
+
+void handleReplaySend() {
+  if (!requireDeveloperAuth()) return;
+  if (!replayArmed()) {
+    server.send(403, "application/json", "{\"error\":\"not_armed\"}");
+    return;
+  }
+  if (!server.hasArg("id") || !server.hasArg("d")) {
+    server.send(400, "application/json", "{\"error\":\"bad_request\"}");
+    return;
+  }
+  uint32_t id = strtoul(server.arg("id").c_str(), nullptr, 16);
+  if (id == 0 || id > 0x7FF) {
+    server.send(400, "application/json", "{\"error\":\"bad_id\"}");
+    return;
+  }
+  String hex = server.arg("d");
+  hex.replace(" ", "");
+  uint8_t data[8];
+  uint8_t len = 0;
+  for (size_t i = 0; i + 1 < hex.length() && len < 8; i += 2) {
+    data[len++] = (uint8_t)strtoul(hex.substring(i, i + 2).c_str(), nullptr, 16);
+  }
+  if (len == 0) {
+    server.send(400, "application/json", "{\"error\":\"empty\"}");
+    return;
+  }
+  uint8_t repeats = 1;
+  if (server.hasArg("n")) {
+    long v = server.arg("n").toInt();
+    if (v > 0 && v <= 20) repeats = (uint8_t)v;
+  }
+  uint16_t gap = 100;
+  if (server.hasArg("gap")) {
+    long v = server.arg("gap").toInt();
+    if (v >= 20 && v <= 500) gap = (uint16_t)v;
+  }
+  uint8_t sent = 0;
+  for (uint8_t i = 0; i < repeats; i++) {
+    if (sendCANForced(id, data, len)) sent++;
+    if (i + 1 < repeats) delay(gap);
+  }
+  char buf[96];
+  snprintf(buf, sizeof(buf), "{\"ok\":true,\"sent\":%u,\"repeats\":%u,\"id\":\"0x%03lX\"}",
+           (unsigned)sent, (unsigned)repeats, (unsigned long)id);
+  server.send(200, "application/json", buf);
 }
 
 void handleCanLogStatus() {
@@ -1594,6 +1662,9 @@ for (size_t i = 0; i < WEBAPP_ASSET_COUNT; i++) {
       server.on("/api/developer/canlog", HTTP_GET, handleCanLogStatus);
       server.on("/api/developer/canwatch", HTTP_GET, handleCanWatch);
       server.on("/api/developer/canwatch/reset", HTTP_POST, handleCanWatchReset);
+      server.on("/api/developer/replay", HTTP_POST, handleReplaySend);
+      server.on("/api/developer/replay/arm", HTTP_POST, handleReplayArm);
+      server.on("/api/developer/replay/disarm", HTTP_POST, handleReplayDisarm);
       server.on("/api/developer/vin_probe", HTTP_POST, handleVinProbe);
       server.on("/api/developer/canlog/start", HTTP_POST, handleCanLogStart);
       server.on("/api/developer/canlog/stop", HTTP_POST, handleCanLogStop);
