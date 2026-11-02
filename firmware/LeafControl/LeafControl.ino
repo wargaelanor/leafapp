@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.10.30.72-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "Climate duration buttons and countdown bar"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.02.73-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "Gzip page, AP-aware Wi-Fi, no demo in firmware"
 
 WebServer server(80);
 DNSServer dnsServer;
@@ -241,17 +241,26 @@ void handleRoot() {
   noteUserActivity();
   // A disconnected client must not hold the single-threaded WebServer for
   // 5 seconds per chunk. Abort this response on the first short write.
-  const size_t htmlLen = sizeof(INDEX_HTML) - 1;
+  // The page is sent gzipped when the browser accepts it: over the board's own
+  // access point the uncompressed 100 KB took minutes, the gzip copy is ~25 KB.
   NetworkClient& client = server.client();
-  client.setTimeout(750);
+  client.setTimeout(2000);
+  String accept = server.header("Accept-Encoding");
+  accept.toLowerCase();
+  bool useGzip = accept.indexOf("gzip") >= 0;
+  const unsigned char* body = useGzip ? INDEX_HTML_GZ : (const unsigned char*)INDEX_HTML;
+  const size_t htmlLen = useGzip ? INDEX_HTML_GZ_LEN : sizeof(INDEX_HTML) - 1;
   server.setContentLength(htmlLen);
+  server.sendHeader("Vary", "Accept-Encoding");
+  if (useGzip) server.sendHeader("Content-Encoding", "gzip");
   server.send(200, "text/html; charset=utf-8", "");
-  for (size_t offset = 0; offset < htmlLen; offset += 1024) {
+  size_t chunkIndex = 0;
+  for (size_t offset = 0; offset < htmlLen; offset += 2048) {
     if (!client.connected()) break;
     size_t chunk = htmlLen - offset;
-    if (chunk > 1024) chunk = 1024;
-    if (client.write_P(INDEX_HTML + offset, chunk) != chunk) break;
-    delay(0);
+    if (chunk > 2048) chunk = 2048;
+    if (client.write_P((const char*)body + offset, chunk) != chunk) break;
+    if ((++chunkIndex & 3) == 0) delay(0);   // yield every 8 KB
   }
   client.stop();
 }
@@ -1360,6 +1369,15 @@ void manageWiFi() {
     // alive (AP beaconing, visible from a phone) while being unreachable on
     // the network. Back off instead, and restart the radio if it stays dead.
     unsigned long interval = retryBackoffMs[retryStep > 3 ? 3 : retryStep];
+    // Someone is configuring the board through its own access point. A missing
+    // STA is then expected (that is why they use the AP), and hammering it
+    // steals radio time from the page they are trying to open. Worse, the
+    // 5-minute radio restart below would drop their connection mid-load.
+    if (WiFi.softAPgetStationNum() > 0) {
+      staDownSinceMs = currentTime;
+      wifiStaDownSinceMs = 0;
+      return;
+    }
     if (currentTime - previousAttemptTime >= interval) {
       if (currentTime - staDownSinceMs >= 300000UL) {
         Serial.println("WiFi: STA down for 5 min, restarting the radio");
@@ -1625,7 +1643,10 @@ void loop() {
   // Never start MQTT/OVMS connect work while a firmware upload is running:
   // a broker connect blocks the loop for seconds, which starves the HTTP
   // server task and aborts the multipart upload mid-transfer.
-  if (activeSequence == CanSequence::NONE && !otaInProgress) {
+  // Without an uplink the MQTT/TLS connect attempts just block the loop for
+  // seconds each time, which makes the page crawl when the board is reached
+  // through its own access point.
+  if (activeSequence == CanSequence::NONE && !otaInProgress && WiFi.status() == WL_CONNECTED) {
     manageMQTT();
     manageOvmsV2();
   }

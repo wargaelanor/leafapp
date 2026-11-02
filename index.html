@@ -244,9 +244,11 @@ html[data-theme="dark"] .dur-btns button.on{color:#08121a}
 .settings-availability i{width:8px;height:8px;border-radius:50%;background:var(--muted-2);flex:0 0 auto}
 .seq-banner{background:rgba(255,149,0,.14);color:#b45309;text-align:center;font-size:13px;padding:8px;display:none}
 .seq-banner.show{display:block}
+/*DEMO-BEGIN*/
 .demo-banner{display:none;background:var(--accent);color:#fff;font-size:12.5px;padding:7px 12px;text-align:center;letter-spacing:.2px}
 .demo-banner a{color:#fff;font-weight:600;margin-left:6px}
 body.demo .demo-banner{display:block}
+/*DEMO-END*/
 .trip-summary{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:12px 16px}
 .trip-summary .cell{background:var(--surface);border-radius:8px;padding:12px 8px;box-shadow:0 1px 3px rgba(0,0,0,.06);text-align:center}
 .trip-summary .cell .num{font-size:20px;color:var(--text);font-weight:600}
@@ -321,10 +323,12 @@ body.demo .demo-banner{display:block}
     </div>
   </div>
   <div class="seq-banner" id="seq-banner">Выполняется команда…</div>
+  <!--DEMO-BEGIN-->
   <div class="demo-banner" id="demo-banner">
     Демо-режим · данные условные, команды не отправляются
     <a href="?" id="demo-exit">выйти</a>
   </div>
+  <!--DEMO-END-->
 
   <div class="screens" id="screens">
     <!-- ГАРАЖ -->
@@ -610,11 +614,13 @@ body.demo .demo-banner{display:block}
         О приложении
         <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
       </div>
+      <!--DEMO-BEGIN-->
       <div class="more-item" onclick="location.href='?demo=1'">
         <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M10 8.5l6 3.5-6 3.5z" fill="currentColor" stroke="none"/></svg></div>
         Демо-режим
         <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
       </div>
+      <!--DEMO-END-->
       <div class="section-title">Режим</div>
       <div class="more-item" style="border-bottom:none">
         <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 12.55a11 11 0 0114.08 0M1.42 9a16 16 0 0121.16 0M8.53 16.11a6 6 0 016.95 0M12 20h.01"/></svg></div>
@@ -713,7 +719,7 @@ body.demo .demo-banner{display:block}
           <li><strong>Светлая и тёмная тема.</strong> Оформление подстраивается под настройку телефона автоматически.</li>
           <li><strong>Три способа связи.</strong> Без подключения (только локально), MQTT-брокер или OVMS Server V2 — выбирается в настройках платы. Приложение ставится на главный экран телефона.</li>
           <li><strong>История.</strong> Поездки и сеансы зарядки сохраняются на телефоне и показываются со статистикой.</li>
-          <li><strong>Демо-режим.</strong> Позволяет пройтись по всем экранам и кнопкам без автомобиля — данные условные, команды никуда не отправляются.</li>
+          <!--DEMO-BEGIN--><li><strong>Демо-режим.</strong> Позволяет пройтись по всем экранам и кнопкам без автомобиля — данные условные, команды никуда не отправляются.</li><!--DEMO-END-->
           <li><strong>Обновление по Wi-Fi.</strong> Прошивка обновляется со страницы платы, разбирать устройство не нужно.</li>
         </ul>
       </section>
@@ -1193,6 +1199,7 @@ function pressFx(type){
   el.classList.add('flash');
   setTimeout(()=>el.classList.remove('flash'),200);
 }
+/*DEMO-BEGIN*/
 // ---------- demo mode (?demo=1) ----------
 // Everything runs on simulated data: no network calls, no commands to a car.
 // Scenarios rotate by themselves so every screen and every button can be shown
@@ -1267,6 +1274,7 @@ function demoStart(){
   demoApplyStep();
   setInterval(demoApplyStep, 1000);
 }
+/*DEMO-END*/
 
 function cmd(type, quiet){
   if(DEMO) return demoCommand(type, quiet);

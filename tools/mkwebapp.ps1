@@ -9,6 +9,16 @@ $app = if (Test-Path (Join-Path $root 'index.html')) { $root } else { Join-Path 
 if (-not $Out) { $Out = Join-Path $root 'firmware\LeafControl\webapp_html.h' }
 
 $html = [System.IO.File]::ReadAllText((Join-Path $app 'index.html'), [System.Text.Encoding]::UTF8)
+
+# Demo mode is a showcase for the PWA on the web only: strip it from the copy
+# that lives in the board's flash (it costs space and is never used there).
+$html = [regex]::Replace($html, '(?s)/\*DEMO-BEGIN\*/.*?/\*DEMO-END\*/', '')
+$html = [regex]::Replace($html, '(?s)<!--DEMO-BEGIN-->.*?<!--DEMO-END-->', '')
+$html = $html.Replace("let mode = 'local';", "const DEMO = false;`nlet mode = 'local';")
+# Drop the (now removed) demo hooks so the board copy has no dead references.
+$html = [regex]::Replace($html, '(?m)^[ \t]*if\(DEMO\) return demoCommand\(type, quiet\);\r?\n', '')
+$html = [regex]::Replace($html, '(?m)^[ \t]*if\(DEMO\)\{ demoStart\(\); return; \}\r?\n', '')
+
 if ($html -match '\)"rawliteral') { throw 'index.html contains rawliteral terminator - change delimiter' }
 # Keep the source readable, but omit indentation and empty lines from the
 # embedded copy. On the SIM800 build every saved byte matters near the OTA
@@ -25,6 +35,21 @@ $hex = for ($i = 0; $i -lt $img.Length; $i++) {
   '0x{0:x2},' -f $img[$i]
 }
 
+# Gzip copy of the page. The board is often reached through its own access
+# point, where throughput is poor; a compressed body is about a quarter of the
+# size and loads several times faster.
+$htmlBytes = [System.Text.Encoding]::UTF8.GetBytes($html)
+$ms = New-Object System.IO.MemoryStream
+$gz = New-Object System.IO.Compression.GZipStream($ms, [System.IO.Compression.CompressionLevel]::Optimal, $true)
+$gz.Write($htmlBytes, 0, $htmlBytes.Length)
+$gz.Dispose()
+$gzBytes = $ms.ToArray()
+$ms.Dispose()
+$gzHex = for ($i = 0; $i -lt $gzBytes.Length; $i++) {
+  if ($i % 16 -eq 0) { "`n  " } else { ' ' }
+  '0x{0:x2},' -f $gzBytes[$i]
+}
+
 $sb = New-Object System.Text.StringBuilder
 [void]$sb.AppendLine('// GENERATED FILE - do not edit. Run tools/mkwebapp.ps1')
 [void]$sb.AppendLine('#ifndef WEBAPP_HTML_H')
@@ -34,16 +59,15 @@ $sb = New-Object System.Text.StringBuilder
 [void]$sb.AppendLine('static const char INDEX_HTML[] PROGMEM = R"rawliteral(')
 [void]$sb.Append($html)
 [void]$sb.AppendLine(')rawliteral";')
+[void]$sb.AppendLine('static const unsigned char INDEX_HTML_GZ[] PROGMEM = {' + ($gzHex -join '') + '};')
+[void]$sb.AppendLine(('static const size_t INDEX_HTML_GZ_LEN = {0};' -f $gzBytes.Length))
 [void]$sb.AppendLine()
 [void]$sb.AppendLine('static const unsigned char LEAF_IMG[] PROGMEM = {' + ($hex -join '') + '};')
 [void]$sb.AppendLine(('static const size_t LEAF_IMG_LEN = {0};' -f $img.Length))
 [void]$sb.AppendLine(('static const char LEAF_IMG_TYPE[] PROGMEM = "{0}";' -f $imgType))
 [void]$sb.AppendLine()
 
-# Status-picture overlays and the two web fonts. Everything is served from the
-# board itself, so the UI works without any external files. Missing files are
-# skipped: the page hides a layer that fails to load and falls back to a system
-# font when a ttf is absent.
+# Status-picture overlays and the two web fonts, served from the board itself.
 $assets = [ordered]@{
     'car-lights.png'           = 'image/png'
     'car-cable.png'            = 'image/png'
@@ -66,7 +90,6 @@ foreach ($name in $assets.Keys) {
     }
     [void]$sb.AppendLine(('static const unsigned char {0}[] PROGMEM = {{{1}}};' -f $var, ($h -join '')))
     $entries += ('  {{"/{0}", {1}, sizeof({1}), "{2}"}},' -f $name, $var, $assets[$name])
-    Write-Host ("  asset {0}: {1} bytes" -f $name, $bytes.Length)
 }
 [void]$sb.AppendLine('struct WebAppAsset { const char* path; const unsigned char* data; size_t len; const char* type; };')
 if ($entries.Count -gt 0) {
@@ -82,4 +105,4 @@ if ($entries.Count -gt 0) {
 [void]$sb.AppendLine('#endif')
 
 [System.IO.File]::WriteAllText($Out, $sb.ToString(), (New-Object System.Text.UTF8Encoding($false)))
-Write-Host ("Wrote {0} ({1} bytes html, {2} bytes {3})" -f $Out, $html.Length, $img.Length, $imgFile)
+Write-Host ("Wrote {0}: html {1} B (gzip {2} B), image {3} B" -f $Out, $htmlBytes.Length, $gzBytes.Length, $img.Length)
