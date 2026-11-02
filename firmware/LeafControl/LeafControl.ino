@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.03.85-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "No pull-to-refresh anywhere, press counter"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.03.86-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "Release point: monitor, saved commands, call mode"
 
 WebServer server(80);
 DNSServer dnsServer;
