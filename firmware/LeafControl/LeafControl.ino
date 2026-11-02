@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.03.83-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "Monitor: ID filter, no pull-to-refresh, clearer save"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.03.84-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "Press counter, readable inputs in dark theme"
 
 WebServer server(80);
 DNSServer dnsServer;
