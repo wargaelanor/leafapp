@@ -253,6 +253,20 @@ html[data-theme="dark"] .dm-filters button.on{color:#08121a}
 .dm-table td.dm-age{color:var(--muted);text-align:right}
 .dm-table td.dm-n{text-align:right;color:var(--muted)}
 .dm-empty{text-align:center;color:var(--muted);padding:14px 0!important}
+.dm-add{padding:2px 6px!important}
+.dm-add button{border:1px solid var(--line);background:var(--surface);color:var(--accent);border-radius:5px;font:inherit;font-size:13px;line-height:1;width:22px;height:22px;cursor:pointer}
+.dm-add button:hover{border-color:var(--accent)}
+.rp-list{display:grid;gap:6px}
+.rp-empty{font-size:12px;color:var(--muted);text-align:center;padding:10px 0}
+.rp-item{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:8px 10px}
+.rp-main{flex:1;min-width:0}
+.rp-name{font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rp-code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--muted);margin-top:2px}
+.rp-play,.rp-del{border:1px solid var(--line);background:var(--surface-2);color:var(--text);border-radius:6px;width:30px;height:28px;font:inherit;font-size:13px;cursor:pointer}
+.rp-play{color:var(--accent)}
+.rp-del{color:#d93025}
+.rp-play:hover,.rp-del:hover{border-color:currentColor}
+#rp-arm.on{background:var(--accent);border-color:var(--accent);color:#fff}
 .settings-groups{margin-top:14px;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .settings-group{border-bottom:1px solid var(--line);background:var(--surface)}
 .settings-group:last-child{border-bottom:0}
@@ -756,13 +770,15 @@ body.demo .demo-banner{display:block}
         <h3>Что умеет</h3>
         <ul class="about-list">
           <li><strong>Дистанционное управление.</strong> Климат с выбором температуры и таймером (5–30 минут), запуск зарядки, закрытие и открытие дверей, вспышка фар, сигнал с фарами.</li>
+          <li><strong>Управление звонком.</strong> С разрешённого номера климат включается и выключается звонком, плата отвечает голосовым подтверждением. В режиме «Только звонок» модем спит между вызовами, а Wi-Fi продолжает работать.</li>
           <li><strong>Состояние автомобиля.</strong> Заряд и запас хода, напряжение, ток и мощность, температуры, пробег, состояние климата, зарядки, дверей и света.</li>
           <li><strong>Живая картинка.</strong> Автомобиль на главном экране меняется по состоянию: загорается свет, появляется кабель зарядки, крутятся колёса в движении.</li>
           <li><strong>Светлая и тёмная тема.</strong> Оформление подстраивается под настройку телефона автоматически.</li>
-          <li><strong>Три способа связи.</strong> Без подключения (только локально), MQTT-брокер или OVMS Server V2 — выбирается в настройках платы. Приложение ставится на главный экран телефона.</li>
-          <li><strong>История.</strong> Поездки и сеансы зарядки сохраняются на телефоне и показываются со статистикой.</li>
+          <li><strong>Четыре режима связи.</strong> Без подключения (только локально), MQTT-брокер, OVMS Server V2 или только звонок — выбирается в настройках платы. Приложение ставится на главный экран телефона.</li>
+          <li><strong>История.</strong> Поездки и сеансы зарядки хранятся на телефоне: до 500 поездок и 300 зарядок, старые удаляются сами. Для поездок можно включить запись трека и видеть маршрут в карточке.</li>
           <!--DEMO-BEGIN--><li><strong>Демо-режим.</strong> Позволяет пройтись по всем экранам и кнопкам без автомобиля — данные условные, команды никуда не отправляются.</li><!--DEMO-END-->
           <li><strong>Обновление по Wi-Fi.</strong> Прошивка обновляется со страницы платы, разбирать устройство не нужно.</li>
+          <li><strong>Для разработчика.</strong> CAN-монитор показывает по одной строке на каждый ID с подсветкой изменений; кадр можно сохранить под своим названием и отправить обратно после явного разрешения (10 минут).</li>
         </ul>
       </section>
 
@@ -773,6 +789,7 @@ body.demo .demo-banner{display:block}
           <li>Команды защищены от случайного нажатия: их нужно удерживать.</li>
           <li>Если данные устарели, приложение показывает «—», а не последнее известное значение.</li>
           <li>Температура батареи и состояние ёмкости доступны, пока блок управления батареей отвечает — то есть при движении, зарядке или включённом климате.</li>
+          <li>Отправка сохранённых кадров — отдельное действие: она включается вручную на 10 минут и работает только по CAR-CAN, чтобы нельзя было случайно задеть автомобиль.</li>
         </ul>
       </section>
 
@@ -825,11 +842,22 @@ body.demo .demo-banner{display:block}
           </div>
           <div class="dm-wrap">
             <table class="dm-table">
-              <thead><tr><th>Шина</th><th>ID</th><th>Данные</th><th>Изм.</th><th>Δ</th></tr></thead>
+              <thead><tr><th>Шина</th><th>ID</th><th>Данные</th><th>Изм.</th><th>Δ</th><th></th></tr></thead>
               <tbody id="dm-rows"><tr><td colspan="5" class="dm-empty">Ждём кадры…</td></tr></tbody>
             </table>
           </div>
           <div class="hint" style="margin-top:8px">Каждая строка — один ID. Значение меняется на месте; подсвечивается строка, где изменения идут прямо сейчас. Нажмите кнопку в машине несколько раз и смотрите, какие ID реагируют.</div>
+        </div>
+        <div class="dev-monitor">
+          <div class="dm-head">
+            <strong>Мои команды</strong>
+            <div class="dm-actions">
+              <button id="rp-arm" type="button" onclick="replayToggleArm()">Разрешить отправку</button>
+            </div>
+          </div>
+          <div class="rp-list" id="rp-list"></div>
+          <div class="hint" style="margin-top:8px">Кадр сохраняется кнопкой «+» в строке монитора. Отправка возможна только после «Разрешить отправку» (действует 10 минут) и только в CAR-CAN.
+            Осторожно: произвольные кадры могут управлять автомобилем — отправляйте только то, что сами проверили.</div>
         </div>
         <p class="hint">Нажмите «Начать запись», выполните действия штатным ключом, затем остановите запись и скачайте файл. Новая запись удаляет предыдущую.</p>
         <div class="dev-actions">
@@ -1985,6 +2013,8 @@ async function developerLogin(){
     await refreshCanLogStatus();
     developerStatusTimer=setInterval(refreshCanLogStatus,2000);
     canWatchStart();
+    replayRender();
+    replayArmRender();
   }catch(e){ $('developer-login-error').textContent='Нет связи с платой'; }
 }
 async function refreshCanLogStatus(){
@@ -2079,7 +2109,7 @@ function canWatchRender(){
   const rows = canWatchRows();
   $('dm-count').textContent = rows.length + ' ID';
   if(!rows.length){
-    body.innerHTML = '<tr><td colspan="5" class="dm-empty">Ждём кадры…</td></tr>';
+    body.innerHTML = '<tr><td colspan="6" class="dm-empty">Ждём кадры…</td></tr>';
     return;
   }
   body.innerHTML = rows.map(row=>{
@@ -2090,6 +2120,7 @@ function canWatchRender(){
       '<td class="dm-data">'+(row.d||'—')+'</td>'+
       '<td class="dm-n">'+row.n+'</td>'+
       '<td class="dm-age">'+canWatchAge(row.ms)+'</td>'+
+      '<td class="dm-add"><button type="button" title="Сохранить как команду" onclick="replaySaveRow(\''+row.b+'\','+row.id+',\''+(row.d||'')+'\')">+</button></td>'+
       '</tr>';
   }).join('');
 }
@@ -2102,6 +2133,89 @@ async function canWatchReset(){
     toast('Монитор очищен');
   }catch(e){}
 }
+// ---------- saved commands (developer) ----------
+// Stored in the browser; the board only transmits once replay is armed.
+const RP_ARM_MS = 10*60*1000;
+let replayArmedUntil = 0;
+
+function replayLoad(){
+  try { const v = JSON.parse(localStorage.getItem('leafcmds') || '[]'); return Array.isArray(v) ? v : []; }
+  catch(e) { return []; }
+}
+function replayStore(list){
+  try { localStorage.setItem('leafcmds', JSON.stringify(list)); } catch(e) {}
+}
+function replayHex(id){ return '0x' + id.toString(16).toUpperCase().padStart(3,'0'); }
+function replayRender(){
+  const box = $('rp-list');
+  if(!box) return;
+  const list = replayLoad();
+  if(!list.length){
+    box.innerHTML = '<div class="rp-empty">Пока нет сохранённых команд. В мониторе нажмите «+» у нужного ID.</div>';
+    return;
+  }
+  box.innerHTML = list.map((c,i) =>
+    '<div class="rp-item">'+
+      '<div class="rp-main"><div class="rp-name">'+c.name+'</div>'+
+      '<div class="rp-code">'+replayHex(c.id)+' · '+(c.d||'')+' · ×'+(c.n||1)+'</div></div>'+
+      '<button type="button" class="rp-play" title="Отправить" onclick="replaySend('+i+')">▶</button>'+
+      '<button type="button" class="rp-del" title="Удалить" onclick="replayDelete('+i+')">×</button>'+
+    '</div>').join('');
+}
+function replaySaveRow(bus, id, d){
+  const code = replayHex(id) + ' ' + (d||'');
+  const name = prompt('Название команды', code);
+  if(name === null) return;
+  const list = replayLoad();
+  list.push({ name: (name.trim() || code), id: id, d: (d||'').trim(), n: 3, gap: 120 });
+  replayStore(list);
+  replayRender();
+  toast('Сохранено: ' + (name.trim() || code));
+}
+function replayDelete(i){
+  const list = replayLoad();
+  if(!list[i]) return;
+  list.splice(i,1);
+  replayStore(list);
+  replayRender();
+}
+async function replayToggleArm(){
+  const armed = replayArmedUntil > Date.now();
+  try{
+    const r = await fetch('/api/developer/replay/' + (armed ? 'disarm' : 'arm'), {method:'POST'});
+    if(r.status === 401){ developerShowLogin(); return; }
+    if(!r.ok) throw new Error();
+    replayArmedUntil = armed ? 0 : Date.now() + RP_ARM_MS;
+    replayArmRender();
+    toast(armed ? 'Отправка запрещена' : 'Отправка разрешена на 10 минут');
+  }catch(e){ toast('Не удалось переключить'); }
+}
+function replayArmRender(){
+  const btn = $('rp-arm');
+  if(!btn) return;
+  const armed = replayArmedUntil > Date.now();
+  btn.textContent = armed ? 'Запретить отправку' : 'Разрешить отправку';
+  btn.classList.toggle('on', armed);
+}
+async function replaySend(i){
+  const list = replayLoad();
+  const c = list[i];
+  if(!c) return;
+  if(replayArmedUntil <= Date.now()){ toast('Сначала разрешите отправку'); return; }
+  if(!confirm('Отправить ' + replayHex(c.id) + ' ' + (c.d||'') + ' ×' + (c.n||1) + '?')) return;
+  try{
+    const q = 'id=' + encodeURIComponent(c.id.toString(16)) +
+              '&d=' + encodeURIComponent(c.d||'') +
+              '&n=' + (c.n||1) + '&gap=' + (c.gap||120);
+    const r = await fetch('/api/developer/replay?' + q, {method:'POST'});
+    if(r.status === 401){ developerShowLogin(); return; }
+    if(r.status === 403){ replayArmedUntil = 0; replayArmRender(); toast('Отправка не разрешена'); return; }
+    const j = await r.json().catch(()=>({}));
+    toast('Отправлено: ' + (j.sent!==undefined ? j.sent : '?') + ' из ' + (c.n||1));
+    canWatchPoll();
+  }catch(e){ toast('Не удалось отправить'); }
+}
+
 function canWatchCopy(){
   const rows = canWatchRows();
   if(!rows.length){ toast('Пока нечего копировать'); return; }
