@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.04.89-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "Lite UI by default, 15 flashes, horn enabled"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.04.90-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "Lite page: hold to send, honest busy replies"
 
 WebServer server(80);
 DNSServer dnsServer;
