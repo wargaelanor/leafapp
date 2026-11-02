@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.04.93-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "UI switch via POST (no prefetch flip)"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.05.94-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "Self-heal Wi-Fi, heap guard, diagnostics, CSV, cost"
 
 WebServer server(80);
 DNSServer dnsServer;
@@ -38,6 +38,8 @@ static uint8_t currentWifiProfile = 0;
 static volatile int lastWifiDisconnectReason = 0;
 // Set once NTP was started after the first successful Wi-Fi connection.
 static bool timeSyncStarted = false;
+// How many times the radio was restarted without getting a link back.
+static uint8_t wifiRadioRestarts = 0;
 // Milliseconds since the STA link went down (0 while connected). Reported as
 // wifi_down_s so a "board alive but unreachable" state is visible at a glance.
 static unsigned long wifiStaDownSinceMs = 0;
@@ -495,6 +497,14 @@ void handleVinProbe() {
               "{\"ok\":true,\"probe\":\"obd09_02\",\"request\":\"0x7DF\",\"reply\":\"0x7E8\"}");
 }
 
+// Same probe from the diagnostics page: it is a read-only OBD-II request, so it
+// does not need the developer password, only a POST.
+void handleVinProbePublic() {
+  noteUserActivity();
+  requestVinObdProbe();
+  server.send(200, "application/json", "{\"ok\":true,\"probe\":\"obd09_02\"}");
+}
+
 // Live CAN watch: one JSON row per identifier, updated in place on the board.
 // The page polls this while the developer monitor is open.
 void handleCanWatch() {
@@ -675,6 +685,21 @@ static void loopSupervisorTask(void*) {
       lastSoftwareRestart = 1;
       delay(100);
       ESP.restart();
+    }
+    // Heap floor: a normal run keeps ~140 KB free, so a drop under 25 KB means
+    // fragmentation or a leak that will start failing allocations. Rebooting
+    // here is cheaper than a board that silently stops answering.
+    uint32_t freeHeap = ESP.getFreeHeap();
+    static uint8_t lowHeapSamples = 0;
+    if (freeHeap < 25000UL) {
+      if (++lowHeapSamples >= 3) {
+        Serial.printf("### Supervisor: free heap %u, rebooting ###\n", (unsigned)freeHeap);
+        lastSoftwareRestart = 5;
+        delay(100);
+        ESP.restart();
+      }
+    } else {
+      lowHeapSamples = 0;
     }
   }
 }
@@ -1531,6 +1556,16 @@ void manageWiFi() {
     }
     if (currentTime - previousAttemptTime >= interval) {
       if (currentTime - staDownSinceMs >= 300000UL) {
+        // Radio restarts did not bring the link back three times in a row:
+        // this is a stuck driver state, not weak signal. A full reboot is the
+        // only reliable way out, and it is much better than sitting offline
+        // until someone power-cycles the car.
+        if (++wifiRadioRestarts >= 3) {
+          Serial.println("WiFi: 3 radio restarts without a link, rebooting");
+          lastSoftwareRestart = 4;
+          delay(200);
+          ESP.restart();
+        }
         Serial.println("WiFi: STA down for 5 min, restarting the radio");
         WiFi.disconnect(true, false);
         WiFi.mode(WIFI_OFF);
@@ -1554,6 +1589,7 @@ void manageWiFi() {
     retryStep = 0;
     previousAttemptTime = currentTime;
     Serial.println("\nWi-Fi connected!");
+    wifiRadioRestarts = 0;
     if (!timeSyncStarted) {
       // No RTC on the board: without NTP all timestamps are "since boot". The
       // trip history is timestamped by the client, but the board's own clock is
@@ -1726,6 +1762,7 @@ for (size_t i = 0; i < WEBAPP_ASSET_COUNT; i++) {
       server.on("/api/developer/replay/arm", HTTP_POST, handleReplayArm);
       server.on("/api/developer/replay/disarm", HTTP_POST, handleReplayDisarm);
       server.on("/api/developer/vin_probe", HTTP_POST, handleVinProbe);
+      server.on("/api/vin_probe", HTTP_POST, handleVinProbePublic);
       server.on("/api/developer/canlog/start", HTTP_POST, handleCanLogStart);
       server.on("/api/developer/canlog/stop", HTTP_POST, handleCanLogStop);
       server.on("/api/developer/canlog/clear", HTTP_POST, handleCanLogClear);

@@ -44,6 +44,12 @@ button:disabled{opacity:.45}
 .err.good{color:var(--ok)}
 .full{display:block;width:100%;text-align:center;padding:12px;border:1px solid var(--accent);color:var(--accent);
   background:transparent;border-radius:11px;text-decoration:none;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer}
+details.card{padding:0}
+details.card summary{cursor:pointer;font-size:14px;font-weight:600;padding:14px 16px;list-style:none}
+details.card summary::-webkit-details-marker{display:none}
+details.card summary:after{content:'▾';float:right;color:var(--muted)}
+details.card[open] summary:after{content:'▴'}
+details.card .grid{padding:0 12px 12px}
 </style>
 </head>
 <body>
@@ -67,6 +73,18 @@ button:disabled{opacity:.45}
   <div><b id="cabin">—</b><span>салон, °C</span></div>
   <div style="grid-column:1 / -1"><b id="state">—</b><span>состояние</span></div>
 </div>
+
+<details class="card diag">
+  <summary>Диагностика</summary>
+  <div class="grid" style="margin-top:10px">
+    <div><b id="d-soh">—</b><span>SOH, %</span></div>
+    <div><b id="d-odo">—</b><span>пробег, км</span></div>
+    <div><b id="d-up">—</b><span>работает</span></div>
+    <div><b id="d-rssi">—</b><span>Wi-Fi, dBm</span></div>
+    <div><b id="d-reset">—</b><span>перезагрузка</span></div>
+    <div><b id="d-bms">—</b><span>BMS, назад</span></div>
+  </div>
+</details>
 
 <div class="row">
   <button id="b-hvac" data-act="hvac">Климат</button>
@@ -116,12 +134,32 @@ function render(){
   var lk = document.getElementById('b-lock');
   lk.textContent = S.lock === 0 ? 'Открыто' : 'Закрыть';
   lk.classList.toggle('on', S.lock === 0);
+  diagFill();
 }
 
 function stamp(){
   if(!S._at) return;
   var sec = Math.round((Date.now() - S._at) / 1000);
   document.getElementById('upd').textContent = sec < 6 ? 'данные свежие' : ('обновлено ' + sec + ' с назад');
+}
+
+function upText(sec){
+  sec = sec || 0;
+  var h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60);
+  return h ? (h + ' ч ' + m + ' мин') : (m ? (m + ' мин') : (sec + ' с'));
+}
+function resetText(code, sw){
+  var base = {1:'питание',2:'сигнал',3:'программный',4:'паника',5:'watchdog',6:'watchdog',7:'watchdog',8:'сон',9:'просадка'}[code] || ('код ' + code);
+  var why = {2:'после OTA',3:'зависла заливка',4:'перезапуск радио',5:'мало памяти'}[sw];
+  return base + (why ? ' · ' + why : '');
+}
+function diagFill(){
+  document.getElementById('d-soh').textContent = S.soh > 0 ? S.soh : '—';
+  document.getElementById('d-odo').textContent = S.odo > 0 ? Math.round(S.odo) : '—';
+  document.getElementById('d-up').textContent = upText(S.uptime);
+  document.getElementById('d-rssi').textContent = S.wifi_rssi ? S.wifi_rssi : '—';
+  document.getElementById('d-reset').textContent = resetText(S.reset_reason, S.software_restart);
+  document.getElementById('d-bms').textContent = (S.bmsage === 4294967295 || S.bmsage === undefined) ? 'нет' : (S.bmsage + ' с');
 }
 
 function poll(manual){

@@ -238,6 +238,13 @@ html[data-theme="dark"] .dur-btns button.on{color:#08121a}
 .dev-actions button:disabled{opacity:.45;cursor:default}
 .dev-download{display:block;margin-top:10px;padding:12px;text-align:center;border-radius:6px;background:var(--chip);color:var(--accent);text-decoration:none;font-size:14px}
 .dev-error{min-height:18px;margin-top:8px;color:#d93025;font-size:12px}
+/* Diagnostics sheet */
+.diag-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.diag-grid .d-cell{background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:9px 11px}
+.diag-grid .d-cell b{display:block;font-size:14px;color:var(--text);font-weight:600;word-break:break-word}
+.diag-grid .d-cell span{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+.diag-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.diag-actions .pill-btn{font-size:12px;padding:8px 12px}
 /* CAN monitor: one row per identifier, updated in place */
 .dev-monitor{margin:16px 0;padding:14px;background:var(--surface-2);border:1px solid var(--line);border-radius:8px}
 .dm-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap}
@@ -331,6 +338,8 @@ body.demo .demo-banner{display:block}
 .trip-empty{text-align:center;color:var(--muted);font-size:14px;padding:48px 20px}
 .trip-clear{display:block;width:calc(100% - 32px);margin:12px 16px;padding:12px;background:var(--surface);color:#ff3b30;border:1px solid #ff3b30;border-radius:8px;font-size:13px;font-family:inherit;cursor:pointer}
 .trip-clear:active{background:rgba(255,59,48,.12)}
+.trip-clear.export{color:var(--accent);border-color:var(--accent);margin-top:0}
+.trip-clear.export:active{background:var(--accent-soft)}
 /* --- Car status picture -------------------------------------------------
    Base photo always visible. Optional real overlays are separate files next
    to index.html: car-lights.png, car-cable.png, car-wheel1..4.png. They must
@@ -637,6 +646,8 @@ body.demo .demo-banner{display:block}
       <div class="trip-list" id="charge-list"></div>
       <div class="trip-empty" id="charge-empty">Сеансы зарядки появятся автоматически при подключении зарядного устройства</div>
       <button class="trip-clear" id="charge-clear" style="display:none" onclick="clearCharges()">Очистить историю</button>
+      <button class="trip-clear export" onclick="exportChargesCsv()">Экспорт CSV</button>
+      <button class="trip-clear export" onclick="editTariff()">Тариф: стоимость в карточках</button>
       <div style="height:16px"></div>
     </section>
 
@@ -656,6 +667,8 @@ body.demo .demo-banner{display:block}
       <div class="trip-list" id="trip-list"></div>
       <div class="trip-empty" id="trip-empty">Поездки появятся автоматически при движении с включённым зажиганием</div>
       <button class="trip-clear" id="trip-clear" style="display:none" onclick="clearTrips()">Очистить историю</button>
+      <button class="trip-clear export" onclick="exportTripsCsv()">Экспорт CSV</button>
+      <button class="trip-clear export" onclick="editTariff()">Тариф: стоимость в карточках</button>
       <div style="height:16px"></div>
     </section>
 
@@ -675,6 +688,11 @@ body.demo .demo-banner{display:block}
       <div class="more-item" id="more-developer" style="display:none" onclick="openDeveloper()">
         <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 9l-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg></div>
         Для разработчика
+        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+      </div>
+      <div class="more-item" id="more-diag" style="display:none" onclick="openDiag()">
+        <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+        Диагностика
         <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
       </div>
       <div class="more-item" id="more-lite" style="display:none" onclick="switchUi('lite')">
@@ -750,6 +768,8 @@ body.demo .demo-banner{display:block}
             <input id="cfg-pass" type="password">
             <label>Vehicle ID</label>
             <input id="cfg-vid" placeholder="leaf">
+            <label>Тариф, ₽ за кВт·ч (для расчёта стоимости)</label>
+            <input id="cfg-tariff" type="number" step="0.01" min="0" placeholder="5.50">
           </div>
         </details>
         <details class="settings-group" data-pwa-section="wifi">
@@ -776,6 +796,26 @@ body.demo .demo-banner{display:block}
     </div>
   </div>
 
+  <!-- Диагностика -->
+  <div class="modal" id="diag-modal" role="dialog" aria-modal="true" onclick="closeDiag(event)">
+    <div class="sheet about-sheet">
+      <div class="about-head">
+        <div>
+          <h2>Диагностика</h2>
+          <p>Состояние платы, шин и батареи. Обновляется каждые 2 секунды.</p>
+        </div>
+        <button class="about-close" type="button" aria-label="Закрыть" onclick="closeDiag()">×</button>
+      </div>
+      <div class="diag-grid" id="diag-grid"></div>
+      <div class="diag-actions">
+        <button class="pill-btn" type="button" onclick="diagWake()">Разбудить и снять BMS</button>
+        <button class="pill-btn" type="button" onclick="diagVin()">Проба VIN</button>
+        <button class="pill-btn" type="button" onclick="diagCopy()">Копировать</button>
+      </div>
+      <div class="dev-error" id="diag-note"></div>
+    </div>
+  </div>
+
   <!-- О приложении -->
   <div class="modal" id="about-modal" role="dialog" aria-modal="true" aria-labelledby="about-title" onclick="closeAbout(event)">
     <div class="sheet about-sheet">
@@ -796,7 +836,8 @@ body.demo .demo-banner{display:block}
           <li><strong>Живая картинка.</strong> Автомобиль на главном экране меняется по состоянию: загорается свет, появляется кабель зарядки, крутятся колёса в движении.</li>
           <li><strong>Светлая и тёмная тема.</strong> Оформление подстраивается под настройку телефона автоматически.</li>
           <li><strong>Четыре режима связи.</strong> Без подключения (только локально), MQTT-брокер, OVMS Server V2 или только звонок — выбирается в настройках платы. Приложение ставится на главный экран телефона.</li>
-          <li><strong>История.</strong> Поездки и сеансы зарядки хранятся на телефоне: до 500 поездок и 300 зарядок, старые удаляются сами. Для поездок можно включить запись трека и видеть маршрут в карточке.</li>
+          <li><strong>История.</strong> Поездки и сеансы зарядки хранятся на телефоне: до 500 поездок и 300 зарядок, старые удаляются сами. Для поездок можно включить запись трека и видеть маршрут в карточке. Есть экспорт в CSV и расчёт стоимости по тарифу за кВт·ч.</li>
+          <li><strong>Диагностика.</strong> Отдельный экран: прошивка, время работы, причина последней перезагрузки, свободная память, Wi-Fi, ошибки CAN, состояние BMS и часы платы. Оттуда же можно разбудить шлюз и снять данные батареи или запустить пробу VIN.</li>
           <!--DEMO-BEGIN--><li><strong>Демо-режим.</strong> Позволяет пройтись по всем экранам и кнопкам без автомобиля — данные условные, команды никуда не отправляются.</li><!--DEMO-END-->
           <li><strong>Две версии страницы.</strong> По умолчанию открывается упрощённая — только заряд, запас хода, напряжение, ток, температуры и основные команды; весит несколько килобайт и работает даже при очень слабом сигнале. Кнопка «Красивый вид» включает полное приложение, выбор запоминается в плате.</li>
           <li><strong>Обновление по Wi-Fi.</strong> Прошивка обновляется со страницы платы, разбирать устройство не нужно.</li>
@@ -1071,7 +1112,14 @@ function renderNow(){
   const pct = socShown!=null ? socShown : 0;
   bar.style.width = pct+'%';
   bar.className = 'fill' + (pct>20?'':' crit') + (pct>20&&pct<=40?' low':'');
-  $('g-charge-state').textContent = S.charging ? 'Заряжается' : (S.charger?chargerRu():'—');
+  let chargeState = S.charging ? 'Заряжается' : (S.charger?chargerRu():'—');
+  // Rough time to full: 40 kWh usable pack, current power into the battery.
+  if(S.charging && S.power > 0.3 && S.soc >= 0){
+    const needKwh = (100 - S.soc) / 100 * 40;
+    const min = Math.round(needKwh / Math.abs(S.power) * 60);
+    if(min > 0 && min < 24*60) chargeState += ' · ~' + fmtDur(min*60);
+  }
+  $('g-charge-state').textContent = chargeState;
   const cb = $('g-charge-btn');
   cb.disabled = S.charging;
   if(S.charging){ cb.textContent = 'Идёт зарядка'; cb.classList.add('charging'); }
@@ -1760,6 +1808,22 @@ function tripTick(){
   }
   tripLastOdo=odo;
   tripPrevOn=S.on;
+  updateTripBanner();
+}
+// Live summary in the "trip in progress" strip: km and kWh so far.
+function updateTripBanner(){
+  const banner = $('trip-active-banner');
+  if(!banner) return;
+  const label = banner.querySelector('span');
+  if(!label) return;
+  if(!trip){ label.textContent = 'Идёт поездка…'; return; }
+  let text = 'Идёт поездка';
+  if(trip.odoStart != null && S.odo > 0){
+    text += ' · ' + Math.max(0, S.odo - trip.odoStart).toFixed(1) + ' км';
+  }
+  const wh = tripComputeSummary(trip.points).energyWh;
+  if(wh > 0) text += ' · ' + (wh/1000).toFixed(2) + ' кВт·ч';
+  label.textContent = text;
 }
 
 async function tripCleanupOrphans(){
@@ -1812,11 +1876,17 @@ async function refreshTripsScreen(){
       ? '<div class="t-route">'+routeSvg(t.route)+'<div class="t-route-note">Трек поездки · '+t.route.length+' точек</div></div>'
       : '';
     const spdCell=(t.maxSpd>0)?'<span><span class="m-val">'+t.maxSpd.toFixed(0)+'</span> км/ч</span>':'';
+    const kwh=(t.energyWh||0)/1000;
+    const per100=(t.distKm>0.5)?(kwh/t.distKm*100):null;
+    const per100Cell=per100!=null?'<span><span class="m-val">'+per100.toFixed(1)+'</span> кВт·ч/100</span>':'';
+    const cost=costText(kwh);
+    const costCell=cost?'<span><span class="m-val">'+cost+'</span> стоимость</span>':'';
     return '<div class="trip-item">'+
       '<div class="t-head"><span class="t-date">'+dstr+'</span><span class="t-dur">'+fmtDur(dur)+'</span></div>'+
       '<div class="t-metrics"><span><span class="m-val">'+(t.distKm||0).toFixed(1)+'</span> км</span>'+
       spdCell+
-      '<span><span class="m-val">'+((t.energyWh||0)/1000).toFixed(2)+'</span> кВт·ч</span></div>'+
+      '<span><span class="m-val">'+kwh.toFixed(2)+'</span> кВт·ч</span>'+
+      per100Cell+costCell+'</div>'+
       '<div class="t-meta">'+(socStr?'<span>Заряд: '+socStr+'</span>':'')+routeLink+'</div>'+
       track+
       '</div>';
@@ -1998,6 +2068,7 @@ async function refreshChargesScreen(){
     return '<div class="trip-item">'+
       '<div class="t-head"><span class="t-date">'+dstr+'</span><span class="t-dur">'+fmtDur(dur)+'</span></div>'+
       '<div class="t-metrics"><span><span class="m-val">'+((c.energyWh||0)/1000).toFixed(2)+'</span> кВт·ч</span>'+
+      (costText((c.energyWh||0)/1000)?'<span><span class="m-val">'+costText((c.energyWh||0)/1000)+'</span> стоимость</span>':'')+
       (c.maxV!=null?'<span><span class="m-val">'+c.maxV.toFixed(0)+'</span> V</span>':'')+'</div>'+
       '<div class="t-meta">'+(socStr?'<span>Заряд: '+socStr+'</span>':'')+'<span>'+st+'</span></div>'+
       '</div>';
@@ -2020,6 +2091,159 @@ function openSettings(){
   $('settings-modal').classList.add('show');
 }
 function closeSettings(){ $('settings-modal').classList.remove('show'); }
+
+// ---------- money ----------
+// Price per kWh is a phone-side setting: it only affects how the history is
+// displayed, nothing is sent to the car.
+function tariff(){
+  const v = parseFloat(localStorage.getItem('leaftariff') || '0');
+  return (isFinite(v) && v > 0) ? v : 0;
+}
+function editTariff(){
+  const cur = tariff();
+  const v = prompt('Тариф, ₽ за кВт·ч', cur ? String(cur) : '');
+  if(v === null) return;
+  const n = parseFloat(String(v).replace(',', '.'));
+  localStorage.setItem('leaftariff', String((isFinite(n) && n > 0) ? n : 0));
+  refreshTripsScreen(); refreshChargesScreen();
+  toast((isFinite(n) && n > 0) ? ('Тариф: ' + n.toFixed(2) + ' ₽/кВт·ч') : 'Тариф отключён');
+}
+function costText(kwh){
+  const t = tariff();
+  return t > 0 ? ((kwh * t).toFixed(0) + ' ₽') : '';
+}
+
+// ---------- CSV export ----------
+function csvField(v){
+  const s = (v === null || v === undefined) ? '' : String(v);
+  return /[";\n]/.test(s) ? ('"' + s.replace(/"/g, '""') + '"') : s;
+}
+function downloadCsv(name, head, rows){
+  const lines = [head.map(csvField).join(';')].concat(rows.map(r => r.map(csvField).join(';')));
+  const blob = new Blob(['\ufeff' + lines.join('\r\n')], {type: 'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  toast('Файл сохранён');
+}
+async function exportTripsCsv(){
+  const all = await tripGetAll();
+  const done = all.filter(t => t.endMs != null).sort((a,b) => a.startMs - b.startMs);
+  if(!done.length){ toast('История поездок пуста'); return; }
+  const head = ['начало','конец','минут','км','кВт·ч','кВт·ч/100км','заряд до, %','заряд после, %','причина'];
+  const rows = done.map(t => {
+    const kwh = (t.energyWh || 0) / 1000;
+    const per100 = (t.distKm > 0.5) ? (kwh / t.distKm * 100) : '';
+    return [new Date(t.startMs).toLocaleString('ru-RU'),
+            new Date(t.endMs).toLocaleString('ru-RU'),
+            Math.round((t.endMs - t.startMs) / 60000),
+            (t.distKm || 0).toFixed(2),
+            kwh.toFixed(2),
+            per100 === '' ? '' : per100.toFixed(1),
+            t.startSoc != null ? t.startSoc.toFixed(0) : '',
+            t.endSoc != null ? t.endSoc.toFixed(0) : '',
+            t.endReason || ''];
+  });
+  downloadCsv('leaf-trips.csv', head, rows);
+}
+async function exportChargesCsv(){
+  const all = await chgGetAll();
+  const done = all.filter(c => c.endMs != null).sort((a,b) => a.startMs - b.startMs);
+  if(!done.length){ toast('История зарядок пуста'); return; }
+  const head = ['начало','конец','минут','кВт·ч','заряд до, %','заряд после, %','макс. напряжение','причина'];
+  const rows = done.map(c => [
+    new Date(c.startMs).toLocaleString('ru-RU'),
+    new Date(c.endMs).toLocaleString('ru-RU'),
+    Math.round((c.endMs - c.startMs) / 60000),
+    ((c.energyWh || 0) / 1000).toFixed(2),
+    c.startSoc != null ? c.startSoc.toFixed(0) : '',
+    c.endSoc != null ? c.endSoc.toFixed(0) : '',
+    c.maxV != null ? c.maxV.toFixed(0) : '',
+    c.endReason || ''
+  ]);
+  downloadCsv('leaf-charges.csv', head, rows);
+}
+// ---------- diagnostics ----------
+let diagTimer = null;
+
+function openDiag(){
+  if(!onBoard){ toast('Доступно только при подключении к плате'); return; }
+  $('diag-modal').classList.add('show');
+  diagRender();
+  if(diagTimer) clearInterval(diagTimer);
+  diagTimer = setInterval(diagRender, 2000);
+}
+function closeDiag(event){
+  if(event && event.target!==$('diag-modal')) return;
+  $('diag-modal').classList.remove('show');
+  if(diagTimer){ clearInterval(diagTimer); diagTimer = null; }
+}
+function diagResetText(code, sw){
+  const base = {1:'включение питания',2:'внешний сигнал',3:'программный',4:'паника',
+                5:'watchdog',6:'watchdog задачи',7:'watchdog',8:'выход из сна',9:'просадка питания'}[code] || ('код '+code);
+  const why = {2:'после OTA',3:'зависла заливка',4:'перезапуск радио',5:'мало памяти'}[sw];
+  return base + (why ? ' · '+why : '');
+}
+function diagUptime(sec){
+  sec = sec||0;
+  const h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60);
+  return h ? (h+' ч '+m+' мин') : (m ? (m+' мин') : (sec+' с'));
+}
+async function diagRender(){
+  try{
+    const r = await fetch('/api/status', {cache:'no-store'});
+    const j = await r.json();
+    $('diag-note').textContent = '';
+    const bmsAge = (j.bmsage === 4294967295 || j.bmsage === undefined) ? 'нет ответа' : (j.bmsage+' с назад');
+    const t = (v, unit) => (v === undefined || v === null || v < -900) ? '—' : (v + (unit||''));
+    const rows = [
+      ['Прошивка', j.fw || '—'],
+      ['Работает', diagUptime(j.uptime)],
+      ['Перезагрузка', diagResetText(j.reset_reason, j.software_restart)],
+      ['Память', Math.round((j.free_heap||0)/1024) + ' КБ'],
+      ['Wi-Fi', t(j.wifi_rssi,' dBm')],
+      ['Часы платы', j.epoch ? new Date(j.epoch*1000).toLocaleTimeString('ru-RU') : 'не синхронизированы'],
+      ['Интерфейс', j.ui_lite ? 'лёгкий' : 'полный'],
+      ['CAN B', (j.fb||0)+' кадров · TX '+t(j.btec)+' / RX '+t(j.brec)],
+      ['CAN A', (j.evcan ? 'есть' : 'нет')+' · '+(j.evclk||'?')+' / '+(j.evkbps||'?')+' · '+(j.fa||0)+' кадров'],
+      ['BMS', 'группа '+(j.bmsgrp||0)+' · '+bmsAge+' · ошибок '+(j.bmsfail||0)],
+      ['Батарея', t(j.btemp,' °C')+' · разброс '+t(j.cdelta,' мВ')],
+      ['Связь', ['без подключения','MQTT','OVMS V2','только звонок'][j.remote_mode] || '—'],
+    ];
+    $('diag-grid').innerHTML = rows.map(rr =>
+      '<div class="d-cell"><b>'+rr[1]+'</b><span>'+rr[0]+'</span></div>').join('');
+  }catch(e){
+    $('diag-note').textContent = 'нет связи с платой';
+  }
+}
+async function diagWake(){
+  $('diag-note').textContent = 'пробуждаем шлюз…';
+  try{
+    await fetch('/refresh', {method:'POST'});
+    setTimeout(()=>{ diagRender(); $('diag-note').textContent = 'запрос отправлен, данные появятся через 10–20 с'; }, 12000);
+  }catch(e){ $('diag-note').textContent = 'команда не отправлена'; }
+}
+async function diagVin(){
+  $('diag-note').textContent = 'запускаем пробу VIN…';
+  try{
+    const r = await fetch('/api/vin_probe', {method:'POST'});
+    if(!r.ok){ $('diag-note').textContent = 'плата отклонила пробу'; return; }
+    $('diag-note').textContent = 'проба запущена — VIN появится в «Состоянии», если блок ответит';
+  }catch(e){ $('diag-note').textContent = 'не удалось отправить'; }
+}
+function diagCopy(){
+  const cells = [...document.querySelectorAll('#diag-grid .d-cell')];
+  if(!cells.length){ toast('Пока нечего копировать'); return; }
+  const text = cells.map(c => c.querySelector('span').textContent + ': ' + c.querySelector('b').textContent).join('\n');
+  navigator.clipboard.writeText(text).then(
+    ()=>toast('Скопировано в буфер'),
+    ()=>toast('Браузер не дал доступ к буферу')
+  );
+}
+
 function openAbout(){ $('about-modal').classList.add('show'); }
 function closeAbout(event){
   if(event && event.target!==$('about-modal')) return;
@@ -2369,6 +2593,7 @@ function enableBoardUi(){
   $('more-ota').style.display='flex';
   $('more-developer').style.display='flex';
   $('more-lite').style.display='flex';
+  $('more-diag').style.display='flex';
 }
 async function boot(){
   if(DEMO){ demoStart(); return; }
