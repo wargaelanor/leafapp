@@ -51,7 +51,7 @@ html[data-theme="light"]{
 @font-face{font-family:'NissanBrand';src:url('fonts/nissan_regular.ttf') format('truetype');font-weight:400;font-style:normal}
 @font-face{font-family:'NissanBrand';src:url('fonts/nissan_light.ttf') format('truetype');font-weight:300;font-style:normal}
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{height:100%}
+html,body{height:100%;overscroll-behavior-y:contain}
 body{background:var(--bg);font-family:'NissanBrand',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:var(--text);display:flex;justify-content:center}
 .app{width:100%;max-width:480px;height:100vh;height:100dvh;background:var(--bg);display:flex;flex-direction:column;position:relative;overflow:hidden}
 .appbar{height:48px;background:var(--surface-2);display:flex;align-items:center;padding:0 16px;flex-shrink:0;border-bottom:1px solid var(--line)}
@@ -243,7 +243,9 @@ html[data-theme="dark"] .dur-btns button.on{color:#08121a}
 @media (prefers-color-scheme: dark){.dm-filters button.on{color:#08121a}}
 html[data-theme="dark"] .dm-filters button.on{color:#08121a}
 .dm-count{margin-left:auto;font-size:11px;color:var(--muted)}
-.dm-wrap{max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
+.dm-wrap{max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:6px;background:var(--surface);
+  overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y}
+@media (max-width:520px){.dm-wrap{max-height:46vh}}
 .dm-table{width:100%;border-collapse:collapse;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px}
 .dm-table th{position:sticky;top:0;background:var(--chip);color:var(--muted);font-weight:600;text-align:left;padding:6px 8px;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px}
 .dm-table td{padding:5px 8px;border-top:1px solid var(--line);color:var(--text);white-space:nowrap}
@@ -254,8 +256,12 @@ html[data-theme="dark"] .dm-filters button.on{color:#08121a}
 .dm-table td.dm-n{text-align:right;color:var(--muted)}
 .dm-empty{text-align:center;color:var(--muted);padding:14px 0!important}
 .dm-add{padding:2px 6px!important}
-.dm-add button{border:1px solid var(--line);background:var(--surface);color:var(--accent);border-radius:5px;font:inherit;font-size:13px;line-height:1;width:22px;height:22px;cursor:pointer}
+.dm-add button{border:1px solid var(--line);background:var(--surface);color:var(--accent);border-radius:6px;font:inherit;font-size:15px;font-weight:600;line-height:1;width:32px;height:32px;cursor:pointer;touch-action:manipulation}
 .dm-add button:hover{border-color:var(--accent)}
+.dm-idfilter{flex:1;min-width:0;max-width:120px;margin-left:auto;padding:5px 8px;font:inherit;font-size:12px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text)}
+.dm-idfilter:focus{outline:none;border-color:var(--accent)}
+.dm-nosend{display:inline-block;width:32px;text-align:center;color:var(--muted-2)}
+.dm-count{margin-left:8px;font-size:11px;color:var(--muted);white-space:nowrap}
 .rp-list{display:grid;gap:6px}
 .rp-empty{font-size:12px;color:var(--muted);text-align:center;padding:10px 0}
 .rp-item{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:8px 10px}
@@ -838,6 +844,8 @@ body.demo .demo-banner{display:block}
             <button class="on" data-bus="all" onclick="canWatchFilter('all')">Все</button>
             <button data-bus="B" onclick="canWatchFilter('B')">CAR</button>
             <button data-bus="A" onclick="canWatchFilter('A')">EV</button>
+            <input id="dm-idfilter" class="dm-idfilter" type="search" inputmode="text" autocomplete="off"
+                   placeholder="ID" oninput="canWatchSetIdFilter(this.value)">
             <span class="dm-count" id="dm-count">0 ID</span>
           </div>
           <div class="dm-wrap">
@@ -847,6 +855,7 @@ body.demo .demo-banner{display:block}
             </table>
           </div>
           <div class="hint" style="margin-top:8px">Каждая строка — один ID. Значение меняется на месте; подсвечивается строка, где изменения идут прямо сейчас. Нажмите кнопку в машине несколько раз и смотрите, какие ID реагируют.</div>
+          <div class="hint" style="margin-top:4px">Чтобы сохранить кадр как команду, нажмите <b>«＋»</b> справа в нужной строке и введите название. Фильтр по ID — в поле рядом с кнопками CAR/EV (достаточно части номера, например <b>1D6</b>).</div>
         </div>
         <div class="dev-monitor">
           <div class="dm-head">
@@ -2063,6 +2072,7 @@ async function canLogAction(action){
 let canWatchTimer = null;
 let canWatchPaused = false;
 let canWatchBus = 'all';
+let canWatchIdFilter = '';
 let canWatchData = [];
 
 function canWatchStart(){
@@ -2100,8 +2110,19 @@ function canWatchAge(ms){
   if(ms < 60000) return (ms/1000).toFixed(1)+' с';
   return Math.round(ms/60000)+' мин';
 }
+function canWatchSetIdFilter(value){
+  canWatchIdFilter = (value || '').trim().toUpperCase().replace(/^0X/, '');
+  canWatchRender();
+}
 function canWatchRows(){
-  return canWatchData.filter(row => canWatchBus === 'all' || row.b === canWatchBus);
+  return canWatchData.filter(row => {
+    if(canWatchBus !== 'all' && row.b !== canWatchBus) return false;
+    if(canWatchIdFilter){
+      const hex = row.id.toString(16).toUpperCase().padStart(3, '0');
+      if(hex.indexOf(canWatchIdFilter) < 0) return false;
+    }
+    return true;
+  });
 }
 function canWatchRender(){
   const body = $('dm-rows');
@@ -2114,13 +2135,17 @@ function canWatchRender(){
   }
   body.innerHTML = rows.map(row=>{
     const hot = row.ms < 1200 ? ' class="hot"' : '';
+    // EV-CAN is listen-only, so only CAR-CAN frames can be replayed.
+    const addCell = row.b === 'B'
+      ? '<button type="button" title="Сохранить как команду" onclick="replaySaveRow(\''+row.b+'\','+row.id+',\''+(row.d||'')+'\')">＋</button>'
+      : '<span class="dm-nosend" title="EV-CAN работает только на приём">—</span>';
     return '<tr'+hot+'>'+
       '<td>'+row.b+'</td>'+
       '<td>'+('000'+row.id.toString(16).toUpperCase()).slice(-3)+'</td>'+
       '<td class="dm-data">'+(row.d||'—')+'</td>'+
       '<td class="dm-n">'+row.n+'</td>'+
       '<td class="dm-age">'+canWatchAge(row.ms)+'</td>'+
-      '<td class="dm-add"><button type="button" title="Сохранить как команду" onclick="replaySaveRow(\''+row.b+'\','+row.id+',\''+(row.d||'')+'\')">+</button></td>'+
+      '<td class="dm-add">'+addCell+'</td>'+
       '</tr>';
   }).join('');
 }
