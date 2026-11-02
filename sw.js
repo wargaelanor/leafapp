@@ -1,4 +1,4 @@
-const CACHE = 'leaf-v29';
+const CACHE = 'leaf-v30';
 const ASSETS = [
   './', './index.html', './manifest.webmanifest', './leaf.png',
   './icon-192.png', './icon-512.png', './apple-touch-icon.png',

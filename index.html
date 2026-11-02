@@ -264,6 +264,9 @@ body.demo .demo-banner{display:block}
 .trip-item .t-metrics{display:flex;gap:14px;font-size:13px;color:var(--text);margin-bottom:6px}
 .trip-item .t-metrics .m-val{font-weight:600}
 .trip-item .t-meta{font-size:11px;color:var(--muted-2);display:flex;gap:12px;flex-wrap:wrap}
+.t-route{margin-top:8px;color:var(--accent);background:var(--surface-2);border-radius:6px;padding:6px 6px 4px}
+.t-route svg{width:100%;height:86px;display:block}
+.t-route-note{font-size:10.5px;color:var(--muted);text-align:center;margin-top:1px}
 .trip-item .t-meta .route{color:var(--accent);cursor:pointer}
 .trip-empty{text-align:center;color:var(--muted);font-size:14px;padding:48px 20px}
 .trip-clear{display:block;width:calc(100% - 32px);margin:12px 16px;padding:12px;background:var(--surface);color:#ff3b30;border:1px solid #ff3b30;border-radius:8px;font-size:13px;font-family:inherit;cursor:pointer}
@@ -644,6 +647,10 @@ body.demo .demo-banner{display:block}
     <div class="tab" data-screen="status">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
       <span>Состояние</span>
+    </div>
+    <div class="tab" data-screen="charges">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 3h9a1 1 0 011 1v5H5V4a1 1 0 011-1z"/><path d="M5 9h11v9a2 2 0 01-2 2H7a2 2 0 01-2-2V9z"/><path d="M16 12h2a2 2 0 012 2v3a1 1 0 01-1 1h-3"/></svg>
+      <span>Зарядки</span>
     </div>
     <div class="tab" data-screen="trips">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 19V5m0 14l4-4 4 3 4-6 4 4"/></svg>
@@ -1499,6 +1506,41 @@ function tripDistanceKm(t, sum){
   return sum.distKm;
 }
 
+// Compress the recorded points into a small polyline for the map preview:
+// at most ROUTE_MAX_POINTS pairs, ~5 decimal places (about one metre).
+const ROUTE_MAX_POINTS = 80;
+function tripBuildRoute(points){
+  const pts = (points||[]).filter(p=>p.lat!=null && p.lon!=null);
+  if(pts.length < 2) return null;
+  const step = Math.max(1, Math.ceil(pts.length / ROUTE_MAX_POINTS));
+  const out = [];
+  for(let i=0;i<pts.length;i+=step) out.push([+pts[i].lat.toFixed(5), +pts[i].lon.toFixed(5)]);
+  const last = pts[pts.length-1];
+  const tail = [+last.lat.toFixed(5), +last.lon.toFixed(5)];
+  const prev = out[out.length-1];
+  if(!prev || prev[0]!==tail[0] || prev[1]!==tail[1]) out.push(tail);
+  return out.length>1 ? out : null;
+}
+
+function routeSvg(route){
+  const w=300, h=96, pad=8;
+  const lats=route.map(p=>p[0]), lons=route.map(p=>p[1]);
+  const minLat=Math.min(...lats), maxLat=Math.max(...lats);
+  const minLon=Math.min(...lons), maxLon=Math.max(...lons);
+  const spanLat=Math.max(maxLat-minLat,1e-6), spanLon=Math.max(maxLon-minLon,1e-6);
+  const s=Math.min((w-2*pad)/spanLon, (h-2*pad)/spanLat);
+  const offX=(w-2*pad-spanLon*s)/2, offY=(h-2*pad-spanLat*s)/2;
+  const x=lon=>pad+offX+(lon-minLon)*s;
+  const y=lat=>h-pad-offY-(lat-minLat)*s;
+  const d=route.map((p,i)=>(i?'L':'M')+x(p[1]).toFixed(1)+' '+y(p[0]).toFixed(1)).join(' ');
+  const a=route[0], b=route[route.length-1];
+  return '<svg viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="xMidYMid meet">'+
+    '<path d="'+d+'" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" opacity=".85"/>'+
+    '<circle cx="'+x(a[1]).toFixed(1)+'" cy="'+y(a[0]).toFixed(1)+'" r="3.2" fill="#34c759"/>'+
+    '<circle cx="'+x(b[1]).toFixed(1)+'" cy="'+y(b[0]).toFixed(1)+'" r="3.2" fill="#ff3b30"/>'+
+    '</svg>';
+}
+
 function tripStart(now){
   trip={ id:'trip_'+now.toString(36)+'_'+Math.random().toString(36).slice(2,6),
     startMs:now, endMs:null, points:[],
@@ -1519,6 +1561,8 @@ function tripEnd(now, reason){
   // discard junk trips (too short and no distance) — and delete the stub that
   // tripStart() already wrote, otherwise it came back later as a 0 km trip
   if(durSec<20 && (trip.distKm||0)<0.05){ const id=trip.id; trip=null; tripDelete([id]); return; }
+  // keep a compressed track before the raw points are dropped
+  trip.route=tripBuildRoute(trip.points);
   // The summary is final; the points are the bulk of the record (a long trip is
   // hundreds of them). Keeping only the summary keeps history small forever.
   trip.points=[];
@@ -1619,14 +1663,20 @@ async function refreshTripsScreen(){
     const dstr=d.toLocaleDateString('ru-RU',{day:'2-digit',month:'short'})+' '+d.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
     const dur=(t.endMs-t.startMs)/1000;
     const socStr=(t.startSoc!=null&&t.endSoc!=null)?(t.startSoc.toFixed(0)+'→'+t.endSoc.toFixed(0)+'%'):'';
-    const route=(t.startLat!=null)?'<span class="route" onclick="openTripRoute('+t.startLat+','+t.startLon+')">Маршрут</span>':'';
+    const hasTrack = !!(t.route && t.route.length>1);
+    const routeLink = (t.startLat!=null)
+      ? '<span class="route" onclick="openTripRoute('+t.startLat+','+t.startLon+')">Открыть на карте</span>' : '';
+    const track = hasTrack
+      ? '<div class="t-route">'+routeSvg(t.route)+'<div class="t-route-note">Трек поездки · '+t.route.length+' точек</div></div>'
+      : '';
     const spdCell=(t.maxSpd>0)?'<span><span class="m-val">'+t.maxSpd.toFixed(0)+'</span> км/ч</span>':'';
     return '<div class="trip-item">'+
       '<div class="t-head"><span class="t-date">'+dstr+'</span><span class="t-dur">'+fmtDur(dur)+'</span></div>'+
       '<div class="t-metrics"><span><span class="m-val">'+(t.distKm||0).toFixed(1)+'</span> км</span>'+
       spdCell+
       '<span><span class="m-val">'+((t.energyWh||0)/1000).toFixed(2)+'</span> кВт·ч</span></div>'+
-      '<div class="t-meta">'+(socStr?'<span>Заряд: '+socStr+'</span>':'')+route+'</div>'+
+      '<div class="t-meta">'+(socStr?'<span>Заряд: '+socStr+'</span>':'')+routeLink+'</div>'+
+      track+
       '</div>';
   }).join('');
 }
