@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.02.76-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "Bounded history: retention, no points, junk cleanup"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.02.77-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "Charges tab, compressed trip tracks"
 
 WebServer server(80);
 DNSServer dnsServer;
