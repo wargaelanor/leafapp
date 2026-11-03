@@ -30,7 +30,7 @@ powershell -File tools\mkwebapp.ps1
 
 arduino-cli compile ^
   --config-file "$env:USERPROFILE\.arduinoIDE\arduino-cli.yaml" ^
-  --fqbn "esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=cdc,FlashSize=16M,PartitionScheme=app3M_fat9M_16MB,PSRAM=disabled" ^
+  --fqbn "esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=cdc,FlashSize=16M,PartitionScheme=app3M_fat9M_16MB,PSRAM=opi" ^
   --output-dir "%TEMP%\leafbin-ze1" firmware\LeafControl
 ```
 

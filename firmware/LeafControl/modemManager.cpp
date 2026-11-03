@@ -4,6 +4,7 @@
 #include <Client.h>
 #include "configuration.h"
 #include "modemHw.h"
+#include "modemPins.h"
 #include "canLeafZE1.h"
 #include "mqttInterface.h"
 
@@ -14,7 +15,7 @@ static const uint32_t GPS_POLL_MS = 20000;
 static const uint32_t ATTACH_AT_TIMEOUT_MS = 90000;
 static const uint32_t ATTACH_SIM_TIMEOUT_MS = 15000;
 static const uint32_t ATTACH_NET_TIMEOUT_MS = 120000;
-static const uint8_t SIM800_RI_PIN = 37;
+static const uint8_t SIM800_RI_PIN = MODEM_RI_PIN;
 static const uint32_t CALL_POLL_MS = 1000;
 // In call-only mode the modem is polled rarely unless the RI line says a call
 // is coming in; the module itself can sleep in between.

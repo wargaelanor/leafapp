@@ -278,7 +278,7 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, bool ovmsConnected,
    if (getModemCallEnabled()) server.sendContent(F(" checked"));
    server.sendContent(F(
      "> Управление климатом входящим звонком</label>\n"
-     "<div class='hint'>Подключение SIM800: TXD → GPIO35, RXD → GPIO38, RING/RI → GPIO37. Первый разрешённый звонок включает климат, следующий выключает; остальные вызовы отклоняются. Русские голосовые фразы загружаются во внутреннюю память модема автоматически.</div>\n"
+     "<div class='hint'>Подключение модема: TXD модема → GPIO18, RXD модема → GPIO17, RING/RI → GPIO16 (необязательно). Питание модема — отдельные 5 В / 2 А, не с ESP32. A7670 проверяется через «Диагностика → Проверить модем». Первый разрешённый звонок включает климат, следующий выключает; остальные вызовы отклоняются.</div>\n"
    ));
    for (uint8_t i = 0; i < 5; i++) {
      server.sendContent(F("<label for='modem_call_num"));
@@ -302,7 +302,7 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, bool ovmsConnected,
   server.sendContent(String(getModemPwrKey()));
   server.sendContent(F(
     "'>\n"
-    "<div class='hint'>UART SIM800: TXD модема → GPIO35, RXD модема → GPIO38. RING/RI → GPIO37. Wi-Fi имеет приоритет для MQTT. При включённом управлении звонком SIM800 остаётся зарегистрированным в GSM. SIM800 требует сети 2G.</div>\n"
+    "<div class='hint'>UART модема: TXD модема → GPIO18, RXD модема → GPIO17, RING/RI → GPIO16. Питание — отдельные 5 В / 2 А. GPIO33–37 заняты PSRAM и для модема не используются. Wi-Fi имеет приоритет для MQTT. SIM800 требует сети 2G, A7670E — LTE Cat 1.</div>\n"
     "<button type='submit' class='btn btn-save'>Сохранить и перезагрузить</button>\n"
     "</div></details>\n"
     "<details class='section' data-section='power'><summary>Экономия энергии</summary><div class='section-body'>\n"

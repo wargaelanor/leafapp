@@ -1,4 +1,5 @@
 #include "modemHw.h"
+#include "modemPins.h"
 #include "callAudio.h"
 
 #include <Client.h>
@@ -239,7 +240,7 @@ namespace modem800 {
 
 void hwBegin() {
   // ESP RX <- SIM800 TXD, ESP TX -> SIM800 RXD.
-  simSerial.begin(115200, SERIAL_8N1, 35, 38);
+  simSerial.begin(115200, SERIAL_8N1, MODEM_UART_RX, MODEM_UART_TX);
   delay(100);
   flushInput();
   escapeToAt();

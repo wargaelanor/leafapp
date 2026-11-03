@@ -18,10 +18,11 @@
 #include "modemManager.h"
 #include "canLogger.h"
 #include "tripLog.h"
+#include "modemProbe.h"
 #include <Preferences.h>
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.07.98-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "History on board, lite status, AP mDNS, reboot"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.99-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "OPI PSRAM, modem UART moved off PSRAM pins"
 
 WebServer server(80);
 DNSServer dnsServer;
@@ -457,7 +458,7 @@ void handleApiStatus() {
     "\"r5c0\":\"%s\",\"r1dba\":\"%s\","
     "\"bmslen\":%u,\"bmsgot\":%u,\"bmsgrp\":%u,\"bmsff\":%lu,"
     "\"bmsage\":%lu,\"bmsfail\":%lu,\"bmsreq\":%u,\"bmscd\":%lu,"
-    "\"modem\":\"%s\",\"uptime\":%lu,\"epoch\":%lu,\"free_heap\":%lu,\"reset_reason\":%d,\"software_restart\":%u,"
+    "\"modem\":\"%s\",\"uptime\":%lu,\"epoch\":%lu,\"free_heap\":%lu,\"psram\":%u,\"psram_free\":%u,\"reset_reason\":%d,\"software_restart\":%u,"
     "\"remote_mode\":%d,\"ui_lite\":%d,\"mqtt_connected\":%d,\"ovms_v2_connected\":%d,\"ovms_v2_paranoid\":%d,"
     "\"wifi_status\":%d,\"wifi_rssi\":%d,\"wifi_profile\":%u,\"wifi_disconnect\":%d,"
     "\"wifi_down_s\":%lu,"
@@ -491,7 +492,8 @@ void handleApiStatus() {
     (unsigned long)bmsLastReplyAgeSec(), (unsigned long)bmsFailureCount(),
     (unsigned)bmsRequestedGroupId(), (unsigned long)bmsCooldownLeftSec(),
     modemGetStateStr(), (unsigned long)(millis() / 1000UL), (unsigned long)boardEpoch(),
-    (unsigned long)ESP.getFreeHeap(), (int)esp_reset_reason(), (unsigned int)lastSoftwareRestart,
+    (unsigned long)ESP.getFreeHeap(), (unsigned)ESP.getPsramSize(), (unsigned)ESP.getFreePsram(),
+    (int)esp_reset_reason(), (unsigned int)lastSoftwareRestart,
     (int)getRemoteTransport(), getUiLite() ? 1 : 0, mqttIsConnected() ? 1 : 0, ovmsV2IsConnected() ? 1 : 0,
     ovmsV2ParanoidIsActive() ? 1 : 0,
     (int)WiFi.status(), WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0,
@@ -609,6 +611,30 @@ void handleReboot() {
   rebootPendingAt = millis() + 1500;
   rebootPendingReason = 6;
   server.send(200, "application/json", "{\"ok\":true,\"reboot\":true}");
+}
+
+// Modem bench test: scans baud rates and prints the AT answers. Read-only from
+// the car's point of view, so no developer password; it only opens Serial2.
+void handleModemProbe() {
+  noteUserActivity();
+  ModemState st = modemGetState();
+  if (getModemEnable() && st != ModemState::OFF && st != ModemState::FAILED) {
+    server.send(409, "application/json", "{\"error\":\"modem_busy\"}");
+    return;
+  }
+  String body = modemProbeJson();
+  server.sendHeader("Cache-Control", "no-store");
+  server.send(200, "application/json", body);
+}
+
+void handleModemPower() {
+  if (!sameOriginPost()) {
+    server.send(403, "application/json", "{\"error\":\"forbidden\"}");
+    return;
+  }
+  noteUserActivity();
+  modemProbePowerPulse();
+  server.send(200, "application/json", "{\"ok\":true,\"pwrkey\":true}");
 }
 
 // Live CAN watch: one JSON row per identifier, updated in place on the board.
@@ -1859,6 +1885,8 @@ for (size_t i = 0; i < WEBAPP_ASSET_COUNT; i++) {
       server.on("/api/developer/replay/disarm", HTTP_POST, handleReplayDisarm);
       server.on("/api/developer/vin_probe", HTTP_POST, handleVinProbe);
       server.on("/api/vin_probe", HTTP_POST, handleVinProbePublic);
+      server.on("/api/modem_probe", HTTP_POST, handleModemProbe);
+      server.on("/api/modem_power", HTTP_POST, handleModemPower);
       server.on("/api/trips", HTTP_GET, handleTripsList);
       server.on("/api/charges", HTTP_GET, handleChargesList);
       server.on("/api/trips/clear", HTTP_POST, handleTripsClear);
