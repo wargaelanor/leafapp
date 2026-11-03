@@ -800,13 +800,13 @@ body.demo .demo-banner{display:block}
   <div class="modal" id="tariff-modal" role="dialog" aria-modal="true" onclick="closeTariff(event)">
     <div class="sheet">
       <h2>Тариф на электричество</h2>
-      <p class="hint">Цена за кВт·ч. Ночной тариф действует в указанном интервале, энергия распределяется по времени поездки или зарядки.</p>
+      <p class="hint">Цена за кВт·ч. Ночной тариф действует в указанном интервале (по умолчанию 00:00–07:00), энергия распределяется по времени поездки или зарядки.</p>
       <label for="tar-day">День, ₽/кВт·ч</label>
       <input id="tar-day" type="number" step="0.01" min="0" inputmode="decimal" placeholder="5.50">
       <label for="tar-night">Ночь, ₽/кВт·ч</label>
       <input id="tar-night" type="number" step="0.01" min="0" inputmode="decimal" placeholder="2.80">
       <div style="display:flex;gap:10px">
-        <div style="flex:1"><label for="tar-from">Ночь с, час</label><input id="tar-from" type="number" min="0" max="23" value="23"></div>
+        <div style="flex:1"><label for="tar-from">Ночь с, час</label><input id="tar-from" type="number" min="0" max="23" value="0"></div>
         <div style="flex:1"><label for="tar-to">Ночь до, час</label><input id="tar-to" type="number" min="0" max="23" value="7"></div>
       </div>
       <div class="btns">
@@ -856,7 +856,7 @@ body.demo .demo-banner{display:block}
           <li><strong>Живая картинка.</strong> Автомобиль на главном экране меняется по состоянию: загорается свет, появляется кабель зарядки, крутятся колёса в движении.</li>
           <li><strong>Светлая и тёмная тема.</strong> Оформление подстраивается под настройку телефона автоматически.</li>
           <li><strong>Четыре режима связи.</strong> Без подключения (только локально), MQTT-брокер, OVMS Server V2 или только звонок — выбирается в настройках платы. Приложение ставится на главный экран телефона.</li>
-          <li><strong>История.</strong> Поездки и сеансы зарядки хранятся на телефоне: до 500 поездок и 300 зарядок, старые удаляются сами. Для поездок можно включить запись трека и видеть маршрут в карточке. Есть экспорт в CSV и расчёт стоимости по тарифу за кВт·ч.</li>
+          <li><strong>История.</strong> Поездки и сеансы зарядки пишет сама плата и хранит у себя: около 6000 поездок и 1600 зарядок, старые записи удаляются автоматически. Приложение только показывает их, поэтому история не зависит от того, открыт ли телефон. Есть экспорт в CSV и расчёт стоимости по дневному и ночному тарифу.</li>
           <li><strong>Диагностика.</strong> Отдельный экран: прошивка, время работы, причина последней перезагрузки, свободная память, Wi-Fi, ошибки CAN, состояние BMS и часы платы. Оттуда же можно разбудить шлюз и снять данные батареи или запустить пробу VIN.</li>
           <!--DEMO-BEGIN--><li><strong>Демо-режим.</strong> Позволяет пройтись по всем экранам и кнопкам без автомобиля — данные условные, команды никуда не отправляются.</li><!--DEMO-END-->
           <li><strong>Две версии страницы.</strong> По умолчанию открывается упрощённая — только заряд, запас хода, напряжение, ток, температуры и основные команды; весит несколько килобайт и работает даже при очень слабом сигнале. Кнопка «Красивый вид» включает полное приложение, выбор запоминается в плате.</li>
@@ -1615,7 +1615,49 @@ function tripPut(rec){
     tx.onerror=()=>rej(tx.error);
   });
 }
+// ---------- board history ----------
+// When the page is served by the board itself, the history is written by the
+// board around the clock and only read here. This is what makes a trip survive
+// a closed phone.
+async function boardTrips(){
+  const r = await fetch('/api/trips', {cache:'no-store'});
+  if(!r.ok) throw new Error('http ' + r.status);
+  const rows = await r.json();
+  return (Array.isArray(rows) ? rows : []).map(x => ({
+    id: 'b' + x.s,
+    startMs: (+x.s || 0) * 1000,
+    endMs: (+x.e || +x.s || 0) * 1000,
+    distKm: +x.k || 0,
+    energyWh: (+x.w || 0) * 1000,
+    whDay: (x.wd != null ? +x.wd * 1000 : undefined),
+    whNight: (x.wn != null ? +x.wn * 1000 : undefined),
+    maxSpd: 0,
+    startSoc: (x.s0 >= 0 ? +x.s0 : null),
+    endSoc: (x.s1 >= 0 ? +x.s1 : null),
+    endReason: x.r || '',
+    points: []
+  })).filter(t => t.startMs > 0 && t.endMs >= t.startMs);
+}
+async function boardCharges(){
+  const r = await fetch('/api/charges', {cache:'no-store'});
+  if(!r.ok) throw new Error('http ' + r.status);
+  const rows = await r.json();
+  return (Array.isArray(rows) ? rows : []).map(x => ({
+    id: 'b' + x.s,
+    startMs: (+x.s || 0) * 1000,
+    endMs: (+x.e || +x.s || 0) * 1000,
+    energyWh: (+x.w || 0) * 1000,
+    whDay: (x.wd != null ? +x.wd * 1000 : undefined),
+    whNight: (x.wn != null ? +x.wn * 1000 : undefined),
+    maxV: null,
+    startSoc: (x.s0 >= 0 ? +x.s0 : null),
+    endSoc: (x.s1 >= 0 ? +x.s1 : null),
+    endReason: x.r || '',
+    points: []
+  })).filter(c => c.startMs > 0 && c.endMs >= c.startMs);
+}
 function tripGetAll(){
+  if(onBoard) return boardTrips().catch(()=>[]);
   return new Promise((res,rej)=>{
     if(!tripDB) return res([]);
     const r=tripDB.transaction(TRIP_STORE).objectStore(TRIP_STORE).getAll();
@@ -1638,6 +1680,7 @@ function tripDelete(ids){
   });
 }
 async function tripPrune(){
+  if(onBoard) return;
   const all=await tripGetAll();
   const done=all.filter(t=>t.endMs!=null).sort((a,b)=>b.startMs-a.startMs);
   if(done.length<=TRIP_KEEP) return;
@@ -1795,6 +1838,9 @@ function nowMs(){
   return (onBoard && S.epoch && S.epoch > 1600000000) ? S.epoch * 1000 : Date.now();
 }
 function tripTick(){
+  // The board writes the history itself; a second recorder in the page would
+  // only create duplicates and lose trips when the phone sleeps.
+  if(onBoard) return;
   if(!tripDB) return;
   const now=nowMs();
   const odo = (S.odo>0 ? S.odo : null);
@@ -1849,6 +1895,7 @@ function updateTripBanner(){
 }
 
 async function tripCleanupOrphans(){
+  if(onBoard) return;
   const all=await tripGetAll();
   let changed=false;
   for(const t of all){
@@ -1919,7 +1966,14 @@ function openTripRoute(lat,lon){
 }
 async function clearTrips(){
   if(!confirm('Удалить всю историю поездок?')) return;
-  await tripClearAll();
+  if(onBoard){
+    try{
+      const r = await fetch('/api/trips/clear', {method:'POST', cache:'no-store', headers:{'X-Requested-With':'leaf'}});
+      if(!r.ok) throw new Error('http '+r.status);
+    }catch(e){ toast('Плата не подтвердила очистку'); return; }
+  } else {
+    await tripClearAll();
+  }
   refreshTripsScreen();
   toast('История очищена');
 }
@@ -1949,6 +2003,7 @@ function chgPut(rec){
   });
 }
 function chgGetAll(){
+  if(onBoard) return boardCharges().catch(()=>[]);
   return new Promise((res,rej)=>{
     if(!chgDB) return res([]);
     const r=chgDB.transaction(CHG_STORE).objectStore(CHG_STORE).getAll();
@@ -1969,6 +2024,7 @@ function chgDelete(ids){
   });
 }
 async function chgPrune(){
+  if(onBoard) return;
   const all=await chgGetAll();
   const done=all.filter(c=>c.endMs!=null).sort((a,b)=>b.startMs-a.startMs);
   if(done.length<=CHG_KEEP) return;
@@ -2033,6 +2089,7 @@ function chargeRecordPoint(now){
   chgPut(chg);
 }
 function chargeTick(){
+  if(onBoard) return;    // board-side recorder owns the history
   if(!chgDB) return;
   const now=nowMs();
   if(!chg){
@@ -2046,6 +2103,7 @@ function chargeTick(){
   chgPrevCharging=S.charging;
 }
 async function chargeCleanupOrphans(){
+  if(onBoard) return;
   const all=await chgGetAll();
   let changed=false;
   for(const c of all){
@@ -2096,7 +2154,14 @@ async function refreshChargesScreen(){
 }
 async function clearCharges(){
   if(!confirm('Удалить всю историю зарядок?')) return;
-  await chgClearAll();
+  if(onBoard){
+    try{
+      const r = await fetch('/api/charges/clear', {method:'POST', cache:'no-store', headers:{'X-Requested-With':'leaf'}});
+      if(!r.ok) throw new Error('http '+r.status);
+    }catch(e){ toast('Плата не подтвердила очистку'); return; }
+  } else {
+    await chgClearAll();
+  }
   refreshChargesScreen();
   toast('История очищена');
 }
@@ -2120,9 +2185,9 @@ function tariffCfg(){
     const v = JSON.parse(localStorage.getItem('leaftariff') || '{}');
     return { day: +v.day || 0,
              night: (v.night === undefined ? +v.day||0 : +v.night||0),
-             from: (v.from === undefined ? 23 : +v.from),
+             from: (v.from === undefined ? 0 : +v.from),
              to:   (v.to === undefined ? 7 : +v.to) };
-  }catch(e){ return {day:0, night:0, from:23, to:7}; }
+  }catch(e){ return {day:0, night:0, from:0, to:7}; }
 }
 function saveTariffCfg(c){ try{ localStorage.setItem('leaftariff', JSON.stringify(c)); }catch(e){} }
 // Night window may wrap over midnight (23 -> 7).
@@ -2161,7 +2226,7 @@ function closeTariff(event){
 function saveTariff(){
   const day = parseFloat(String($('tar-day').value).replace(',', '.')) || 0;
   const night = parseFloat(String($('tar-night').value).replace(',', '.')) || 0;
-  let from = parseInt($('tar-from').value, 10); if(!(from >= 0 && from <= 23)) from = 23;
+  let from = parseInt($('tar-from').value, 10); if(!(from >= 0 && from <= 23)) from = 0;
   let to = parseInt($('tar-to').value, 10); if(!(to >= 0 && to <= 23)) to = 7;
   saveTariffCfg({day, night, from, to});
   closeTariff();
@@ -2241,7 +2306,7 @@ function closeDiag(event){
 function diagResetText(code, sw){
   const base = {1:'включение питания',2:'внешний сигнал',3:'программный',4:'паника',
                 5:'watchdog',6:'watchdog задачи',7:'watchdog',8:'выход из сна',9:'просадка питания'}[code] || ('код '+code);
-  const why = {2:'после OTA',3:'зависла заливка',4:'перезапуск радио',5:'мало памяти'}[sw];
+  const why = {2:'после OTA',3:'зависла заливка',4:'перезапуск радио',5:'мало памяти',6:'кнопка в настройках'}[sw];
   return base + (why ? ' · '+why : '');
 }
 function diagUptime(sec){
