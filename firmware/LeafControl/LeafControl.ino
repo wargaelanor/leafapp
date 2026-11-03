@@ -18,8 +18,8 @@
 #include "modemManager.h"
 #include "canLogger.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.05.94-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "Self-heal Wi-Fi, heap guard, diagnostics, CSV, cost"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.06.95-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "Day/night tariffs, clipboard fallback"
 
 WebServer server(80);
 DNSServer dnsServer;
