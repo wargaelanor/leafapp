@@ -245,6 +245,10 @@ html[data-theme="dark"] .dur-btns button.on{color:#08121a}
 .diag-grid .d-cell span{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
 .diag-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
 .diag-actions .pill-btn{font-size:12px;padding:8px 12px}
+.diag-modem{margin:12px 0 0;padding:10px 12px;background:#0f1115;color:#d7e0ea;border-radius:8px;
+  font:11px/1.45 ui-monospace,Consolas,monospace;white-space:pre-wrap;word-break:break-word;
+  max-height:220px;overflow:auto;display:none}
+.diag-modem.show{display:block}
 /* CAN monitor: one row per identifier, updated in place */
 .dev-monitor{margin:16px 0;padding:14px;background:var(--surface-2);border:1px solid var(--line);border-radius:8px}
 .dm-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap}
@@ -830,8 +834,11 @@ body.demo .demo-banner{display:block}
       <div class="diag-actions">
         <button class="pill-btn" type="button" onclick="diagWake()">Разбудить и снять BMS</button>
         <button class="pill-btn" type="button" onclick="diagVin()">Проба VIN</button>
+        <button class="pill-btn" type="button" onclick="diagModem()">Проверить модем</button>
+        <button class="pill-btn" type="button" onclick="diagModemPower()">Импульс POWER</button>
         <button class="pill-btn" type="button" onclick="diagCopy()">Копировать</button>
       </div>
+      <pre class="diag-modem" id="diag-modem"></pre>
       <div class="dev-error" id="diag-note"></div>
     </div>
   </div>
@@ -2326,6 +2333,7 @@ async function diagRender(){
       ['Работает', diagUptime(j.uptime)],
       ['Перезагрузка', diagResetText(j.reset_reason, j.software_restart)],
       ['Память', Math.round((j.free_heap||0)/1024) + ' КБ'],
+      ['PSRAM', j.psram ? (Math.round((j.psram_free||0)/1024) + ' из ' + Math.round(j.psram/1024) + ' КБ') : 'нет'],
       ['Wi-Fi', t(j.wifi_rssi,' dBm')],
       ['Часы платы', j.epoch ? new Date(j.epoch*1000).toLocaleTimeString('ru-RU') : 'не синхронизированы'],
       ['Интерфейс', j.ui_lite ? 'лёгкий' : 'полный'],
@@ -2334,6 +2342,7 @@ async function diagRender(){
       ['BMS', 'группа '+(j.bmsgrp||0)+' · '+bmsAge+' · ошибок '+(j.bmsfail||0)],
       ['Батарея', t(j.btemp,' °C')+' · разброс '+t(j.cdelta,' мВ')],
       ['Связь', ['без подключения','MQTT','OVMS V2','только звонок'][j.remote_mode] || '—'],
+      ['Модем', j.modem || '—'],
     ];
     $('diag-grid').innerHTML = rows.map(rr =>
       '<div class="d-cell"><b>'+rr[1]+'</b><span>'+rr[0]+'</span></div>').join('');
@@ -2376,6 +2385,29 @@ function copyText(text){
     ta.remove();
     ok ? resolve() : reject(new Error('copy failed'));
   });
+}
+async function diagModem(){
+  const out = $('diag-modem');
+  out.classList.add('show');
+  out.textContent = 'проверяем модем — до 10 секунд…';
+  try{
+    const r = await fetch('/api/modem_probe', {method:'POST', cache:'no-store'});
+    if(r.status === 409){ out.textContent = 'модем занят: отключите его в настройках и повторите'; return; }
+    const j = await r.json();
+    out.textContent = j.reply || (j.ok ? 'AT ответил, но без данных' : 'нет ответа');
+  }catch(e){
+    out.textContent = 'плата не ответила';
+  }
+}
+async function diagModemPower(){
+  const out = $('diag-modem');
+  out.classList.add('show');
+  out.textContent = 'импульс PWRKEY отправлен. Подождите 10–15 секунд и нажмите «Проверить модем».';
+  try{
+    await fetch('/api/modem_power', {method:'POST', cache:'no-store', headers:{'X-Requested-With':'leaf'}});
+  }catch(e){
+    out.textContent = 'не удалось отправить импульс';
+  }
 }
 function diagCopy(){
   const cells = [...document.querySelectorAll('#diag-grid .d-cell')];
