@@ -18,8 +18,9 @@
 #include "modemManager.h"
 #include "canLogger.h"
 #include "tripLog.h"
+#include <Preferences.h>
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.07.96-CMD"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.07.97-CMD"
 #define LEAF_FIRMWARE_DESCRIPTION "History on board, lite status, AP mDNS, reboot"
 
 WebServer server(80);
@@ -28,6 +29,25 @@ bool captivePortalActive = false;
 unsigned long rebootPendingAt = 0;
 static uint8_t rebootPendingReason = 0;
 RTC_DATA_ATTR static uint8_t lastSoftwareRestart = 0;
+
+// The reason must survive the reset it describes. RTC memory was not reliable
+// for this on a software reset, so it is kept in NVS and consumed on next boot.
+static void recordSoftwareRestart(uint8_t reason) {
+  lastSoftwareRestart = reason;
+  Preferences prefs;
+  if (prefs.begin("leafboot", false)) {
+    prefs.putUChar("why", reason);
+    prefs.end();
+  }
+}
+
+static void loadSoftwareRestart() {
+  Preferences prefs;
+  if (!prefs.begin("leafboot", false)) return;
+  lastSoftwareRestart = prefs.getUChar("why", 0);
+  prefs.putUChar("why", 0);
+  prefs.end();
+}
 // Largest gap between loop() iterations: proves whether a stalled HTTP
 // response comes from a blocked main loop or only from the network.
 static uint32_t maxLoopGapMs = 0;
@@ -759,7 +779,7 @@ static void loopSupervisorTask(void*) {
       // untouched because Update.end() was never reached.
       if (otaLastProgressMs != 0 && millis() - otaLastProgressMs > 120000UL) {
         Serial.println("### Supervisor: OTA stalled for 2 min, rebooting ###");
-        lastSoftwareRestart = 3;
+        recordSoftwareRestart(3);
         delay(100);
         ESP.restart();
       }
@@ -768,7 +788,7 @@ static void loopSupervisorTask(void*) {
     uint32_t heartbeat = loopHeartbeatMs;
     if (heartbeat != 0 && millis() - heartbeat > 60000UL) {
       Serial.println("### Supervisor: main loop stalled, rebooting ###");
-      lastSoftwareRestart = 1;
+      recordSoftwareRestart(1);
       delay(100);
       ESP.restart();
     }
@@ -780,7 +800,7 @@ static void loopSupervisorTask(void*) {
     if (freeHeap < 25000UL) {
       if (++lowHeapSamples >= 3) {
         Serial.printf("### Supervisor: free heap %u, rebooting ###\n", (unsigned)freeHeap);
-        lastSoftwareRestart = 5;
+        recordSoftwareRestart(5);
         delay(100);
         ESP.restart();
       }
@@ -1641,7 +1661,7 @@ void manageWiFi() {
         // until someone power-cycles the car.
         if (++wifiRadioRestarts >= 3) {
           Serial.println("WiFi: 3 radio restarts without a link, rebooting");
-          lastSoftwareRestart = 4;
+          recordSoftwareRestart(4);
           delay(200);
           ESP.restart();
         }
@@ -1701,6 +1721,7 @@ void wifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
 
 void setup() {
   Serial.begin(115200);
+  loadSoftwareRestart();
   // Arduino loopTask runs on core 1. Keep recovery on core 0 so a blocking
   // HTTP/network call cannot also starve the task responsible for rebooting.
   BaseType_t supervisorResult = xTaskCreatePinnedToCore(
@@ -1921,7 +1942,7 @@ void loop() {
   // Signed compare handles millis() wraparound; no reboot during OTA upload
   if (rebootPendingAt != 0 && !otaInProgress && (long)(millis() - rebootPendingAt) >= 0) {
     Serial.println("### Rebooting after settings save ###");
-    lastSoftwareRestart = rebootPendingReason;
+    recordSoftwareRestart(rebootPendingReason);
     delay(100);
     ESP.restart();
   }
