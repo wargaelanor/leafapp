@@ -331,8 +331,15 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, bool ovmsConnected,
     "'>\n"
     "<button type='submit' class='btn btn-save'>Сохранить и перезагрузить</button>\n"
     "</div></details></div></form>\n"
+    "<div class='settings-list' style='margin:18px 16px 0'>\n"
+    "<details class='section' data-section='maint'><summary>Обслуживание<span>перезагрузка платы</span></summary>\n"
+    "<div style='padding:4px 16px 16px'>\n"
+    "<p style='font-size:13px;color:#8e8e93;margin:0 0 12px'>Полная перезагрузка, как кнопкой RESET. Настройки, Wi-Fi и история поездок сохраняются. Кнопку нужно удерживать 3 секунды.</p>\n"
+    "<button type='button' id='reboot-btn' class='btn btn-save' style='background:#d93025'>Удерживайте 3 секунды</button>\n"
+    "<div id='reboot-note' style='font-size:12px;color:#8e8e93;min-height:16px;margin-top:8px'></div>\n"
+    "</div></details></div>\n"
     "<div style='padding:0 16px'><a href='/' class='btn btn-back'>Назад</a></div>\n"
-    "<script>function showRemote(){var r=document.querySelector('input[name=remote_mode]:checked'),v=r?r.value:'0';document.querySelectorAll('[data-remote-panel]').forEach(function(p){p.hidden=p.dataset.remotePanel!==v})}document.querySelectorAll('input[name=remote_mode]').forEach(function(r){r.addEventListener('change',showRemote)});showRemote();document.querySelectorAll('.section').forEach(function(s){s.addEventListener('toggle',function(){if(!s.open)return;document.querySelectorAll('.section[open]').forEach(function(o){if(o!==s)o.open=false});history.replaceState(null,'','#'+s.dataset.section)})});var h=location.hash.slice(1),d=h&&document.querySelector('[data-section=\"'+h+'\"]');if(d)d.open=true;</script>\n"
+    "<script>function showRemote(){var r=document.querySelector('input[name=remote_mode]:checked'),v=r?r.value:'0';document.querySelectorAll('[data-remote-panel]').forEach(function(p){p.hidden=p.dataset.remotePanel!==v})}document.querySelectorAll('input[name=remote_mode]').forEach(function(r){r.addEventListener('change',showRemote)});showRemote();document.querySelectorAll('.section').forEach(function(s){s.addEventListener('toggle',function(){if(!s.open)return;document.querySelectorAll('.section[open]').forEach(function(o){if(o!==s)o.open=false});history.replaceState(null,'','#'+s.dataset.section)})});var h=location.hash.slice(1),d=h&&document.querySelector('[data-section=\"'+h+'\"]');if(d)d.open=true;(function(){var b=document.getElementById('reboot-btn');if(!b)return;var t=null,n=document.getElementById('reboot-note');function stop(){if(t){clearTimeout(t);t=null;b.textContent='Удерживайте 3 секунды'}}function start(e){e.preventDefault();b.textContent='Держите…';t=setTimeout(function(){t=null;b.textContent='Перезагружаем…';n.textContent='плата перезагрузится через несколько секунд';fetch('/reboot',{method:'POST',headers:{'X-Requested-With':'leaf'}}).catch(function(){})},3000)}b.addEventListener('pointerdown',start);['pointerup','pointerleave','pointercancel'].forEach(function(ev){b.addEventListener(ev,stop)})})();</script>\n"
     "</div></div></body></html>\n"
   ));
 

@@ -17,9 +17,10 @@
 #include "ovmsV2Client.h"
 #include "modemManager.h"
 #include "canLogger.h"
+#include "tripLog.h"
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.06.95-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "Day/night tariffs, clipboard fallback"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.07.96-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "History on board, lite status, AP mDNS, reboot"
 
 WebServer server(80);
 DNSServer dnsServer;
@@ -40,6 +41,9 @@ static volatile int lastWifiDisconnectReason = 0;
 static bool timeSyncStarted = false;
 // How many times the radio was restarted without getting a link back.
 static uint8_t wifiRadioRestarts = 0;
+// mDNS/NBNS state. They are also useful on the board's own access point, where
+// there is no STA link at all, so they are started once the radio is up.
+static bool mdnsUp = false;
 // Milliseconds since the STA link went down (0 while connected). Reported as
 // wifi_down_s so a "board alive but unreachable" state is visible at a glance.
 static unsigned long wifiStaDownSinceMs = 0;
@@ -56,6 +60,32 @@ static void startSoftAp() {
   }
   Serial.printf("softAP(%s)=%s ip=%s\n", getApSSID(), ok ? "OK" : "FAIL",
                 WiFi.softAPIP().toString().c_str());
+}
+
+// Serve leaf.local over whichever interface is up. ESPmDNS answers on the AP
+// interface too, so connecting straight to the board's access point works
+// without knowing its IP. Idempotent: safe to call from several places.
+static void startMdnsServices() {
+  if (mdnsUp) return;
+  if (!MDNS.begin(getHostName())) {
+    Serial.println("Error starting mDNS service!");
+    return;
+  }
+  MDNS.addService("http", "tcp", 80);
+  mdnsUp = true;
+  Serial.println("mDNS service started.");
+  if (!NBNS.begin(getHostName())) {
+    Serial.println("Error starting NBNS service!");
+  } else {
+    Serial.println("NBNS service started.");
+  }
+}
+
+static void stopMdnsServices() {
+  if (!mdnsUp) return;
+  MDNS.end();
+  NBNS.end();
+  mdnsUp = false;
 }
 
 
@@ -411,6 +441,7 @@ void handleApiStatus() {
     "\"remote_mode\":%d,\"ui_lite\":%d,\"mqtt_connected\":%d,\"ovms_v2_connected\":%d,\"ovms_v2_paranoid\":%d,"
     "\"wifi_status\":%d,\"wifi_rssi\":%d,\"wifi_profile\":%u,\"wifi_disconnect\":%d,"
     "\"wifi_down_s\":%lu,"
+    "\"trips\":%u,\"charges\":%u,\"driving\":%d,"
     "\"sleep_on\":%d,\"sleep_after_h\":%d,\"wake_fast_min\":%d,\"idle_s\":%lu,"
     "\"gps\":{\"lat\":%.5f,\"lon\":%.5f,\"age\":%lu}}",
     LEAF_FIRMWARE_VERSION, LEAF_FIRMWARE_DESCRIPTION,
@@ -446,6 +477,8 @@ void handleApiStatus() {
     (int)WiFi.status(), WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0,
     (unsigned int)(currentWifiProfile + 1), lastWifiDisconnectReason,
     (unsigned long)(wifiStaDownSinceMs ? (millis() - wifiStaDownSinceMs) / 1000UL : 0UL),
+    (unsigned)tripLogTripsCount(), (unsigned)tripLogChargesCount(),
+    (evData.vehicleOn == 1 || tripLogIsDriving() || fabsf(evData.packPower) > 1.0f) ? 1 : 0,
     getSleepEnabled() ? 1 : 0, getSleepAfterHours(), getWakeFastMinutes(),
     (unsigned long)rtcState.idleSec,
     gpsValid ? gLat : 0.0, gpsValid ? gLon : 0.0,
@@ -503,6 +536,59 @@ void handleVinProbePublic() {
   noteUserActivity();
   requestVinObdProbe();
   server.send(200, "application/json", "{\"ok\":true,\"probe\":\"obd09_02\"}");
+}
+
+// --- history kept on the board -------------------------------------------
+// Reads are harmless GETs. Writes (clearing history, rebooting) require the
+// X-Requested-With header, which a cross-site form cannot set.
+static bool sameOriginPost() {
+  return server.method() == HTTP_POST && server.hasHeader("X-Requested-With");
+}
+
+void handleTripsList() {
+  noteUserActivity();
+  server.sendHeader("Cache-Control", "no-store");
+  tripLogSendTrips();
+}
+
+void handleChargesList() {
+  noteUserActivity();
+  server.sendHeader("Cache-Control", "no-store");
+  tripLogSendCharges();
+}
+
+void handleTripsClear() {
+  if (!sameOriginPost()) {
+    server.send(403, "application/json", "{\"error\":\"forbidden\"}");
+    return;
+  }
+  noteUserActivity();
+  tripLogClearTrips();
+  server.send(200, "application/json", "{\"ok\":true}");
+}
+
+void handleChargesClear() {
+  if (!sameOriginPost()) {
+    server.send(403, "application/json", "{\"error\":\"forbidden\"}");
+    return;
+  }
+  noteUserActivity();
+  tripLogClearCharges();
+  server.send(200, "application/json", "{\"ok\":true}");
+}
+
+// Hidden maintenance button in the settings page. It needs a deliberate
+// 3-second hold in the UI; the delay here lets the HTTP answer leave first.
+void handleReboot() {
+  if (!sameOriginPost()) {
+    server.send(403, "application/json", "{\"error\":\"forbidden\"}");
+    return;
+  }
+  noteUserActivity();
+  Serial.println("### Reboot requested from settings page ###");
+  rebootPendingAt = millis() + 1500;
+  rebootPendingReason = 6;
+  server.send(200, "application/json", "{\"ok\":true,\"reboot\":true}");
 }
 
 // Live CAN watch: one JSON row per identifier, updated in place on the board.
@@ -1498,18 +1584,7 @@ void manageWiFi() {
     // AP-only mode, no STA connection to manage
     if (!wifiAvailable) {
       Serial.println("\nAP-only mode active!");
-      
-      if (!MDNS.begin(getHostName())) {
-        Serial.println("Error starting mDNS service!");
-      } else {
-        Serial.println("mDNS service started.");
-        MDNS.addService("http", "tcp", 80);
-      }
-      if (!NBNS.begin(getHostName())) {
-        Serial.println("Error starting NBNS service!");
-      } else {
-        Serial.println("NBNS service started.");
-      }
+      startMdnsServices();
 
       Serial.print("You can find the UI in the browser at: http://");
       Serial.print(getHostName());
@@ -1533,9 +1608,13 @@ void manageWiFi() {
     if (staDownSinceMs == 0) staDownSinceMs = currentTime;
     wifiStaDownSinceMs = staDownSinceMs;
     if (wifiAvailable) {
-      Serial.println("WiFi disconnected, stopping mDNS/NBNS services...");
-      MDNS.end();
-      NBNS.end();
+      // With the AP still up, leaf.local must keep working from the phone that
+      // is connected to it: do not tear mDNS down only because the STA link
+      // dropped.
+      if ((WiFi.getMode() & WIFI_AP) == 0) {
+        Serial.println("WiFi disconnected, stopping mDNS/NBNS services...");
+        stopMdnsServices();
+      }
       wifiAvailable = false;
     }
 
@@ -1591,25 +1670,16 @@ void manageWiFi() {
     Serial.println("\nWi-Fi connected!");
     wifiRadioRestarts = 0;
     if (!timeSyncStarted) {
-      // No RTC on the board: without NTP all timestamps are "since boot". The
-      // trip history is timestamped by the client, but the board's own clock is
-      // what the app uses when it is opened from the board itself.
-      configTime(0, 0, "pool.ntp.org", "time.cloudflare.com");
+      // No RTC on the board. NTP gives the real UTC epoch and the +3 h offset
+      // makes localtime_r() (used for the night tariff) Moscow time.
+      configTime(3 * 3600, 0, "pool.ntp.org", "time.cloudflare.com");
       timeSyncStarted = true;
       Serial.println("NTP: time sync started");
     }
-  
-    if (!MDNS.begin(getHostName())) {
-      Serial.println("Error starting mDNS service!");
-    } else {
-      Serial.println("mDNS service started.");
-      MDNS.addService("http", "tcp", 80);
-    }
-    if (!NBNS.begin(getHostName())) {
-      Serial.println("Error starting NBNS service!");
-    } else {
-      Serial.println("NBNS service started.");
-    }
+
+    // Rebind mDNS so the freshly connected STA interface is included too.
+    if (mdnsUp) stopMdnsServices();
+    startMdnsServices();
 
     Serial.print("You can find the UI in the browser at: http://");
     Serial.print(getHostName());
@@ -1722,6 +1792,11 @@ void setup() {
   setupOvmsV2();
   setupCAN();
   setupEvCAN();
+  tripLogInit();
+
+  // leaf.local must also work when the phone is attached to the board's own
+  // access point, which is the first-run case and the usual recovery path.
+  if (wifiEnabled && (WiFi.getMode() & WIFI_AP) != 0) startMdnsServices();
 
   if (wokeFromTimer) {
     timerRefreshActive = true;
@@ -1763,6 +1838,11 @@ for (size_t i = 0; i < WEBAPP_ASSET_COUNT; i++) {
       server.on("/api/developer/replay/disarm", HTTP_POST, handleReplayDisarm);
       server.on("/api/developer/vin_probe", HTTP_POST, handleVinProbe);
       server.on("/api/vin_probe", HTTP_POST, handleVinProbePublic);
+      server.on("/api/trips", HTTP_GET, handleTripsList);
+      server.on("/api/charges", HTTP_GET, handleChargesList);
+      server.on("/api/trips/clear", HTTP_POST, handleTripsClear);
+      server.on("/api/charges/clear", HTTP_POST, handleChargesClear);
+      server.on("/reboot", HTTP_POST, handleReboot);
       server.on("/api/developer/canlog/start", HTTP_POST, handleCanLogStart);
       server.on("/api/developer/canlog/stop", HTTP_POST, handleCanLogStop);
       server.on("/api/developer/canlog/clear", HTTP_POST, handleCanLogClear);
@@ -1871,6 +1951,7 @@ void loop() {
     manageBmsDiagnostics(millis());
     manageVinQuery(millis());
     manageVinObdProbe(millis());
+    tripLogTick();
     CanSeqResult seqRes = manageCANSequence(millis());
     if (seqRes == CanSeqResult::WAKE_SUCCESS) {
         Serial.println("### Car is awake! ###");
