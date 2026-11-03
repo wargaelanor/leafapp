@@ -644,7 +644,7 @@ body.demo .demo-banner{display:block}
       </div>
       <div class="trip-active-banner" id="charge-active-banner"><i></i><span>Идёт зарядка…</span></div>
       <div class="trip-list" id="charge-list"></div>
-      <div class="trip-empty" id="charge-empty">Сеансы зарядки появятся автоматически при подключении зарядного устройства</div>
+      <div class="trip-empty" id="charge-empty">Плата записывает зарядку сама. Сеанс появится в списке после отключения кабеля.</div>
       <button class="trip-clear" id="charge-clear" style="display:none" onclick="clearCharges()">Очистить историю</button>
       <button class="trip-clear export" onclick="exportChargesCsv()">Экспорт CSV</button>
       <button class="trip-clear export" onclick="editTariff()">Тариф: стоимость в карточках</button>
@@ -665,7 +665,7 @@ body.demo .demo-banner{display:block}
         <span class="sw"><i></i></span>
       </div>
       <div class="trip-list" id="trip-list"></div>
-      <div class="trip-empty" id="trip-empty">Поездки появятся автоматически при движении с включённым зажиганием</div>
+      <div class="trip-empty" id="trip-empty">Плата записывает поездку сама, как только машина начинает двигаться. Первая запись появится после поездки.</div>
       <button class="trip-clear" id="trip-clear" style="display:none" onclick="clearTrips()">Очистить историю</button>
       <button class="trip-clear export" onclick="exportTripsCsv()">Экспорт CSV</button>
       <button class="trip-clear export" onclick="editTariff()">Тариф: стоимость в карточках</button>
@@ -2737,6 +2737,10 @@ function enableBoardUi(){
   $('more-developer').style.display='flex';
   $('more-lite').style.display='flex';
   $('more-diag').style.display='flex';
+  // The board records distance from the odometer, not a GPS track, so the
+  // track switch would be a dead control here.
+  const trackToggle=$('trip-toggle');
+  if(trackToggle) trackToggle.style.display='none';
 }
 async function boot(){
   if(DEMO){ demoStart(); return; }
