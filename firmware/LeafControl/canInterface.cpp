@@ -2,6 +2,7 @@
 #include "driver/twai.h"
 #include "canInterface.h"
 #include "canLogger.h"
+#include "boardConfig.h"
 
 // Implemented in canLeafZE1.cpp. Declared here so the low-level CAN layer can
 // gate the one unproven payload (OBD-II VIN read) without including the whole
@@ -9,8 +10,8 @@
 bool vinObdProbeActive();
 
 // --- CAN SETTINGS (Port B) ---
-#define CAN_TX_PIN 7 
-#define CAN_RX_PIN 6
+#define CAN_TX_PIN BOARD_CAN_TX
+#define CAN_RX_PIN BOARD_CAN_RX
 
 unsigned long logStartTime = 0;
 static bool busOffRecoveryAttempted = false;

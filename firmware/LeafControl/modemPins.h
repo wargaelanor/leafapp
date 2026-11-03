@@ -1,15 +1,13 @@
 #ifndef MODEM_PINS_H
 #define MODEM_PINS_H
 
-// The T-2CAN carries OPI PSRAM, which occupies GPIO 33-37. The modem UART
-// therefore lives on free header pins instead of the old 35/38 pair:
-//   ESP32 RX (GPIO18) <- modem TX
-//   ESP32 TX (GPIO17) -> modem RX
-//   RI      (GPIO16) <- modem RI (optional, can be left unconnected)
-// Only one modem is connected at a time; the SIM800 and the A7670 share these
-// pins, so the wiring is the same for both.
-#define MODEM_UART_RX 18
-#define MODEM_UART_TX 17
-#define MODEM_RI_PIN  16
+#include "boardConfig.h"
+
+// Modem UART/power pins are board-specific and live in boardConfig.h.
+// T-2CAN: external SIM800 on 35/38 (RI 37).
+// T-Call: onboard SIM800L on 26/27, RI 33, PWRKEY 4, POWER_ON 23, RST 5.
+#define MODEM_UART_RX BOARD_MODEM_RX
+#define MODEM_UART_TX BOARD_MODEM_TX
+#define MODEM_RI_PIN  BOARD_MODEM_RI
 
 #endif

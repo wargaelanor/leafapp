@@ -1,5 +1,12 @@
 #include "tripLog.h"
+#include "boardConfig.h"
+#if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
+#include <SPIFFS.h>
+#define HISTFS SPIFFS
+#else
 #include <FFat.h>
+#define HISTFS FFat
+#endif
 #include <WebServer.h>
 #include <time.h>
 #include "vehicleTypes.h"
@@ -17,8 +24,8 @@ extern WebServer server;
 
 static const char* TRIPS_PATH   = "/trips.jsonl";
 static const char* CHARGES_PATH = "/charges.jsonl";
-static const size_t TRIPS_LIMIT   = 1024UL * 1024UL;
-static const size_t CHARGES_LIMIT = 256UL * 1024UL;
+static const size_t TRIPS_LIMIT   = BOARD_TRIPS_LIMIT;
+static const size_t CHARGES_LIMIT = BOARD_CHARGES_LIMIT;
 static const size_t SEND_MAX_RECORDS = 800;
 
 static unsigned long lastTickMs = 0;
@@ -71,7 +78,7 @@ static size_t countLines(File& f) {
 }
 
 static size_t fileLines(const char* path) {
-  File f = FFat.open(path, FILE_READ);
+  File f = HISTFS.open(path, FILE_READ);
   if (!f) return 0;
   size_t n = countLines(f);
   f.close();
@@ -79,7 +86,7 @@ static size_t fileLines(const char* path) {
 }
 
 static void rotateFile(const char* path, size_t limitBytes) {
-  File in = FFat.open(path, FILE_READ);
+  File in = HISTFS.open(path, FILE_READ);
   if (!in) return;
   size_t size = in.size();
   if (size <= limitBytes) { in.close(); return; }
@@ -87,7 +94,7 @@ static void rotateFile(const char* path, size_t limitBytes) {
   // Skip to the middle, then to the next newline so the file keeps whole lines.
   in.seek(size / 2);
   while (in.available() && in.read() != '\n') {}
-  File out = FFat.open("/tmp.jsonl", FILE_WRITE);
+  File out = HISTFS.open("/tmp.jsonl", FILE_WRITE);
   if (!out) { in.close(); return; }
   uint8_t buf[512];
   while (in.available()) {
@@ -98,8 +105,8 @@ static void rotateFile(const char* path, size_t limitBytes) {
   }
   out.close();
   in.close();
-  FFat.remove(path);
-  FFat.rename("/tmp.jsonl", path);
+  HISTFS.remove(path);
+  HISTFS.rename("/tmp.jsonl", path);
   size_t kept = fileLines(path);
   if (strcmp(path, TRIPS_PATH) == 0) tripsCount = kept;
   else chargesCount = kept;
@@ -108,7 +115,7 @@ static void rotateFile(const char* path, size_t limitBytes) {
 }
 
 static void appendRecord(const char* path, size_t limitBytes, const char* line) {
-  File f = FFat.open(path, FILE_APPEND);
+  File f = HISTFS.open(path, FILE_APPEND);
   if (!f) {
     Serial.printf("[log] cannot open %s\n", path);
     return;
@@ -122,10 +129,15 @@ static void appendRecord(const char* path, size_t limitBytes, const char* line) 
 }
 
 void tripLogInit() {
-  // Do not format here: canLogger shares this partition, and a transient mount
-  // failure must not wipe its log or the history.
-  if (!FFat.begin(false)) {
-    Serial.println("[log] FAT partition unavailable, history is disabled");
+  // T-Call has a small SPIFFS partition and may need the initial format;
+  // the T-2CAN FAT partition must never be formatted here because canLogger
+  // shares it.
+  #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
+  if (!HISTFS.begin(true)) {
+#else
+  if (!HISTFS.begin(false)) {
+#endif
+    Serial.println("[log] history filesystem unavailable, history is disabled");
     return;
   }
   tripsCount = fileLines(TRIPS_PATH);
@@ -253,7 +265,7 @@ bool tripLogIsDriving() {
 }
 
 static void sendJsonLines(const char* path) {
-  File f = FFat.open(path, FILE_READ);
+  File f = HISTFS.open(path, FILE_READ);
   if (!f) {
     server.send(200, "application/json", "[]");
     return;
@@ -286,17 +298,17 @@ void tripLogSendCharges() { sendJsonLines(CHARGES_PATH); }
 
 void tripLogClearTrips() {
   tripActive = false;
-  FFat.remove(TRIPS_PATH);
+  HISTFS.remove(TRIPS_PATH);
   tripsCount = 0;
 }
 void tripLogClearCharges() {
   chgActive = false;
-  FFat.remove(CHARGES_PATH);
+  HISTFS.remove(CHARGES_PATH);
   chargesCount = 0;
 }
 
 static size_t fileBytes(const char* path) {
-  File f = FFat.open(path, FILE_READ);
+  File f = HISTFS.open(path, FILE_READ);
   if (!f) return 0;
   size_t n = f.size();
   f.close();

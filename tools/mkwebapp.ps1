@@ -1,6 +1,6 @@
 # Generates webapp_html.h from the PWA (index.html + pictures + fonts) for ESP32 PROGMEM.
 # Usage: powershell -File tools/mkwebapp.ps1 [-Out <path\to\webapp_html.h>]
-param([string]$Out)
+param([string]$Out, [ValidateSet('t2can','tcall')][string]$Board = 't2can')
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 
@@ -103,15 +103,20 @@ if ($liteHtml) {
 [void]$sb.AppendLine()
 
 # Status-picture overlays and the two web fonts, served from the board itself.
-$assets = [ordered]@{
-    'car-lights.png'           = 'image/png'
-    'car-cable.png'            = 'image/png'
-    'car-wheel1.png'           = 'image/png'
-    'car-wheel2.png'           = 'image/png'
-    'car-wheel3.png'           = 'image/png'
-    'car-wheel4.png'           = 'image/png'
-    'fonts/nissan_regular.ttf' = 'font/ttf'
-    'fonts/nissan_light.ttf'   = 'font/ttf'
+# The T-Call has only 4 MB of flash: drop the overlays and fonts there and let
+# the page fall back to system fonts / no layers. Saves ~260 KB.
+$assets = [ordered]@{}
+if ($Board -ne 'tcall') {
+    $assets = [ordered]@{
+        'car-lights.png'           = 'image/png'
+        'car-cable.png'            = 'image/png'
+        'car-wheel1.png'           = 'image/png'
+        'car-wheel2.png'           = 'image/png'
+        'car-wheel3.png'           = 'image/png'
+        'car-wheel4.png'           = 'image/png'
+        'fonts/nissan_regular.ttf' = 'font/ttf'
+        'fonts/nissan_light.ttf'   = 'font/ttf'
+    }
 }
 $entries = @()
 foreach ($name in $assets.Keys) {

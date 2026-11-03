@@ -4,13 +4,23 @@
 #include "mcp2515.h"
 #include "canLogger.h"
 #include "canInterface.h"
+#include "boardConfig.h"
 
-// T-2CAN Port A pins (LilyGO pin_config.h)
-#define EVCAN_SPI_SCLK 12
-#define EVCAN_SPI_MISO 13
-#define EVCAN_SPI_MOSI 11
-#define EVCAN_SPI_CS   10
-#define EVCAN_MCP_RST  9
+// EV-CAN MCP2515 pins come from boardConfig.h: Port A on the T-2CAN, the
+// external MCP2515 module on the T-Call.
+#define EVCAN_SPI_SCLK BOARD_EVCAN_SPI_SCLK
+#define EVCAN_SPI_MISO BOARD_EVCAN_SPI_MISO
+#define EVCAN_SPI_MOSI BOARD_EVCAN_SPI_MOSI
+#define EVCAN_SPI_CS   BOARD_EVCAN_SPI_CS
+#define EVCAN_MCP_RST  BOARD_EVCAN_MCP_RST
+#if BOARD_EVCAN_MCP_RST > 0
+#define EVCAN_RST_BEGIN() pinMode(EVCAN_MCP_RST, OUTPUT)
+#define EVCAN_RST_SET(v) digitalWrite(EVCAN_MCP_RST, (v))
+#else
+// RST tied to 3.3 V on this board (no spare GPIO).
+#define EVCAN_RST_BEGIN() do {} while (0)
+#define EVCAN_RST_SET(v) do {} while (0)
+#endif
 
 static MCP2515 evCan(EVCAN_SPI_CS, 10000000, &SPI);
 static bool evCanOk = false;
@@ -192,9 +202,9 @@ void evCanRequestScan() {
     emptySweeps = 0;
     evHardResets++;
     Serial.println("EV-CAN: repeated empty sweeps, hard-resetting MCP2515");
-    digitalWrite(EVCAN_MCP_RST, LOW);
+    EVCAN_RST_SET(LOW);
     delay(10);
-    digitalWrite(EVCAN_MCP_RST, HIGH);
+    EVCAN_RST_SET(HIGH);
     delay(10);
     SPI.begin(EVCAN_SPI_SCLK, EVCAN_SPI_MISO, EVCAN_SPI_MOSI, EVCAN_SPI_CS);
     evCan.reset();
@@ -297,12 +307,12 @@ static void manageScan() {
 }
 
 void setupEvCAN() {
-  pinMode(EVCAN_MCP_RST, OUTPUT);
-  digitalWrite(EVCAN_MCP_RST, HIGH);
+  EVCAN_RST_BEGIN();
+  EVCAN_RST_SET(HIGH);
   delay(10);
-  digitalWrite(EVCAN_MCP_RST, LOW);
+  EVCAN_RST_SET(LOW);
   delay(10);
-  digitalWrite(EVCAN_MCP_RST, HIGH);
+  EVCAN_RST_SET(HIGH);
   delay(10);
 
   SPI.begin(EVCAN_SPI_SCLK, EVCAN_SPI_MISO, EVCAN_SPI_MOSI, EVCAN_SPI_CS);

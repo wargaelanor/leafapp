@@ -1,4 +1,12 @@
-# LeafControl — Nissan Leaf ZE1 на LilyGO T-2CAN (ESP32-S3)
+# LeafControl — Nissan Leaf ZE1 (T-2CAN и TTGO T-Call)
+
+Одна прошивка, два профиля сборки:
+
+- **T-2CAN** (ESP32-S3, 16 МБ flash): обе CAN-шины, внешний SIM800;
+- **TTGO T-Call 1.4** (ESP32-WROVER-IB, 4 МБ flash): обе CAN-шины
+  (TWAI + MCP2551 и MCP2515 + MCP2551), встроенный SIM800.
+
+Подробности по пинам и ограничениям — в `docs/BOARDS.md`.
 
 Прошивка телеметрии и управления для Nissan Leaf ZE1: читает обе CAN-шины,
 считает ток/мощность/заряд, умеет включать климат и зарядку, отдаёт данные в
@@ -25,19 +33,21 @@
 ## Сборка
 
 ```powershell
-# PWA -> встроенная копия (firmware/LeafControl/webapp_html.h)
-powershell -File tools\mkwebapp.ps1
+# T-2CAN (ESP32-S3, 16 МБ, PSRAM выключена)
+powershell -File tools\build.ps1 -Board t2can
 
-arduino-cli compile ^
-  --config-file "$env:USERPROFILE\.arduinoIDE\arduino-cli.yaml" ^
-  --fqbn "esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=cdc,FlashSize=16M,PartitionScheme=app3M_fat9M_16MB,PSRAM=opi" ^
-  --output-dir "%TEMP%\leafbin-ze1" firmware\LeafControl
+# T-Call 1.4 (ESP32-WROVER-IB, 4 МБ, PSRAM включена)
+powershell -File tools\build.ps1 -Board tcall
 ```
+
+Скрипт собирает PWA, выбирает FQBN и для T-Call добавляет
+`-DLEAF_BOARD_TCALL=1`. Бинарники кладутся в `%TEMP%\leafbin-t2can` и
+`%TEMP%\leafbin-tcall`, чтобы не перепутать при заливке.
 
 ## Прошивка по сети
 
 ```powershell
-powershell -File tools\ota-retry.ps1 -Firmware "$env:TEMP\leafbin-ze1\LeafControl.ino.bin" `
+powershell -File tools\ota-retry.ps1 -Firmware "$env:TEMP\leafbin-t2can\LeafControl.ino.bin" `
   -ExpectedVersion "FW-YYYY.MM.DD.NN-CMD"
 ```
 

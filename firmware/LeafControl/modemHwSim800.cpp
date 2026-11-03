@@ -1,8 +1,10 @@
 #include "modemHw.h"
 #include "modemPins.h"
 #include "callAudio.h"
-
 #include <Client.h>
+#if LEAF_BOARD_TCALL
+#include <Wire.h>
+#endif
 
 namespace {
 
@@ -238,8 +240,36 @@ Sim800Client tcpClient;
 
 namespace modem800 {
 
+#if LEAF_BOARD_TCALL
+// T-Call v1.4 keeps the SIM800 rail alive through an IP5306 PMU. Without this
+// write the boost can turn off and the modem disappears even though the UART is
+// wired correctly.
+static void tcallPmuKeepOn() {
+  Wire.begin(BOARD_PMU_SDA, BOARD_PMU_SCL);
+  Wire.beginTransmission(0x75);
+  Wire.write(0x00);
+  Wire.write(0x37);
+  Wire.endTransmission();
+}
+
+static void tcallModemRails() {
+  pinMode(BOARD_MODEM_POWER_ON, OUTPUT);
+  digitalWrite(BOARD_MODEM_POWER_ON, HIGH);
+  pinMode(BOARD_MODEM_RESET, OUTPUT);
+  digitalWrite(BOARD_MODEM_RESET, HIGH);
+  pinMode(BOARD_MODEM_DTR, OUTPUT);
+  digitalWrite(BOARD_MODEM_DTR, LOW);
+  pinMode(BOARD_MODEM_PWRKEY, OUTPUT);
+  digitalWrite(BOARD_MODEM_PWRKEY, HIGH);
+}
+#endif
+
 void hwBegin() {
-  // ESP RX <- SIM800 TXD, ESP TX -> SIM800 RXD.
+#if LEAF_BOARD_TCALL
+  tcallPmuKeepOn();
+  tcallModemRails();
+#endif
+  // ESP RX <- modem TXD, ESP TX -> modem RXD.
   simSerial.begin(115200, SERIAL_8N1, MODEM_UART_RX, MODEM_UART_TX);
   delay(100);
   flushInput();

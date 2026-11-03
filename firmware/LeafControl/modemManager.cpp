@@ -48,6 +48,9 @@ static const char* passFor() { return getModem800Pass(); }
 
 static void pulsePwrKey(bool powerOn) {
   int pin = getModemPwrKey();
+#if LEAF_BOARD_TCALL
+  if (pin <= 0) pin = BOARD_MODEM_PWRKEY;   // onboard SIM800L on the T-Call
+#endif
   if (pin <= 0) return;
   modem800::hwPulsePwrKey(pin, powerOn);
 }

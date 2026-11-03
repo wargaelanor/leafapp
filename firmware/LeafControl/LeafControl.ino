@@ -19,10 +19,16 @@
 #include "canLogger.h"
 #include "tripLog.h"
 #include "modemProbe.h"
+#include "boardConfig.h"
 #include <Preferences.h>
 
+#if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.99-TCALL"
+#define LEAF_FIRMWARE_DESCRIPTION "T-Call: two CAN, onboard SIM800"
+#else
 #define LEAF_FIRMWARE_VERSION "FW-2026.11.08.99-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "OPI PSRAM, modem UART moved off PSRAM pins"
+#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: two CAN, external SIM800"
+#endif
 
 WebServer server(80);
 DNSServer dnsServer;
@@ -443,7 +449,7 @@ void handleApiStatus() {
   hexFromBuf(evTemp, evCanRawTemp(evTemp), h5c0, sizeof(h5c0));
   hexFromBuf(evPack, evCanRawPack(evPack), h1dba, sizeof(h1dba));
   snprintf(json, sizeof(json),
-    "{\"fw\":\"%s\",\"fw_desc\":\"%s\",\"soc\":%.1f,\"cabin\":%.1f,\"charging\":%d,\"charger\":\"%s\",\"hvac\":%d,"
+    "{\"fw\":\"%s\",\"fw_desc\":\"%s\",\"board\":\"%s\",\"soc\":%.1f,\"cabin\":%.1f,\"charging\":%d,\"charger\":\"%s\",\"hvac\":%d,"
     "\"lock\":%d,\"setpoint\":%.1f,\"fan\":%.0f,\"heat\":%d,\"cool\":%d,\"vent\":%d,"
     "\"soh\":%d,\"gids\":%d,\"v\":%.1f,\"i\":%.1f,\"power\":%.1f,\"pack\":%d,\"vvalid\":%d,\"amb\":%.1f,"
     "\"isoc\":%.1f,\"irange\":%d,\"btemp\":%.1f,\"cdelta\":%d,"
@@ -465,7 +471,7 @@ void handleApiStatus() {
     "\"trips\":%u,\"charges\":%u,\"driving\":%d,"
     "\"sleep_on\":%d,\"sleep_after_h\":%d,\"wake_fast_min\":%d,\"idle_s\":%lu,"
     "\"gps\":{\"lat\":%.5f,\"lon\":%.5f,\"age\":%lu}}",
-    LEAF_FIRMWARE_VERSION, LEAF_FIRMWARE_DESCRIPTION,
+    LEAF_FIRMWARE_VERSION, LEAF_FIRMWARE_DESCRIPTION, BOARD_NAME,
     currentSOC, cabinTemp, isChargingNow ? 1 : 0, chargerStateStr(currentChargerState),
     isHvacOn ? 1 : 0, (int)lockState, currentSetpoint, currentFanSpeed,
     isHeatingEnabled ? 1 : 0, isCoolingEnabled ? 1 : 0, (int)currentVentilationMode,
@@ -1756,6 +1762,8 @@ void setup() {
     Serial.println("### ERROR: failed to start cross-core loop supervisor ###");
   }
   Serial.printf("### Leaf Control %s: %s ###\n", LEAF_FIRMWARE_VERSION, LEAF_FIRMWARE_DESCRIPTION);
+  Serial.printf("### Board: %s, PSRAM: %u bytes, flash: %u bytes ###\n",
+                BOARD_NAME, (unsigned)ESP.getPsramSize(), (unsigned)ESP.getFlashChipSize());
   WiFi.onEvent(wifiEvent);
   initConfiguration();
   modemInit();
