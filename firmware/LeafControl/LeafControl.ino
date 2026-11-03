@@ -20,7 +20,7 @@
 #include "tripLog.h"
 #include <Preferences.h>
 
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.07.97-CMD"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.07.98-CMD"
 #define LEAF_FIRMWARE_DESCRIPTION "History on board, lite status, AP mDNS, reboot"
 
 WebServer server(80);
