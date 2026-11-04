@@ -15,6 +15,11 @@ void tripLogSendCharges();
 void tripLogClearTrips();
 void tripLogClearCharges();
 
+// Day/night tariff window used when the board splits energy. Default 00:00-07:00.
+void tripLogSetNightWindow(uint8_t fromHour, uint8_t toHour);
+uint8_t tripLogNightFrom();
+uint8_t tripLogNightTo();
+
 size_t tripLogTripsBytes();
 size_t tripLogChargesBytes();
 size_t tripLogTripsCount();

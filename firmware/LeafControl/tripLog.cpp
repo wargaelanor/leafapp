@@ -9,6 +9,7 @@
 #endif
 #include <WebServer.h>
 #include <time.h>
+#include <Preferences.h>
 #include "vehicleTypes.h"
 
 // Board-side history: the phone can be closed, the board keeps counting. One
@@ -27,6 +28,12 @@ static const char* CHARGES_PATH = "/charges.jsonl";
 static const size_t TRIPS_LIMIT   = BOARD_TRIPS_LIMIT;
 static const size_t CHARGES_LIMIT = BOARD_CHARGES_LIMIT;
 static const size_t SEND_MAX_RECORDS = 800;
+
+// Moscow, no DST. The board stores UTC epochs; localtime_r() on this core does
+// not always apply the configTime() offset, so the hour is calculated directly.
+static const uint32_t TZ_OFFSET_SEC = 3UL * 3600UL;
+static uint8_t nightFrom = 0;   // 00:00
+static uint8_t nightTo = 7;     // 07:00
 
 static unsigned long lastTickMs = 0;
 static float lastOdo = -1.0f;
@@ -57,16 +64,14 @@ static uint32_t epochNow() {
   return (t > 1600000000) ? (uint32_t)t : 0;
 }
 
-// localtime_r() honours the TZ offset configured in setup(), so the night
-// window is compared in the car's local time, not UTC.
+// The board stores UTC epochs. Convert to the car's local hour explicitly and
+// apply the user's night window (which may wrap over midnight).
 static bool isNight(uint32_t epoch) {
   if (!epoch) return false;
-  time_t t = epoch;
-  struct tm tmv;
-  localtime_r(&t, &tmv);
-  int h = tmv.tm_hour;
-  // Default window: 00:00-07:00. Kept in sync with the app's default.
-  return h >= 0 && h < 7;
+  int h = (int)(((epoch + TZ_OFFSET_SEC) / 3600UL) % 24UL);
+  if (nightFrom == nightTo) return false;
+  return (nightFrom < nightTo) ? (h >= nightFrom && h < nightTo)
+                               : (h >= nightFrom || h < nightTo);
 }
 
 static size_t countLines(File& f) {
@@ -132,6 +137,14 @@ void tripLogInit() {
   // T-Call has a small SPIFFS partition and may need the initial format;
   // the T-2CAN FAT partition must never be formatted here because canLogger
   // shares it.
+  Preferences prefs;
+  if (prefs.begin("leaftariff", false)) {
+    nightFrom = prefs.getUChar("from", 0);
+    nightTo = prefs.getUChar("to", 7);
+    if (nightFrom > 23) nightFrom = 0;
+    if (nightTo > 23) nightTo = 7;
+    prefs.end();
+  }
   #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
   if (!HISTFS.begin(true)) {
 #else
@@ -308,6 +321,22 @@ void tripLogClearCharges() {
   HISTFS.remove(CHARGES_PATH);
   chargesCount = 0;
 }
+
+void tripLogSetNightWindow(uint8_t fromHour, uint8_t toHour) {
+  if (fromHour > 23) fromHour = 0;
+  if (toHour > 23) toHour = 7;
+  nightFrom = fromHour;
+  nightTo = toHour;
+  Preferences prefs;
+  if (prefs.begin("leaftariff", false)) {
+    prefs.putUChar("from", fromHour);
+    prefs.putUChar("to", toHour);
+    prefs.end();
+  }
+}
+
+uint8_t tripLogNightFrom() { return nightFrom; }
+uint8_t tripLogNightTo() { return nightTo; }
 
 static size_t fileBytes(const char* path) {
   File f = HISTFS.open(path, FILE_READ);

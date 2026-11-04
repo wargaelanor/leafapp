@@ -23,10 +23,10 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.99-TCALL"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.100-TCALL"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: two CAN, onboard SIM800"
 #else
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.99-CMD"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.100-CMD"
 #define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: two CAN, external SIM800"
 #endif
 
@@ -474,6 +474,7 @@ void handleApiStatus() {
     "\"wifi_down_s\":%lu,"
     "\"ap_clients\":%u,"
     "\"trips\":%u,\"charges\":%u,\"driving\":%d,"
+    "\"night_from\":%u,\"night_to\":%u,"
     "\"sleep_on\":%d,\"sleep_after_h\":%d,\"wake_fast_min\":%d,\"idle_s\":%lu,"
     "\"gps\":{\"lat\":%.5f,\"lon\":%.5f,\"age\":%lu}}",
     LEAF_FIRMWARE_VERSION, LEAF_FIRMWARE_DESCRIPTION, BOARD_NAME,
@@ -513,6 +514,7 @@ void handleApiStatus() {
     (unsigned)WiFi.softAPgetStationNum(),
     (unsigned)tripLogTripsCount(), (unsigned)tripLogChargesCount(),
     (evData.vehicleOn == 1 || tripLogIsDriving() || fabsf(evData.packPower) > 1.0f) ? 1 : 0,
+    (unsigned)tripLogNightFrom(), (unsigned)tripLogNightTo(),
     getSleepEnabled() ? 1 : 0, getSleepAfterHours(), getWakeFastMinutes(),
     (unsigned long)rtcState.idleSec,
     gpsValid ? gLat : 0.0, gpsValid ? gLon : 0.0,
@@ -608,6 +610,24 @@ void handleChargesClear() {
   }
   noteUserActivity();
   tripLogClearCharges();
+  server.send(200, "application/json", "{\"ok\":true}");
+}
+
+// Night window used by the board when it splits trip/charge energy. The app
+// sends its tariff window here so the board and the phone agree.
+void handleTariffSet() {
+  if (!sameOriginPost()) {
+    server.send(403, "application/json", "{\"error\":\"forbidden\"}");
+    return;
+  }
+  int from = server.arg("from").toInt();
+  int to = server.arg("to").toInt();
+  if (from < 0 || from > 23 || to < 0 || to > 23) {
+    server.send(400, "application/json", "{\"error\":\"bad_hours\"}");
+    return;
+  }
+  noteUserActivity();
+  tripLogSetNightWindow((uint8_t)from, (uint8_t)to);
   server.send(200, "application/json", "{\"ok\":true}");
 }
 
@@ -1910,6 +1930,7 @@ for (size_t i = 0; i < WEBAPP_ASSET_COUNT; i++) {
       server.on("/api/charges", HTTP_GET, handleChargesList);
       server.on("/api/trips/clear", HTTP_POST, handleTripsClear);
       server.on("/api/charges/clear", HTTP_POST, handleChargesClear);
+      server.on("/api/tariff", HTTP_POST, handleTariffSet);
       server.on("/reboot", HTTP_POST, handleReboot);
       server.on("/api/developer/canlog/start", HTTP_POST, handleCanLogStart);
       server.on("/api/developer/canlog/stop", HTTP_POST, handleCanLogStop);
