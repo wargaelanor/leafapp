@@ -25,9 +25,10 @@
 // GPIO34/35 are input-only on ESP32 and cannot drive SCK/MOSI, so they are
 // not used here. GPIO12 is the MTDI strapping pin and is avoided as well.
 #define BOARD_EVCAN_SPI_SCLK 19
-#define BOARD_EVCAN_SPI_MISO 14
+#define BOARD_EVCAN_SPI_MISO 35
 #define BOARD_EVCAN_SPI_MOSI 18
 #define BOARD_EVCAN_SPI_CS   13
+#define BOARD_EVCAN_INT      14   // polled driver today, reserved for IRQ later
 #define BOARD_EVCAN_MCP_RST  0    // 0 = tie RST to 3.3 V, no GPIO
 
 // Onboard SIM800L (LilyGO T-Call v1.4 / IP5306 schematic).
