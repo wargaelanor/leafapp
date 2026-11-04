@@ -2198,6 +2198,16 @@ function tariffCfg(){
   }catch(e){ return {day:0, night:0, from:0, to:7}; }
 }
 function saveTariffCfg(c){ try{ localStorage.setItem('leaftariff', JSON.stringify(c)); }catch(e){} }
+// The board splits trip/charge energy into day/night itself, so its night
+// window must match the phone's tariff window.
+function syncTariffToBoard(){
+  if(!onBoard) return;
+  const c = tariffCfg();
+  const body = 'from=' + encodeURIComponent(c.from) + '&to=' + encodeURIComponent(c.to);
+  fetch('/api/tariff', {method:'POST', cache:'no-store',
+    headers:{'Content-Type':'application/x-www-form-urlencoded','X-Requested-With':'leaf'},
+    body}).catch(()=>{});
+}
 // Night window may wrap over midnight (23 -> 7).
 function isNightTime(ts){
   const c = tariffCfg();
@@ -2237,6 +2247,7 @@ function saveTariff(){
   let from = parseInt($('tar-from').value, 10); if(!(from >= 0 && from <= 23)) from = 0;
   let to = parseInt($('tar-to').value, 10); if(!(to >= 0 && to <= 23)) to = 7;
   saveTariffCfg({day, night, from, to});
+  syncTariffToBoard();
   closeTariff();
   refreshTripsScreen(); refreshChargesScreen();
   toast(day||night ? ('Тариф: '+day.toFixed(2)+' / '+night.toFixed(2)+' ₽') : 'Тариф отключён');
@@ -2774,6 +2785,9 @@ function enableBoardUi(){
   // track switch would be a dead control here.
   const trackToggle=$('trip-toggle');
   if(trackToggle) trackToggle.style.display='none';
+  // Push the phone's tariff window (default 00:00-07:00) to the board once the
+  // page is up, so a fresh board splits energy the same way the app does.
+  setTimeout(syncTariffToBoard, 1500);
 }
 async function boot(){
   if(DEMO){ demoStart(); return; }
