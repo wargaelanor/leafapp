@@ -66,6 +66,9 @@ static uint8_t currentWifiProfile = 0;
 static volatile int lastWifiDisconnectReason = 0;
 // Set once NTP was started after the first successful Wi-Fi connection.
 static bool timeSyncStarted = false;
+// Last time someone opened a page or sent a command. Used to stop a forgotten
+// phone on the board's AP from blocking STA retries forever.
+static unsigned long lastUserActivityMs = 0;
 // How many times the radio was restarted without getting a link back.
 static uint8_t wifiRadioRestarts = 0;
 // mDNS/NBNS state. They are also useful on the board's own access point, where
@@ -201,6 +204,7 @@ void noteCarActivity() {
 
 void noteUserActivity() {
   timerRefreshActive = false;
+  lastUserActivityMs = millis();
   noteCarActivity();
 }
 
@@ -468,6 +472,7 @@ void handleApiStatus() {
     "\"remote_mode\":%d,\"ui_lite\":%d,\"mqtt_connected\":%d,\"ovms_v2_connected\":%d,\"ovms_v2_paranoid\":%d,"
     "\"wifi_status\":%d,\"wifi_rssi\":%d,\"wifi_profile\":%u,\"wifi_disconnect\":%d,"
     "\"wifi_down_s\":%lu,"
+    "\"ap_clients\":%u,"
     "\"trips\":%u,\"charges\":%u,\"driving\":%d,"
     "\"sleep_on\":%d,\"sleep_after_h\":%d,\"wake_fast_min\":%d,\"idle_s\":%lu,"
     "\"gps\":{\"lat\":%.5f,\"lon\":%.5f,\"age\":%lu}}",
@@ -505,6 +510,7 @@ void handleApiStatus() {
     (int)WiFi.status(), WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0,
     (unsigned int)(currentWifiProfile + 1), lastWifiDisconnectReason,
     (unsigned long)(wifiStaDownSinceMs ? (millis() - wifiStaDownSinceMs) / 1000UL : 0UL),
+    (unsigned)WiFi.softAPgetStationNum(),
     (unsigned)tripLogTripsCount(), (unsigned)tripLogChargesCount(),
     (evData.vehicleOn == 1 || tripLogIsDriving() || fabsf(evData.packPower) > 1.0f) ? 1 : 0,
     getSleepEnabled() ? 1 : 0, getSleepAfterHours(), getWakeFastMinutes(),
@@ -1681,9 +1687,14 @@ void manageWiFi() {
     // steals radio time from the page they are trying to open. Worse, the
     // 5-minute radio restart below would drop their connection mid-load.
     if (WiFi.softAPgetStationNum() > 0) {
-      staDownSinceMs = currentTime;
-      wifiStaDownSinceMs = 0;
-      return;
+      // A phone on the board's AP is expected during configuration. Pause STA
+      // retries only while that page is actually being used; otherwise a
+      // forgotten client would keep the board off the house Wi-Fi forever.
+      if (lastUserActivityMs != 0 && millis() - lastUserActivityMs < 120000UL) {
+        staDownSinceMs = currentTime;
+        wifiStaDownSinceMs = 0;
+        return;
+      }
     }
     if (currentTime - previousAttemptTime >= interval) {
       if (currentTime - staDownSinceMs >= 300000UL) {
