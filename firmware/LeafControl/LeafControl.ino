@@ -23,11 +23,11 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.113-TCALL"
-#define LEAF_FIRMWARE_DESCRIPTION "T-Call: two CAN + SIM800, CAR RX on GPIO25, MISO probe"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.114-TCALL"
+#define LEAF_FIRMWARE_DESCRIPTION "T-Call: two CAN + SIM800, Wi-Fi scan"
 #else
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.109-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: tariff, recovery AP, mobile CAN table"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.114-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: stable scroll, Wi-Fi scan"
 #endif
 
 WebServer server(80);
@@ -90,6 +90,7 @@ static void startSoftAp() {
     pass = "";
   }
   bool ok;
+  WiFi.setTxPower(WIFI_POWER_11dBm);
   if (strlen(pass) >= 8) {
     ok = WiFi.softAP(ssid, pass);
   } else {
@@ -428,6 +429,35 @@ void handleApiEvScan() {
   }
   evCanRequestScan();
   server.send(202, "application/json", "{\"scan\":\"started\"}");
+}
+
+// Scan 2.4 GHz networks from the settings page. The phone keyboard is the
+// usual source of a wrong SSID/password, so show what the board actually sees.
+void handleWifiScan() {
+  noteUserActivity();
+  int n = WiFi.scanNetworks(false, true);
+  String json = "[";
+  int added = 0;
+  for (int i = 0; i < n && added < 20; i++) {
+    String ssid = WiFi.SSID(i);
+    if (ssid.length() == 0) continue;
+    if (added) json += ",";
+    json += "{\"ssid\":\"";
+    for (size_t k = 0; k < ssid.length(); k++) {
+      char c = ssid[k];
+      if (c == '"' || c == '\\') json += '\\';
+      if (c >= 32) json += c;
+    }
+    json += "\",\"rssi\":";
+    json += String(WiFi.RSSI(i));
+    json += ",\"enc\":";
+    json += String(WiFi.encryptionType(i) == WIFI_AUTH_OPEN ? 0 : 1);
+    json += "}";
+    added++;
+  }
+  json += "]";
+  WiFi.scanDelete();
+  server.send(200, "application/json", json);
 }
 
 // Render the last raw payload of a Port B ID as hex ("-" when never seen).
@@ -1666,6 +1696,12 @@ static void connectWifiProfile(bool rotateProfile = false) {
         }
       }
     }
+    if (bestProfile < 0) {
+      Serial.printf("Wi-Fi: none of the saved SSIDs visible (%d networks)\n", count);
+      for (int i = 0; i < count && i < 12; i++) {
+        Serial.printf("  seen: %s rssi=%d\n", WiFi.SSID(i).c_str(), WiFi.RSSI(i));
+      }
+    }
     WiFi.scanDelete();
   }
   if (bestProfile < 0) {
@@ -1680,6 +1716,9 @@ static void connectWifiProfile(bool rotateProfile = false) {
   currentWifiProfile = (uint8_t)bestProfile;
   Serial.printf("Wi-Fi: connecting profile %u SSID=%s RSSI=%d\n",
                 currentWifiProfile + 1, wifiProfileSsid(currentWifiProfile), bestRssi);
+  // A weak 5 V rail sags on Wi-Fi peaks (brownout reboot looks like a page
+  // reload). 11 dBm is still plenty for a car parked near the house.
+  WiFi.setTxPower(WIFI_POWER_11dBm);
   WiFi.disconnect(false, false);
   WiFi.begin(wifiProfileSsid(currentWifiProfile), wifiProfilePassword(currentWifiProfile));
 }
@@ -1970,6 +2009,7 @@ for (size_t i = 0; i < WEBAPP_ASSET_COUNT; i++) {
 }
       server.on("/api/status", handleApiStatus);
       server.on("/api/evscan", HTTP_POST, handleApiEvScan);
+      server.on("/api/wifi_scan", HTTP_GET, handleWifiScan);
       server.on("/api/developer/login", HTTP_POST, handleDeveloperLogin);
       server.on("/api/developer/canlog", HTTP_GET, handleCanLogStatus);
       server.on("/api/developer/canwatch", HTTP_GET, handleCanWatch);

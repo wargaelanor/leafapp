@@ -1,9 +1,14 @@
 package com.leafcontrol.app
 
 import android.Manifest
+import android.app.AlertDialog
 import android.app.DownloadManager
+import android.app.ProgressDialog
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -23,6 +28,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.leafcontrol.app.data.Settings
 import com.leafcontrol.app.service.LeafMonitorService
 import org.json.JSONObject
@@ -38,6 +47,9 @@ import kotlin.concurrent.thread
 class MainActivity : ComponentActivity() {
     private lateinit var web: WebView
     private var fileCallback: ValueCallback<Array<Uri>>? = null
+    private var insetTop = 0
+    private var insetBottom = 0
+    private var updateDialog: AlertDialog? = null
 
     private val notificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -75,6 +87,19 @@ class MainActivity : ComponentActivity() {
         web = WebView(this)
         setContentView(web)
         if (BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true)
+        // Android 15 draws edge-to-edge for targetSdk 35. Keep the WebView
+        // full-screen but pad the PWA's .app container so the header never sits
+        // under the status bar and the bottom nav stays above the gesture bar.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        ViewCompat.setOnApplyWindowInsetsListener(web) { _, insets ->
+            val bars = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+            )
+            insetTop = bars.top
+            insetBottom = bars.bottom
+            applyPageInsets()
+            insets
+        }
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 if (web.canGoBack()) {
@@ -112,6 +137,8 @@ class MainActivity : ComponentActivity() {
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
+                applyTheme()
+                applyPageInsets()
                 injectBridge()
             }
 
@@ -176,12 +203,28 @@ class MainActivity : ComponentActivity() {
             }
         }
         loadStart(intent)
+        applyTheme()
+        handleShortcut(intent)
+        if (intent?.getBooleanExtra("check_update", false) == true) {
+            forceCheckUpdate()
+        } else {
+            maybeCheckUpdate()
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         loadStart(intent)
+        applyTheme()
+        handleShortcut(intent)
+        if (intent.getBooleanExtra("check_update", false)) forceCheckUpdate()
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applyTheme()
+        applyPageInsets()
     }
 
     /**
@@ -225,9 +268,150 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun isNight(): Boolean =
+        (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+            Configuration.UI_MODE_NIGHT_YES
+
+    /**
+     * The PWA follows the phone through prefers-color-scheme, but WebView keeps
+     * the old media query after a system theme change. Force the same palette
+     * the PWA uses for ?theme=dark|light and update the system bar icons.
+     */
+    private fun applyTheme() {
+        val dark = isNight()
+        val bg = if (dark) "#0f1216" else "#f4f5f7"
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor = Color.TRANSPARENT
+        window.setBackgroundDrawable(ColorDrawable(Color.parseColor(bg)))
+        WindowInsetsControllerCompat(window, web).apply {
+            isAppearanceLightStatusBars = !dark
+            isAppearanceLightNavigationBars = !dark
+        }
+        val theme = if (dark) "dark" else "light"
+        web.evaluateJavascript(
+            """
+            (function(){
+              try{
+                if(location.search.match(/[?&]theme=(dark|light)\b/)) return;
+                document.documentElement.setAttribute('data-theme','$theme');
+                document.documentElement.classList.toggle('dark', ${if (dark) "true" else "false"});
+              }catch(e){}
+            })();
+            """.trimIndent(),
+            null
+        )
+    }
+
+    /** Pad the PWA's .app container, not the WebView, so 100dvh stays correct. */
+    private fun applyPageInsets() {
+        if (!::web.isInitialized) return
+        web.evaluateJavascript(
+            """
+            (function(){
+              try{
+                var id='leaf-native-insets';
+                var el=document.getElementById(id);
+                if(!el){el=document.createElement('style');el.id=id;(document.head||document.documentElement).appendChild(el);}
+                el.textContent='.app{padding-top:${insetTop}px!important;padding-bottom:${insetBottom}px!important;box-sizing:border-box!important}';
+              }catch(e){}
+            })();
+            """.trimIndent(),
+            null
+        )
+    }
+
+    /** App shortcuts send a command without opening a second UI. */
+    private fun handleShortcut(intent: Intent?) {
+        val command = intent?.getStringExtra("leaf_command") ?: return
+        intent.removeExtra("leaf_command")
+        val pair = when (command) {
+            "unlock" -> "/unlock" to "unlock"
+            "lock" -> "/lock" to "lock"
+            "hvac_on" -> "/hvac_on?setpoint=22&minutes=15" to "climatecontrol on 22 15"
+            "hvac_off" -> "/hvac_off" to "climatecontrol off"
+            else -> return
+        }
+        LeafMonitorService.command(this, pair.first, pair.second)
+        Toast.makeText(this, "Команда отправлена", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun maybeCheckUpdate() {
+        if (System.currentTimeMillis() - Settings.lastUpdateCheck < 24 * 60 * 60 * 1000L) return
+        Settings.lastUpdateCheck = System.currentTimeMillis()
+        checkUpdate()
+    }
+
+    private fun forceCheckUpdate() {
+        Settings.lastUpdateCheck = System.currentTimeMillis()
+        checkUpdate()
+    }
+
+    private fun checkUpdate() {
+        thread(isDaemon = true) {
+            val update = try {
+                UpdateChecker.check(this)
+            } catch (_: Exception) {
+                null
+            }
+            if (update == null) return@thread
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                updateDialog?.dismiss()
+                updateDialog = AlertDialog.Builder(this)
+                    .setTitle("Доступно обновление ${update.version}")
+                    .setMessage(
+                        update.notes.take(900).ifBlank {
+                            "Новая версия приложения Leaf Control."
+                        }
+                    )
+                    .setPositiveButton("Скачать") { _, _ -> downloadUpdate(update) }
+                    .setNegativeButton("Позже", null)
+                    .show()
+            }
+        }
+    }
+
+    private fun downloadUpdate(update: UpdateChecker.Update) {
+        val progress = ProgressDialog(this).apply {
+            setTitle("Обновление ${update.version}")
+            setMessage("Скачивание…")
+            setProgressStyle(ProgressDialog.STYLE_HORIZONTAL)
+            max = 100
+            setCancelable(false)
+            show()
+        }
+        thread(isDaemon = true) {
+            val file = try {
+                UpdateChecker.download(this, update) { p ->
+                    runOnUiThread { if (progress.isShowing) progress.progress = p }
+                }
+            } catch (_: Exception) {
+                null
+            }
+            runOnUiThread {
+                if (progress.isShowing) progress.dismiss()
+                if (file == null) {
+                    Toast.makeText(this, "Не удалось скачать обновление", Toast.LENGTH_LONG).show()
+                    return@runOnUiThread
+                }
+                if (!UpdateChecker.isValid(this, file, update.version)) {
+                    file.delete()
+                    Toast.makeText(this, "Файл обновления повреждён", Toast.LENGTH_LONG).show()
+                    return@runOnUiThread
+                }
+                if (!UpdateChecker.install(this, file)) {
+                    Toast.makeText(
+                        this,
+                        "Разрешите установку из этого приложения и повторите",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+    }
+
     /** Keep the native service in sync with the PWA's own settings. */
-    private fun injectBridge() {
-        val js = """
+    private fun injectBridge() {        val js = """
             (function(){
               function sync(){
                 try {
@@ -344,6 +528,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        updateDialog?.dismiss()
         web.destroy()
         super.onDestroy()
     }

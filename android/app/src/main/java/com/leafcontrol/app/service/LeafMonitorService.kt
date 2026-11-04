@@ -88,6 +88,9 @@ class LeafMonitorService : Service() {
             }
             ACTION_COMMAND -> {
                 ensureForeground("Команда…")
+                // A shortcut can arrive while the service is not running. Start
+                // the monitor so MQTT commands have a chance to connect too.
+                if (!monitoring && Settings.monitorEnabled) startMonitor()
                 val path = intent.getStringExtra(EXTRA_PATH) ?: ""
                 val payload = intent.getStringExtra(EXTRA_PAYLOAD) ?: ""
                 sendCommand(path, payload)
@@ -245,11 +248,20 @@ class LeafMonitorService : Service() {
 
     private fun sendCommand(path: String, payload: String) {
         scope.launch {
-            if (Settings.mode == "mqtt" || (Settings.mode == "auto" && LeafRepo.mqtt != null)) {
-                LeafRepo.commandRemote(payload)
-            } else if (path.isNotEmpty()) {
-                LeafRepo.commandLocal(this@LeafMonitorService, path)
-            } else if (LeafRepo.mqtt != null) {
+            // Local first: the board answers immediately when the phone is on
+            // the same Wi-Fi. If that fails, wait briefly for MQTT (the service
+            // may have just been started by a home-screen shortcut).
+            var sent = false
+            if (Settings.mode != "mqtt" && path.isNotEmpty()) {
+                sent = LeafRepo.commandLocal(this@LeafMonitorService, path)
+            }
+            if (sent || Settings.mode == "local") return@launch
+            var waited = 0
+            while (LeafRepo.mqtt == null && monitoring && waited < 8000) {
+                delay(500)
+                waited += 500
+            }
+            if (payload.isNotEmpty()) {
                 LeafRepo.commandRemote(payload)
             }
         }

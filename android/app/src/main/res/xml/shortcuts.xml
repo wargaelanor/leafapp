@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="unlock"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_unlock"
+        android:shortcutShortLabel="@string/shortcut_unlock_short"
+        android:shortcutLongLabel="@string/shortcut_unlock_long"
+        android:shortcutDisabledMessage="@string/shortcut_disabled">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.leafcontrol.app"
+            android:targetClass="com.leafcontrol.app.MainActivity">
+            <extra android:name="leaf_command" android:value="unlock" />
+        </intent>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="lock"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_lock"
+        android:shortcutShortLabel="@string/shortcut_lock_short"
+        android:shortcutLongLabel="@string/shortcut_lock_long"
+        android:shortcutDisabledMessage="@string/shortcut_disabled">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.leafcontrol.app"
+            android:targetClass="com.leafcontrol.app.MainActivity">
+            <extra android:name="leaf_command" android:value="lock" />
+        </intent>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="hvac_on"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_climate"
+        android:shortcutShortLabel="@string/shortcut_hvac_on_short"
+        android:shortcutLongLabel="@string/shortcut_hvac_on_long"
+        android:shortcutDisabledMessage="@string/shortcut_disabled">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.leafcontrol.app"
+            android:targetClass="com.leafcontrol.app.MainActivity">
+            <extra android:name="leaf_command" android:value="hvac_on" />
+        </intent>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="hvac_off"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_climate_off"
+        android:shortcutShortLabel="@string/shortcut_hvac_off_short"
+        android:shortcutLongLabel="@string/shortcut_hvac_off_long"
+        android:shortcutDisabledMessage="@string/shortcut_disabled">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.leafcontrol.app"
+            android:targetClass="com.leafcontrol.app.MainActivity">
+            <extra android:name="leaf_command" android:value="hvac_off" />
+        </intent>
+    </shortcut>
+</shortcuts>

@@ -1,3 +1,12 @@
 <resources>
     <string name="app_name">Leaf Control</string>
+    <string name="shortcut_unlock_short">Открыть</string>
+    <string name="shortcut_unlock_long">Открыть двери</string>
+    <string name="shortcut_lock_short">Закрыть</string>
+    <string name="shortcut_lock_long">Закрыть двери</string>
+    <string name="shortcut_hvac_on_short">Климат вкл</string>
+    <string name="shortcut_hvac_on_long">Включить климат на 15 минут</string>
+    <string name="shortcut_hvac_off_short">Климат выкл</string>
+    <string name="shortcut_hvac_off_long">Выключить климат</string>
+    <string name="shortcut_disabled">Недоступно</string>
 </resources>

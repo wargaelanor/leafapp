@@ -60,6 +60,11 @@ object Settings {
         get() = p.getBoolean("monitor", true)
         set(v) = p.edit().putBoolean("monitor", v).apply()
 
+    /** Last time the app asked GitHub for a newer APK. */
+    var lastUpdateCheck: Long
+        get() = p.getLong("last_update_check", 0L)
+        set(v) = p.edit().putLong("last_update_check", v).apply()
+
     var notifyChargeStart: Boolean
         get() = p.getBoolean("n_charge_start", true)
         set(v) = p.edit().putBoolean("n_charge_start", v).apply()
