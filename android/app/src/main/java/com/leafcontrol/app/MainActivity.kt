@@ -67,6 +67,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Full-screen before the first layout: otherwise the decor already
+        // reserves the status bar and our inset padding doubles the gap.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
             PackageManager.PERMISSION_GRANTED
@@ -87,14 +90,11 @@ class MainActivity : ComponentActivity() {
         web = WebView(this)
         setContentView(web)
         if (BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true)
-        // Android 15 draws edge-to-edge for targetSdk 35. Keep the WebView
-        // full-screen but pad the PWA's .app container so the header never sits
-        // under the status bar and the bottom nav stays above the gesture bar.
         WindowCompat.setDecorFitsSystemWindows(window, false)
         ViewCompat.setOnApplyWindowInsetsListener(web) { _, insets ->
-            val bars = insets.getInsets(
-                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
-            )
+            // systemBars().top already includes the notch on every phone we
+            // tested; adding displayCutout as well made the gap far too tall.
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             insetTop = bars.top
             insetBottom = bars.bottom
             applyPageInsets()
@@ -312,7 +312,11 @@ class MainActivity : ComponentActivity() {
                 var id='leaf-native-insets';
                 var el=document.getElementById(id);
                 if(!el){el=document.createElement('style');el.id=id;(document.head||document.documentElement).appendChild(el);}
-                el.textContent='.app{padding-top:${insetTop}px!important;padding-bottom:${insetBottom}px!important;box-sizing:border-box!important}';
+                el.textContent=
+                  '.app{padding-top:0!important;padding-bottom:0!important}'+
+                  '.appbar{height:calc(48px + ${insetTop}px)!important;padding-top:${insetTop}px!important;box-sizing:border-box!important}'+
+                  '.tabbar{height:calc(56px + ${insetBottom}px)!important;padding-bottom:${insetBottom}px!important;box-sizing:border-box!important}'+
+                  '.screens{padding-bottom:calc(24px + ${insetBottom}px)!important}';
               }catch(e){}
             })();
             """.trimIndent(),
