@@ -262,7 +262,7 @@ html[data-theme="dark"] .dur-btns button.on{color:#08121a}
 html[data-theme="dark"] .dm-filters button.on{color:#08121a}
 .dm-count{margin-left:auto;font-size:11px;color:var(--muted)}
 .dm-wrap{max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:6px;background:var(--surface);
-  overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y}
+  overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:auto}
 @media (max-width:520px){.dm-wrap{max-height:46vh}}
 .dm-table{width:100%;border-collapse:collapse;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px}
 .dm-table th{position:sticky;top:0;background:var(--chip);color:var(--muted);font-weight:600;text-align:left;padding:6px 8px;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px}
@@ -274,6 +274,9 @@ html[data-theme="dark"] .dm-filters button.on{color:#08121a}
 .dm-table td.dm-n{text-align:right;color:var(--muted)}
 .dm-empty{text-align:center;color:var(--muted);padding:14px 0!important}
 .dm-add{padding:2px 6px!important}
+.dm-table th:last-child{position:sticky;right:0;background:var(--chip);z-index:2}
+.dm-table td:last-child{position:sticky;right:0;background:var(--surface);z-index:1}
+.dm-table tr.hot td:last-child{background:var(--accent-soft)}
 .dm-add button{border:1px solid var(--line);background:var(--surface);color:var(--accent);border-radius:6px;font:inherit;font-size:15px;font-weight:600;line-height:1;width:32px;height:32px;cursor:pointer;touch-action:manipulation}
 .dm-add button:hover{border-color:var(--accent)}
 .dm-idfilter{flex:1;min-width:0;max-width:120px;margin-left:auto;padding:5px 8px;font:inherit;font-size:12px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text)}
