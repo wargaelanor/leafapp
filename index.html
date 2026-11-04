@@ -652,7 +652,6 @@ body.demo .demo-banner{display:block}
       <div class="trip-empty" id="charge-empty">Плата записывает зарядку сама. Сеанс появится в списке после отключения кабеля.</div>
       <button class="trip-clear" id="charge-clear" style="display:none" onclick="clearCharges()">Очистить историю</button>
       <button class="trip-clear export" onclick="exportChargesCsv()">Экспорт CSV</button>
-      <button class="trip-clear export" onclick="editTariff()">Тариф: стоимость в карточках</button>
       <div style="height:16px"></div>
     </section>
 
@@ -674,7 +673,6 @@ body.demo .demo-banner{display:block}
       <div class="trip-empty" id="trip-empty">Плата записывает поездку сама, как только машина начинает двигаться. Первая запись появится после поездки.</div>
       <button class="trip-clear" id="trip-clear" style="display:none" onclick="clearTrips()">Очистить историю</button>
       <button class="trip-clear export" onclick="exportTripsCsv()">Экспорт CSV</button>
-      <button class="trip-clear export" onclick="editTariff()">Тариф: стоимость в карточках</button>
       <div style="height:16px"></div>
     </section>
 
@@ -774,8 +772,14 @@ body.demo .demo-banner{display:block}
             <input id="cfg-pass" type="password">
             <label>Vehicle ID</label>
             <input id="cfg-vid" placeholder="leaf">
-            <label>Тариф, ₽ за кВт·ч (для расчёта стоимости)</label>
-            <input id="cfg-tariff" type="number" step="0.01" min="0" placeholder="5.50">
+            <label>Тариф днём, ₽/кВт·ч</label>
+            <input id="cfg-tar-day" type="number" step="0.01" min="0" placeholder="5.50">
+            <label>Тариф ночью, ₽/кВт·ч</label>
+            <input id="cfg-tar-night" type="number" step="0.01" min="0" placeholder="2.80">
+            <div style="display:flex;gap:10px">
+              <div style="flex:1"><label>Ночь с, час</label><input id="cfg-night-from" type="number" min="0" max="23" value="0"></div>
+              <div style="flex:1"><label>Ночь до, час</label><input id="cfg-night-to" type="number" min="0" max="23" value="7"></div>
+            </div>
           </div>
         </details>
         <details class="settings-group" data-pwa-section="wifi">
@@ -1255,6 +1259,10 @@ async function pollLocal(){
     S.fage=(j.fage===undefined)?-1:j.fage;
     S.odo=j.odo||0; S.vin=j.vin||''; S.hvacTimer=j.hvac_timer||0;
     S.epoch=(j.epoch===undefined)?0:j.epoch;   // board clock, 0 until NTP syncs
+    S.tariffDay=(j.tariff_day===undefined)?null:j.tariff_day;
+    S.tariffNight=(j.tariff_night===undefined)?null:j.tariff_night;
+    S.nightFrom=(j.night_from===undefined)?null:j.night_from;
+    S.nightTo=(j.night_to===undefined)?null:j.night_to;
     S.lights = (j.lights===undefined) ? -1 : (j.lights?1:0);
     if(j.gps && j.gps.lat && j.gps.lon && j.gps.age < 900)
       S.gps = { lat:j.gps.lat, lon:j.gps.lon, spd:(j.gps.spd||0)*1.852, at:Date.now()-j.gps.age*1000 };
@@ -2185,6 +2193,11 @@ function openSettings(){
   $('cfg-host').value=cfg.host||''; $('cfg-port').value=cfg.port||15871;
   $('cfg-user').value=cfg.user||''; $('cfg-pass').value=cfg.pass||'';
   $('cfg-vid').value=cfg.vid||'leaf';
+  const t=tariffCfg();
+  $('cfg-tar-day').value=t.day?t.day:'';
+  $('cfg-tar-night').value=t.night?t.night:'';
+  $('cfg-night-from').value=t.from;
+  $('cfg-night-to').value=t.to;
   $('settings-modal').classList.add('show');
 }
 function closeSettings(){ $('settings-modal').classList.remove('show'); }
@@ -2193,6 +2206,13 @@ function closeSettings(){ $('settings-modal').classList.remove('show'); }
 // Two tariffs (day / night) with a configurable night window. Prices live on
 // the phone: they only affect how the history is displayed.
 function tariffCfg(){
+  // On the board page the tariff is stored on the board itself, so it does not
+  // disappear when the phone opens the same board by a different address.
+  if(onBoard && S && S.tariffDay !== undefined && S.tariffDay !== null){
+    return { day: +S.tariffDay || 0, night: +S.tariffNight || 0,
+             from: (S.nightFrom === undefined ? 0 : +S.nightFrom),
+             to:   (S.nightTo === undefined ? 7 : +S.nightTo) };
+  }
   try{
     const v = JSON.parse(localStorage.getItem('leaftariff') || '{}');
     return { day: +v.day || 0,
@@ -2207,7 +2227,8 @@ function saveTariffCfg(c){ try{ localStorage.setItem('leaftariff', JSON.stringif
 function syncTariffToBoard(){
   if(!onBoard) return;
   const c = tariffCfg();
-  const body = 'from=' + encodeURIComponent(c.from) + '&to=' + encodeURIComponent(c.to);
+  const body = 'day=' + encodeURIComponent(c.day) + '&night=' + encodeURIComponent(c.night) +
+    '&from=' + encodeURIComponent(c.from) + '&to=' + encodeURIComponent(c.to);
   fetch('/api/tariff', {method:'POST', cache:'no-store',
     headers:{'Content-Type':'application/x-www-form-urlencoded','X-Requested-With':'leaf'},
     body}).catch(()=>{});
@@ -2765,7 +2786,13 @@ document.querySelectorAll('.settings-group').forEach(s=>s.addEventListener('togg
 function saveSettings(){
   cfg={ host:$('cfg-host').value.trim(), port:parseInt($('cfg-port').value)||15871,
     user:$('cfg-user').value.trim(), pass:$('cfg-pass').value, vid:$('cfg-vid').value.trim()||'leaf' };
+  const day=parseFloat(String($('cfg-tar-day').value).replace(',','.'))||0;
+  const night=parseFloat(String($('cfg-tar-night').value).replace(',','.'))||0;
+  let from=parseInt($('cfg-night-from').value,10); if(!(from>=0&&from<=23)) from=0;
+  let to=parseInt($('cfg-night-to').value,10); if(!(to>=0&&to<=23)) to=7;
+  saveTariffCfg({day,night,from,to});
   localStorage.setItem('leafcfg',JSON.stringify(cfg));
+  syncTariffToBoard();
   closeSettings();
   if(mode==='mqtt'){ try{client.end(true);}catch(e){} }
   mqttConnect();
