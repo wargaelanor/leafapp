@@ -22,13 +22,12 @@
 #define BOARD_CAN_RX 33
 
 // EV-CAN: MCP2515 over SPI + MCP2551 (listen-only, as on the T-2CAN).
-// WARNING: GPIO12 is the MTDI strapping pin. The MCP2515 CS line must not be
-// pulled high at boot, or the ESP32 may select 1.8 V flash and fail to start.
-// If the board does not boot, move CS to another free GPIO (e.g. 13).
-#define BOARD_EVCAN_SPI_SCLK 26
+// GPIO34/35 are input-only on ESP32 and cannot drive SCK/MOSI, so they are
+// not used here. GPIO12 is the MTDI strapping pin and is avoided as well.
+#define BOARD_EVCAN_SPI_SCLK 19
 #define BOARD_EVCAN_SPI_MISO 14
-#define BOARD_EVCAN_SPI_MOSI 27
-#define BOARD_EVCAN_SPI_CS   12
+#define BOARD_EVCAN_SPI_MOSI 18
+#define BOARD_EVCAN_SPI_CS   13
 #define BOARD_EVCAN_MCP_RST  0    // 0 = tie RST to 3.3 V, no GPIO
 
 // Onboard SIM800L (LilyGO T-Call v1.4 / IP5306 schematic).
