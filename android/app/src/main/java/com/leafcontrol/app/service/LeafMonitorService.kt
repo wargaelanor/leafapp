@@ -29,6 +29,7 @@ class LeafMonitorService : Service() {
     companion object {
         const val ACTION_START = "com.leafcontrol.app.START"
         const val ACTION_STOP = "com.leafcontrol.app.STOP"
+        const val ACTION_RELOAD = "com.leafcontrol.app.RELOAD"
         const val ACTION_COMMAND = "com.leafcontrol.app.COMMAND"
         const val EXTRA_PAYLOAD = "payload"
         const val EXTRA_PATH = "path"
@@ -42,6 +43,12 @@ class LeafMonitorService : Service() {
 
         fun stop(context: Context) {
             context.startService(Intent(context, LeafMonitorService::class.java).setAction(ACTION_STOP))
+        }
+
+        fun reload(context: Context) {
+            val i = Intent(context, LeafMonitorService::class.java).setAction(ACTION_RELOAD)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(i)
+            else context.startService(i)
         }
 
         fun command(context: Context, path: String, payload: String) {
@@ -86,10 +93,17 @@ class LeafMonitorService : Service() {
                 sendCommand(path, payload)
                 return START_STICKY
             }
+            ACTION_RELOAD -> {
+                ensureForeground("Применение настроек…")
+                stopMonitor()
+                if (Settings.monitorEnabled) startMonitor()
+                return START_STICKY
+            }
             else -> {
                 ensureForeground("Запуск…")
-                if (Settings.monitorEnabled) startMonitor()
-                else {
+                if (Settings.monitorEnabled) {
+                    if (!monitoring) startMonitor()
+                } else {
                     LeafRepo.monitorText.value = "Мониторинг выключен"
                     updateForeground("Мониторинг выключен")
                 }

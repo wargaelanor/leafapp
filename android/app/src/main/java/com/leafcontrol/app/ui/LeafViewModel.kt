@@ -76,7 +76,7 @@ class LeafViewModel(app: Application) : AndroidViewModel(app) {
         draft.value.toSettings()
         message.value = "Настройки сохранены"
         val ctx = getApplication<Application>()
-        if (Settings.monitorEnabled) LeafMonitorService.start(ctx) else LeafMonitorService.stop(ctx)
+        if (Settings.monitorEnabled) LeafMonitorService.reload(ctx) else LeafMonitorService.stop(ctx)
     }
 
     fun startMonitor() {
