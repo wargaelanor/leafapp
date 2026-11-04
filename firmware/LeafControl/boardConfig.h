@@ -15,20 +15,21 @@
 #define BOARD_HAS_PSRAM 1
 #define BOARD_HAS_EVCAN 1
 #define BOARD_HAS_IP5306 1
-#define BOARD_HAS_MODEM 0   // CAN uses the SIM800 pins; onboard modem stays off
+#define BOARD_HAS_MODEM 1   // SIM800 stays on 26/27/32/33; CAN uses other pins
 
 // CAR-CAN: built-in TWAI + MCP2551 transceiver.
-#define BOARD_CAN_TX 32
-#define BOARD_CAN_RX 33
+#define BOARD_CAN_TX 14
+#define BOARD_CAN_RX 35
 
 // EV-CAN: MCP2515 over SPI + MCP2551 (listen-only, as on the T-2CAN).
-// GPIO34/35 are input-only on ESP32 and cannot drive SCK/MOSI, so they are
-// not used here. GPIO12 is the MTDI strapping pin and is avoided as well.
+// GPIO34/35 are input-only: 34 for MISO, 35 for CRX. GPIO25 is free for INT.
+// These pins do not touch SIM800 (26/27/32/33/4/23/5), PMU (21/22), PSRAM
+// (16/17), flash (6-11) or any strapping pin.
 #define BOARD_EVCAN_SPI_SCLK 19
-#define BOARD_EVCAN_SPI_MISO 35
+#define BOARD_EVCAN_SPI_MISO 34
 #define BOARD_EVCAN_SPI_MOSI 18
 #define BOARD_EVCAN_SPI_CS   13
-#define BOARD_EVCAN_INT      14   // polled driver today, reserved for IRQ later
+#define BOARD_EVCAN_INT      25   // polled driver today, reserved for IRQ later
 #define BOARD_EVCAN_MCP_RST  0    // 0 = tie RST to 3.3 V, no GPIO
 
 // Onboard SIM800L (LilyGO T-Call v1.4 / IP5306 schematic).

@@ -326,7 +326,7 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, bool ovmsConnected,
    if (getModemCallEnabled()) server.sendContent(F(" checked"));
    server.sendContent(F(
      "> Управление климатом входящим звонком</label>\n"
-     "<div class='hint'>T-2CAN: TXD→GPIO35, RXD→GPIO38, RI→GPIO37. T-Call: встроенный SIM800 отключён — GPIO26/27/32/33 заняты CAN. Питание T-2CAN — отдельные 5 В / 2 А.</div>\n"
+     "<div class='hint'>T-2CAN: TXD→GPIO35, RXD→GPIO38, RI→GPIO37. T-Call: встроенный SIM800 26/27/33, PWRKEY=4, POWER=23, RST=5; CAN занимает 13/34/18/19/14/35 и с модемом не конфликтует. Питание T-2CAN — отдельные 5 В / 2 А.</div>\n"
    ));
    for (uint8_t i = 0; i < 5; i++) {
      server.sendContent(F("<label for='modem_call_num"));
@@ -350,7 +350,7 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, bool ovmsConnected,
   server.sendContent(String(getModemPwrKey()));
   server.sendContent(F(
     "'>\n"
-    "<div class='hint'>UART модема: T-2CAN — GPIO35/38/37. T-Call — SIM800 отключён: GPIO26/27/32/33 заняты CAN. Wi-Fi имеет приоритет для MQTT.</div>\n"
+    "<div class='hint'>UART модема: T-2CAN — GPIO35/38/37. T-Call — встроенный SIM800 26/27/33, CAN на 13/34/18/19/14/35. Wi-Fi имеет приоритет для MQTT.</div>\n"
     "<button type='submit' class='btn btn-save'>Сохранить и перезагрузить</button>\n"
     "</div></details>\n"
     "<details class='section' data-section='power'><summary>Экономия энергии</summary><div class='section-body'>\n"

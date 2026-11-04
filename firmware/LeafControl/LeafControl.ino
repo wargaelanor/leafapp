@@ -23,8 +23,8 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.109-TCALL"
-#define LEAF_FIRMWARE_DESCRIPTION "T-Call: CAN CS13/MISO35/MOSI18/SCK19/INT14"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.110-TCALL"
+#define LEAF_FIRMWARE_DESCRIPTION "T-Call: two CAN + SIM800, no pin conflict"
 #else
 #define LEAF_FIRMWARE_VERSION "FW-2026.11.08.109-CMD"
 #define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: tariff, recovery AP, mobile CAN table"
@@ -1831,9 +1831,8 @@ void wifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
 void setup() {
   Serial.begin(115200);
   loadSoftwareRestart();
-#if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-  // CAN is wired to the SIM800 UART pins on this board profile. Keep the
-  // onboard modem rail off so its TX does not fight the MCP2515.
+#if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL) && (BOARD_HAS_MODEM == 0)
+  // CAN is wired to the SIM800 UART pins in this profile; keep the modem off.
   pinMode(BOARD_MODEM_POWER_ON, OUTPUT);
   digitalWrite(BOARD_MODEM_POWER_ON, LOW);
   pinMode(BOARD_MODEM_PWRKEY, OUTPUT);
