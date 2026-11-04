@@ -18,18 +18,21 @@
 #define BOARD_HAS_MODEM 1   // SIM800 stays on 26/27/32/33; CAN uses other pins
 
 // CAR-CAN: built-in TWAI + MCP2551 transceiver.
+// GPIO35 is the onboard battery-voltage divider on this board and is held
+// high even with no battery, so it cannot be used as CAN RX. GPIO25 is free
+// (the MCP2515 driver polls, so its INT pin is optional).
 #define BOARD_CAN_TX 14
-#define BOARD_CAN_RX 35
+#define BOARD_CAN_RX 25
 
 // EV-CAN: MCP2515 over SPI + MCP2551 (listen-only, as on the T-2CAN).
-// GPIO34/35 are input-only: 34 for MISO, 35 for CRX. GPIO25 is free for INT.
-// These pins do not touch SIM800 (26/27/32/33/4/23/5), PMU (21/22), PSRAM
-// (16/17), flash (6-11) or any strapping pin.
+// GPIO34 is input-only and used for MISO. These pins do not touch SIM800
+// (26/27/32/33/4/23/5), PMU (21/22), PSRAM (16/17), flash (6-11) or any
+// strapping pin.
 #define BOARD_EVCAN_SPI_SCLK 19
 #define BOARD_EVCAN_SPI_MISO 34
 #define BOARD_EVCAN_SPI_MOSI 18
 #define BOARD_EVCAN_SPI_CS   13
-#define BOARD_EVCAN_INT      25   // polled driver today, reserved for IRQ later
+#define BOARD_EVCAN_INT      0    // polled driver; do not wire INT to GPIO25
 #define BOARD_EVCAN_MCP_RST  0    // 0 = tie RST to 3.3 V, no GPIO
 
 // Onboard SIM800L (LilyGO T-Call v1.4 / IP5306 schematic).

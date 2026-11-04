@@ -22,7 +22,9 @@
 #define EVCAN_RST_SET(v) do {} while (0)
 #endif
 
-static MCP2515 evCan(EVCAN_SPI_CS, 10000000, &SPI);
+// 4 MHz is plenty for CAN traffic and survives long dupont wires better than
+// the 10 MHz used on the internal T-2CAN bus.
+static MCP2515 evCan(EVCAN_SPI_CS, 4000000, &SPI);
 static bool evCanOk = false;
 uint32_t canFramesA = 0;
 
@@ -157,8 +159,8 @@ static void handleEvFrame(uint32_t id, uint8_t len, const uint8_t* data) {
 }
 
 // Direct MCP2515 register read, used only for read-only diagnostics.
-static uint8_t mcpReadRegister(uint8_t address) {
-  SPI.beginTransaction(SPISettings(10000000, MSBFIRST, SPI_MODE0));
+static uint8_t mcpReadRegisterAt(uint8_t address, uint32_t hz) {
+  SPI.beginTransaction(SPISettings(hz, MSBFIRST, SPI_MODE0));
   digitalWrite(EVCAN_SPI_CS, LOW);
   SPI.transfer(0x03);        // READ instruction
   SPI.transfer(address);
@@ -166,6 +168,34 @@ static uint8_t mcpReadRegister(uint8_t address) {
   digitalWrite(EVCAN_SPI_CS, HIGH);
   SPI.endTransaction();
   return value;
+}
+
+static uint8_t mcpReadRegister(uint8_t address) {
+  return mcpReadRegisterAt(address, 4000000);
+}
+
+// Send the MCP2515 RESET instruction and report CANSTAT. Reading CANSTAT is
+// the only reliable way to tell "SPI is dead" from "chip is alive but the
+// bitrate is wrong". GPIO34/35 are input-only pads without internal pulls, so
+// the idle level is reported as-is (0 can mean floating or shorted to GND).
+static uint8_t probeMisoPin(uint8_t pin) {
+  pinMode(pin, INPUT);
+  delay(2);
+  uint8_t idle = digitalRead(pin);
+
+  SPI.begin(EVCAN_SPI_SCLK, pin, EVCAN_SPI_MOSI, EVCAN_SPI_CS);
+  pinMode(EVCAN_SPI_CS, OUTPUT);
+  digitalWrite(EVCAN_SPI_CS, HIGH);
+  delay(2);
+  SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
+  digitalWrite(EVCAN_SPI_CS, LOW);
+  SPI.transfer(0xC0);        // RESET
+  digitalWrite(EVCAN_SPI_CS, HIGH);
+  SPI.endTransaction();
+  delay(10);
+  uint8_t canstat = mcpReadRegisterAt(0x0E, 1000000);
+  Serial.printf("EV-CAN: MISO GPIO%u idle=%u CANSTAT=0x%02X\n", pin, idle, canstat);
+  return canstat;
 }
 
 static void storeTiming(uint8_t idx) {
@@ -315,19 +345,34 @@ void setupEvCAN() {
   EVCAN_RST_SET(HIGH);
   delay(10);
 
+  // Find the MISO wire instead of trusting the schematic. A common mistake is
+  // SO on GPIO35 (the old draft pin) while the firmware reads GPIO34; that
+  // looks exactly like a dead chip (CANSTAT=0x00). GPIO35 is also the battery
+  // divider on this board, so it is reported separately.
+  pinMode(35, INPUT);
+  delay(2);
+  uint8_t gpio35 = digitalRead(35);
+  uint8_t canstat = probeMisoPin(EVCAN_SPI_MISO);
+  Serial.printf("EV-CAN: GPIO35 idle=%u (battery divider, not usable for CAN)\n", gpio35);
+
   SPI.begin(EVCAN_SPI_SCLK, EVCAN_SPI_MISO, EVCAN_SPI_MOSI, EVCAN_SPI_CS);
 
-  if (evCan.reset() != MCP2515::ERROR_OK) {
-    Serial.println("EV-CAN: MCP2515 not responding (check Port A wiring, 3V3, CS)");
+  MCP2515::ERROR rst = evCan.reset();
+  // Read CANSTAT even when reset() reports an error: this separates "SPI is
+  // completely dead" (0x00/0xFF) from "chip answers but reset was unhappy".
+  canstat = mcpReadRegister(0x0E);
+  uint8_t cnf1raw = mcpReadRegister(0x2A);
+  chipLooksValid = ((canstat & 0xE0) == 0x80);
+  Serial.printf("EV-CAN: reset=%d CANSTAT=0x%02X CNF1=0x%02X chip_check=%s CS=%d\n",
+                (int)rst, canstat, cnf1raw, chipLooksValid ? "ok" : "unexpected",
+                digitalRead(EVCAN_SPI_CS));
+  if (!chipLooksValid) {
+    Serial.println("EV-CAN: MCP2515 not responding (check 3V3, RST, CS13, SCK19, MOSI18, SO34)");
     return;
   }
-  // CANSTAT.OPMOD must read 0x80 (configuration mode) right after reset.
-  // A board that answers SPI but not this pattern is not behaving like an
-  // MCP2515, which matters because clones and MCP2518FD boards exist.
-  uint8_t canstat = mcpReadRegister(0x0E);
-  chipLooksValid = ((canstat & 0xE0) == 0x80);
-  Serial.printf("EV-CAN: CANSTAT=0x%02X chip_check=%s\n",
-                canstat, chipLooksValid ? "ok" : "unexpected");
+  if (rst != MCP2515::ERROR_OK) {
+    Serial.println("EV-CAN: reset returned an error but CANSTAT looks valid; continuing");
+  }
 
   // Always start at 16 MHz / 500k: proven on this car and MCP2515. A stored
   // index from a false lock used to survive reboots and leave the board deaf.

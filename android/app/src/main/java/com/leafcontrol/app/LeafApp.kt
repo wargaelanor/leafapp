@@ -32,11 +32,24 @@ object Notifications {
             context, 0, Intent(context, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+        val board = PendingIntent.getActivity(
+            context, 1,
+            Intent(context, MainActivity::class.java)
+                .putExtra("open_board", true)
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val settings = PendingIntent.getActivity(
+            context, 2, Intent(context, SettingsActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
         return NotificationCompat.Builder(context, CHANNEL_MONITOR)
             .setSmallIcon(R.drawable.ic_stat_leaf)
             .setContentTitle("Leaf Control")
             .setContentText(text)
             .setContentIntent(open)
+            .addAction(0, "Плата", board)
+            .addAction(0, "Настройки", settings)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)

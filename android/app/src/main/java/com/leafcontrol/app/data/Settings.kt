@@ -26,6 +26,12 @@ object Settings {
         get() = p.getInt("local_port", 80)
         set(v) = p.edit().putInt("local_port", v).apply()
 
+    /** The PWA to show in the WebView. */
+    var appUrl: String
+        get() = p.getString("app_url", "https://wargaelanor.github.io/leafapp/")
+            ?: "https://wargaelanor.github.io/leafapp/"
+        set(v) = p.edit().putString("app_url", v.trim()).apply()
+
     var mqttHost: String
         get() = p.getString("mqtt_host", "m5.wqtt.ru") ?: "m5.wqtt.ru"
         set(v) = p.edit().putString("mqtt_host", v.trim()).apply()

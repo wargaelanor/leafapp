@@ -23,8 +23,8 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.110-TCALL"
-#define LEAF_FIRMWARE_DESCRIPTION "T-Call: two CAN + SIM800, no pin conflict"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.113-TCALL"
+#define LEAF_FIRMWARE_DESCRIPTION "T-Call: two CAN + SIM800, CAR RX on GPIO25, MISO probe"
 #else
 #define LEAF_FIRMWARE_VERSION "FW-2026.11.08.109-CMD"
 #define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: tariff, recovery AP, mobile CAN table"
@@ -1929,8 +1929,10 @@ void setup() {
 
   setupMQTT();
   setupOvmsV2();
-  setupCAN();
+  // EV-CAN first: its MISO probe briefly reconfigures GPIO35, so the CAR-CAN
+  // driver must be installed afterwards.
   setupEvCAN();
+  setupCAN();
   tripLogInit();
 
   // leaf.local must also work when the phone is attached to the board's own
