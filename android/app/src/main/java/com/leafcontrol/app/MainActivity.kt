@@ -316,6 +316,7 @@ class MainActivity : ComponentActivity() {
                   '.app{padding-top:0!important;padding-bottom:0!important}'+
                   '.appbar{height:calc(48px + ${insetTop}px)!important;padding-top:${insetTop}px!important;box-sizing:border-box!important}'+
                   '.tabbar{height:calc(56px + ${insetBottom}px)!important;padding-bottom:${insetBottom}px!important;box-sizing:border-box!important}'+
+                  '.screen{padding-bottom:calc(72px + ${insetBottom}px)!important}'+
                   '.screens{padding-bottom:calc(24px + ${insetBottom}px)!important}';
               }catch(e){}
             })();
