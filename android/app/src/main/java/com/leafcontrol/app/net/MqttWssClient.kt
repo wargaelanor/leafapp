@@ -95,7 +95,10 @@ class MqttWssClient(
         // The PWA uses "/" but some brokers expect "/mqtt"; try both.
         val firstPath = if (path.startsWith("/")) path else "/$path"
         val wsPath = if (alternatePath) "/mqtt" else firstPath
-        val url = "wss://$host:$port$wsPath"
+        val cleanHost = host.trim()
+            .removePrefix("wss://").removePrefix("ws://")
+            .substringBefore('/').substringBefore(':')
+        val url = "wss://$cleanHost:${if (port > 0) port else 15871}$wsPath"
         val req = Request.Builder()
             .url(url)
             .header("Sec-WebSocket-Protocol", "mqtt")
@@ -176,6 +179,7 @@ class MqttWssClient(
                         subscribe(base + "client/#")
                     } else {
                         onConnected(false)
+                        socket.get()?.close(4001, "mqtt refused")
                     }
                 }
                 0x30 -> handlePublish(body) // PUBLISH
