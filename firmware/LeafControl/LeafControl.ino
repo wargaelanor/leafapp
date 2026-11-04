@@ -23,11 +23,11 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.105-TCALL"
-#define LEAF_FIRMWARE_DESCRIPTION "T-Call: two CAN, SIM800 off"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.106-TCALL"
+#define LEAF_FIRMWARE_DESCRIPTION "T-Call: CAN pins, SIM800 off"
 #else
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.105-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: tariff on board, charge debounce"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.106-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: tariff on board, recovery AP"
 #endif
 
 WebServer server(80);
@@ -81,14 +81,21 @@ static unsigned long wifiStaDownSinceMs = 0;
 // (Re)create the configuration AP. Used by setup and by the Wi-Fi recovery
 // path, which restarts the whole radio and therefore loses the AP config.
 static void startSoftAp() {
-  if (strlen(getApSSID()) == 0) return;
-  bool ok;
-  if (strlen(getApPassword()) > 0) {
-    ok = WiFi.softAP(getApSSID(), getApPassword());
-  } else {
-    ok = WiFi.softAP(getApSSID());
+  const char* ssid = getApSSID();
+  const char* pass = getApPassword();
+  if (strlen(ssid) == 0) {
+    // Recovery AP: the saved STA password may be wrong, so the settings page
+    // must remain reachable. It is open only in this fallback case.
+    ssid = "LeafControl-Setup";
+    pass = "";
   }
-  Serial.printf("softAP(%s)=%s ip=%s\n", getApSSID(), ok ? "OK" : "FAIL",
+  bool ok;
+  if (strlen(pass) >= 8) {
+    ok = WiFi.softAP(ssid, pass);
+  } else {
+    ok = WiFi.softAP(ssid);
+  }
+  Serial.printf("softAP(%s)=%s ip=%s\n", ssid, ok ? "OK" : "FAIL",
                 WiFi.softAPIP().toString().c_str());
 }
 
@@ -1739,6 +1746,21 @@ void manageWiFi() {
         wifiStaDownSinceMs = 0;
         return;
       }
+    }
+    // After two minutes without a link, raise a recovery AP. This is the only
+    // way back in when the saved password is wrong (e.g. autocapitalised on a
+    // phone keyboard) and the board is not on the house network.
+    if (currentTime - staDownSinceMs > 120000UL && (WiFi.getMode() & WIFI_AP) == 0) {
+      Serial.println("WiFi: starting recovery AP");
+      WiFi.mode(WIFI_AP_STA);
+      WiFi.setSleep(false);
+      startSoftAp();
+      if (!captivePortalActive) {
+        dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
+        dnsServer.start(53, "*", WiFi.softAPIP());
+        captivePortalActive = true;
+      }
+      startMdnsServices();
     }
     if (currentTime - previousAttemptTime >= interval) {
       if (currentTime - staDownSinceMs >= 300000UL) {
