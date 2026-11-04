@@ -36,6 +36,8 @@ static const size_t SEND_MAX_RECORDS = 800;
 static const uint32_t TZ_OFFSET_SEC = 3UL * 3600UL;
 static uint8_t nightFrom = 0;   // 00:00
 static uint8_t nightTo = 7;     // 07:00
+static float tariffDay = 0.0f;
+static float tariffNight = 0.0f;
 
 static unsigned long lastTickMs = 0;
 static float lastOdo = -1.0f;
@@ -135,6 +137,37 @@ static void appendRecord(const char* path, size_t limitBytes, const char* line) 
   rotateFile(path, limitBytes);
 }
 
+// One-time cleanup for phantom charge records created by the early EV-CAN
+// detector (5-15 s current spikes during regen). A real charge is longer than
+// two minutes; the user's 2.5-hour session is kept.
+static void compactCharges() {
+  File in = HISTFS.open(CHARGES_PATH, FILE_READ);
+  if (!in) return;
+  File out = HISTFS.open("/charges.tmp", FILE_WRITE);
+  if (!out) { in.close(); return; }
+  int removed = 0;
+  while (in.available()) {
+    String line = in.readStringUntil('\n');
+    line.trim();
+    if (!line.length()) continue;
+    int d = 0;
+    int p = line.indexOf("\"d\":");
+    if (p >= 0) d = line.substring(p + 4).toInt();
+    if (d > 0 && d < 120) { removed++; continue; }
+    out.print(line);
+    out.print('\n');
+  }
+  out.close();
+  in.close();
+  if (removed > 0) {
+    HISTFS.remove(CHARGES_PATH);
+    HISTFS.rename("/charges.tmp", CHARGES_PATH);
+    Serial.printf("[log] removed %d short charge records\n", removed);
+  } else {
+    HISTFS.remove("/charges.tmp");
+  }
+}
+
 void tripLogInit() {
   // T-Call has a small SPIFFS partition and may need the initial format;
   // the T-2CAN FAT partition must never be formatted here because canLogger
@@ -143,6 +176,8 @@ void tripLogInit() {
   if (prefs.begin("leaftariff", false)) {
     nightFrom = prefs.getUChar("from", 0);
     nightTo = prefs.getUChar("to", 7);
+    tariffDay = prefs.isKey("day") ? prefs.getFloat("day", 0.0f) : 0.0f;
+    tariffNight = prefs.isKey("night") ? prefs.getFloat("night", 0.0f) : 0.0f;
     if (nightFrom > 23) nightFrom = 0;
     if (nightTo > 23) nightTo = 7;
     prefs.end();
@@ -156,6 +191,7 @@ void tripLogInit() {
     return;
   }
   tripsCount = fileLines(TRIPS_PATH);
+  compactCharges();
   chargesCount = fileLines(CHARGES_PATH);
   Serial.printf("[log] history on board: %u trips, %u charges\n",
                 (unsigned)tripsCount, (unsigned)chargesCount);
@@ -188,7 +224,9 @@ static void finishCharge(const char* reason) {
   chgActive = false;
   uint32_t endEpoch = epochNow();
   unsigned long durMs = millis() - chgStartMs;
-  if (durMs < 60000UL && chgKwh < 0.02f) return;
+  // Reject phantom sessions from short current spikes (regen, contactor
+  // noise). A real charge lasts at least two minutes and stores >100 Wh.
+  if (durMs < 120000UL || chgKwh < 100.0f) return;
 
   char line[200];
   // "w"/"wd"/"wn" are watt-hours (Wh), not kWh. The PWA stores Wh directly.
@@ -214,10 +252,26 @@ void tripLogTick() {
   float v = evData.packVoltage;
   float i = evData.packCurrent;
   bool dataOk = evData.packDataValid && evData.packVoltageValid;
+  bool odoMoving = (odo > 0 && lastOdo > 0 && odo > lastOdo + 0.02f);
   // The CAR-CAN can be asleep during the first part of a charge, so the board
   // would otherwise start the session only when the gateway wakes at ~90%.
-  // EV-CAN current is enough to see the charge from the beginning.
-  bool evCharging = dataOk && v > 100.0f && i < -1.0f && evData.vehicleOn != 1;
+  // EV-CAN current is enough to see the charge from the beginning. Require a
+  // sustained current and no odometer movement: regen while driving briefly
+  // looks identical and used to create phantom 5-second "charges".
+  bool evChargeRaw = dataOk && v > 100.0f && i < -0.5f &&
+                     evData.vehicleOn != 1 && !odoMoving;
+  static uint8_t evSeen = 0;
+  static uint8_t evStop = 0;
+  if (evChargeRaw) {
+    if (evSeen < 12) evSeen++;
+    evStop = 0;
+  } else {
+    evSeen = 0;
+    if (chgActive && evStop < 3) evStop++;
+    else if (!chgActive) evStop = 0;
+  }
+  bool evHolding = chgActive && evStop < 3;
+  bool evCharging = (evChargeRaw && evSeen >= 12) || evHolding;
   bool charging = isChargingNow || evCharging;
   uint32_t epoch = epochNow();
 
@@ -239,7 +293,7 @@ void tripLogTick() {
 
   // Movement is the only honest trip trigger: vehicleOn on this car often
   // stays 0/-1, and relying on it made the board skip whole drives.
-  bool moved = (odo > 0 && lastOdo > 0 && odo > lastOdo + 0.02f);
+  bool moved = odoMoving;
 
   // ---- trips ----
   if (!tripActive) {
@@ -344,20 +398,32 @@ void tripLogClearCharges() {
 }
 
 void tripLogSetNightWindow(uint8_t fromHour, uint8_t toHour) {
+  tripLogSetTariff(tariffDay, tariffNight, fromHour, toHour);
+}
+
+void tripLogSetTariff(double dayPrice, double nightPrice, uint8_t fromHour, uint8_t toHour) {
   if (fromHour > 23) fromHour = 0;
   if (toHour > 23) toHour = 7;
+  if (dayPrice < 0) dayPrice = 0;
+  if (nightPrice < 0) nightPrice = 0;
   nightFrom = fromHour;
   nightTo = toHour;
+  tariffDay = (float)dayPrice;
+  tariffNight = (float)nightPrice;
   Preferences prefs;
   if (prefs.begin("leaftariff", false)) {
     prefs.putUChar("from", fromHour);
     prefs.putUChar("to", toHour);
+    prefs.putFloat("day", tariffDay);
+    prefs.putFloat("night", tariffNight);
     prefs.end();
   }
 }
 
 uint8_t tripLogNightFrom() { return nightFrom; }
 uint8_t tripLogNightTo() { return nightTo; }
+double tripLogTariffDay() { return tariffDay; }
+double tripLogTariffNight() { return tariffNight; }
 
 static size_t fileBytes(const char* path) {
   File f = HISTFS.open(path, FILE_READ);

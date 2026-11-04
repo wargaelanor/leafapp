@@ -23,11 +23,11 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.102-TCALL"
-#define LEAF_FIRMWARE_DESCRIPTION "T-Call: two CAN, onboard SIM800"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.105-TCALL"
+#define LEAF_FIRMWARE_DESCRIPTION "T-Call: two CAN, SIM800 off"
 #else
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.102-CMD"
-#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: two CAN, external SIM800"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.105-CMD"
+#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: tariff on board, charge debounce"
 #endif
 
 WebServer server(80);
@@ -475,7 +475,7 @@ void handleApiStatus() {
     "\"wifi_down_s\":%lu,"
     "\"ap_clients\":%u,"
     "\"trips\":%u,\"charges\":%u,\"driving\":%d,"
-    "\"night_from\":%u,\"night_to\":%u,"
+    "\"night_from\":%u,\"night_to\":%u,\"tariff_day\":%.2f,\"tariff_night\":%.2f,"
     "\"sleep_on\":%d,\"sleep_after_h\":%d,\"wake_fast_min\":%d,\"idle_s\":%lu,"
     "\"gps\":{\"lat\":%.5f,\"lon\":%.5f,\"age\":%lu}}",
     LEAF_FIRMWARE_VERSION, LEAF_FIRMWARE_DESCRIPTION, BOARD_NAME,
@@ -516,6 +516,7 @@ void handleApiStatus() {
     (unsigned)tripLogTripsCount(), (unsigned)tripLogChargesCount(),
     (evData.vehicleOn == 1 || tripLogIsDriving() || fabsf(evData.packPower) > 1.0f) ? 1 : 0,
     (unsigned)tripLogNightFrom(), (unsigned)tripLogNightTo(),
+    tripLogTariffDay(), tripLogTariffNight(),
     getSleepEnabled() ? 1 : 0, getSleepAfterHours(), getWakeFastMinutes(),
     (unsigned long)rtcState.idleSec,
     gpsValid ? gLat : 0.0, gpsValid ? gLon : 0.0,
@@ -627,8 +628,12 @@ void handleTariffSet() {
     server.send(400, "application/json", "{\"error\":\"bad_hours\"}");
     return;
   }
+  double tariffDay = server.arg("day").toFloat();
+  double tariffNight = server.arg("night").toFloat();
+  if (!server.hasArg("day")) tariffDay = tripLogTariffDay();
+  if (!server.hasArg("night")) tariffNight = tripLogTariffNight();
   noteUserActivity();
-  tripLogSetNightWindow((uint8_t)from, (uint8_t)to);
+  tripLogSetTariff(tariffDay, tariffNight, (uint8_t)from, (uint8_t)to);
   server.send(200, "application/json", "{\"ok\":true}");
 }
 
@@ -1096,6 +1101,15 @@ void handleSettingsSave() {
   if (m7670User.length() > 0) setModem7670User(m7670User.c_str());
   if (server.hasArg("modem7670_pass") && server.arg("modem7670_pass").length() > 0) {
     setModem7670Pass(server.arg("modem7670_pass").c_str());
+  }
+
+  // Tariff lives on the board so it survives a different browser/origin.
+  if (server.hasArg("tariff_day") || server.hasArg("night_from")) {
+    tripLogSetTariff(
+        server.arg("tariff_day").toFloat(),
+        server.arg("tariff_night").toFloat(),
+        (uint8_t)server.arg("night_from").toInt(),
+        (uint8_t)server.arg("night_to").toInt());
   }
 
   Serial.print("mqtt_server=");
@@ -1795,6 +1809,14 @@ void wifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
 void setup() {
   Serial.begin(115200);
   loadSoftwareRestart();
+#if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
+  // CAN is wired to the SIM800 UART pins on this board profile. Keep the
+  // onboard modem rail off so its TX does not fight the MCP2515.
+  pinMode(BOARD_MODEM_POWER_ON, OUTPUT);
+  digitalWrite(BOARD_MODEM_POWER_ON, LOW);
+  pinMode(BOARD_MODEM_PWRKEY, OUTPUT);
+  digitalWrite(BOARD_MODEM_PWRKEY, HIGH);
+#endif
   // Arduino loopTask runs on core 1. Keep recovery on core 0 so a blocking
   // HTTP/network call cannot also starve the task responsible for rebooting.
   BaseType_t supervisorResult = xTaskCreatePinnedToCore(

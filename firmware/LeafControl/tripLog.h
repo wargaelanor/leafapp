@@ -21,6 +21,12 @@ void tripLogSetNightWindow(uint8_t fromHour, uint8_t toHour);
 uint8_t tripLogNightFrom();
 uint8_t tripLogNightTo();
 
+// Full tariff (prices are only displayed by clients; the board stores them so
+// the settings page and the app always agree).
+void tripLogSetTariff(double dayPrice, double nightPrice, uint8_t fromHour, uint8_t toHour);
+double tripLogTariffDay();
+double tripLogTariffNight();
+
 size_t tripLogTripsBytes();
 size_t tripLogChargesBytes();
 size_t tripLogTripsCount();

@@ -1,3 +1,4 @@
+#include "tripLog.h"
 #ifndef UI_H
 #define UI_H
 
@@ -32,6 +33,7 @@ static void sendNonEmpty(WebServer& server, const String& value) {
 // Board settings page — NissanConnect style
 void sendSettingsPage(WebServer& server, bool mqttConnected, bool ovmsConnected, const char* saveResult) {
   server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+  server.sendHeader("Cache-Control", "no-store, no-cache, must-revalidate");
   server.send(200, "text/html", "");
 
   server.sendContent(F(
@@ -174,7 +176,7 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, bool ovmsConnected,
   ));
   sendNonEmpty(server, htmlEscapeAttr(getMqttServer()));
   server.sendContent(F(
-    "' placeholder='m5.wqtt.ru' autocapitalize='off'>\n"
+    "' placeholder='m5.wqtt.ru' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='off'>\n"
     "<label for='mqtt_port'>Порт</label>\n"
     "<input type='number' id='mqtt_port' name='mqtt_port' min='1' max='65535' value='"
   ));
@@ -186,17 +188,17 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, bool ovmsConnected,
   ));
   sendNonEmpty(server, htmlEscapeAttr(getMqttUser()));
   server.sendContent(F(
-    "' placeholder='u_XXXXXX' autocapitalize='off'>\n"
+    "' placeholder='u_XXXXXX' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='off'>\n"
     "<label for='mqtt_vehicle_id'>Vehicle ID для MQTT</label>\n"
     "<input type='text' id='mqtt_vehicle_id' name='mqtt_vehicle_id' value='"
   ));
   sendNonEmpty(server, htmlEscapeAttr(getMqttVehicleId()));
   server.sendContent(F(
-    "' placeholder='MYLEAF' autocapitalize='off'>\n"
+    "' placeholder='MYLEAF' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='off'>\n"
     "<div class='hint'>Этот ID попадает в топики <code>ovms/&lt;user&gt;/&lt;id&gt;/...</code>. "
     "У OVMS Server V2 свой отдельный ID ниже — менять один, чтобы не сломать другой, больше не нужно.</div>\n"
     "<label for='mqtt_password'>Пароль (пусто — не менять)</label>\n"
-    "<input type='password' id='mqtt_password' name='mqtt_password' value='' placeholder='••••••••' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='new-password'>\n"
+    "<input type='password' id='mqtt_password' name='mqtt_password' value='' placeholder='••••••••' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='new-password' lang='en'>\n"
     "<label class='chk'><input type='checkbox' name='mqtt_tls' value='1'"
   ));
   if (getMqttTls()) server.sendContent(F(" checked"));
@@ -213,17 +215,17 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, bool ovmsConnected,
     "<label for='vehicle_id'>Vehicle ID</label><input type='text' id='vehicle_id' name='vehicle_id' value='"
   ));
   sendNonEmpty(server, htmlEscapeAttr(getVehicleId()));
-  server.sendContent(F("' placeholder='MYLEAF' autocapitalize='off'>\n"
+  server.sendContent(F("' placeholder='MYLEAF' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='off'>\n"
     "<label for='ovms_server'>Сервер</label><input type='text' id='ovms_server' name='ovms_server' value='"));
   sendNonEmpty(server, htmlEscapeAttr(getOvmsServer()));
-  server.sendContent(F("' placeholder='api.openvehicles.com' autocapitalize='off'>\n"
+  server.sendContent(F("' placeholder='api.openvehicles.com' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='off'>\n"
     "<label for='ovms_port'>Порт</label><input type='number' id='ovms_port' name='ovms_port' min='1' max='65535' value='"));
   server.sendContent(String(getOvmsPort()));
   server.sendContent(F("'>\n"
     "<label for='ovms_password'>Server password (пусто — не менять)</label>"
-    "<input type='password' id='ovms_password' name='ovms_password' value='' placeholder='••••••••' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='new-password'>\n"
+    "<input type='password' id='ovms_password' name='ovms_password' value='' placeholder='••••••••' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='new-password' lang='en'>\n"
     "<label for='ovms_module_password'>Пароль модуля (пусто — не менять)</label>"
-    "<input type='password' id='ovms_module_password' name='ovms_module_password' value='' placeholder='••••••••' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='new-password'>\n"
+    "<input type='password' id='ovms_module_password' name='ovms_module_password' value='' placeholder='••••••••' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='new-password' lang='en'>\n"
     "<label class='chk'><input type='checkbox' name='ovms_tls' value='1'"));
   if (getOvmsTls()) server.sendContent(F(" checked"));
   server.sendContent(F("> Использовать TLS</label>\n"
@@ -254,33 +256,34 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, bool ovmsConnected,
   ));
   sendNonEmpty(server, htmlEscapeAttr(getWifiSSID()));
   server.sendContent(F(
-    "' placeholder='Название вашей Wi-Fi сети' autocapitalize='off'>\n"
+    "' placeholder='Название вашей Wi-Fi сети' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='off'>\n"
     "<label for='wifi_password'>Пароль сети 1 (пусто — не менять)</label>\n"
-    "<input type='password' id='wifi_password' name='wifi_password' value='' placeholder='••••••••' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='new-password'>\n"
+    "<input type='password' id='wifi_password' name='wifi_password' value='' placeholder='••••••••' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='new-password' lang='en'>\n"
     "<label for='wifi_ssid2'>Сеть 2 (SSID)</label>\n"
     "<input type='text' id='wifi_ssid2' name='wifi_ssid2' value='"
   ));
   sendNonEmpty(server, htmlEscapeAttr(getWifiSSID2()));
   server.sendContent(F(
-    "' placeholder='Вторая сеть' autocapitalize='off'>\n"
+    "' placeholder='Вторая сеть' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='off'>\n"
     "<label for='wifi_password2'>Пароль сети 2 (пусто — не менять)</label>\n"
-    "<input type='password' id='wifi_password2' name='wifi_password2' value='' placeholder='••••••••' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='new-password'>\n"
+    "<input type='password' id='wifi_password2' name='wifi_password2' value='' placeholder='••••••••' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='new-password' lang='en'>\n"
     "<label for='wifi_ssid3'>Сеть 3 (SSID)</label>\n"
     "<input type='text' id='wifi_ssid3' name='wifi_ssid3' value='"
   ));
   sendNonEmpty(server, htmlEscapeAttr(getWifiSSID3()));
   server.sendContent(F(
-    "' placeholder='Третья сеть' autocapitalize='off'>\n"
+    "' placeholder='Третья сеть' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='off'>\n"
     "<label for='wifi_password3'>Пароль сети 3 (пусто — не менять)</label>\n"
-    "<input type='password' id='wifi_password3' name='wifi_password3' value='' placeholder='••••••••' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='new-password'>\n"
+    "<input type='password' id='wifi_password3' name='wifi_password3' value='' placeholder='••••••••' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='new-password' lang='en'>\n"
+    "<label class='chk'><input type='checkbox' id='show_wifi_pw' onclick='showWifiPasswords(this)'> Показать пароли Wi-Fi</label>\n"
     "<label for='ap_ssid'>Точка доступа (SSID) — пусто = точка доступа выключена</label>\n"
     "<input type='text' id='ap_ssid' name='ap_ssid' value='"
   ));
   sendNonEmpty(server, htmlEscapeAttr(getApSSID()));
   server.sendContent(F(
-    "' placeholder='LeafControl-AP' autocapitalize='off'>\n"
+    "' placeholder='LeafControl-AP' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='off'>\n"
     "<label for='ap_password'>Пароль точки доступа (мин. 8 симв., пусто — не менять)</label>\n"
-    "<input type='password' id='ap_password' name='ap_password' value='' placeholder='••••••••' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='new-password'>\n"
+    "<input type='password' id='ap_password' name='ap_password' value='' placeholder='••••••••' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='new-password' lang='en'>\n"
     "<div class='hint'>Плата выбирает доступную сохранённую сеть с лучшим сигналом и переключается на другой профиль при потере связи. Пароли не отображаются и не стираются при пустом поле.</div>\n"
     "<button type='submit' class='btn btn-save'>Сохранить и перезагрузить</button>\n"
     "</div></details>\n"
@@ -305,13 +308,13 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, bool ovmsConnected,
   ));
   sendNonEmpty(server, htmlEscapeAttr(getModem800Apn()));
   server.sendContent(F(
-    "' placeholder='internet' autocapitalize='off'>\n"
+    "' placeholder='internet' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='off'>\n"
      "<label for='modem800_user'>APN пользователь (пусто — не менять)</label>\n"
      "<input type='text' id='modem800_user' name='modem800_user' value='"
    ));
    sendNonEmpty(server, htmlEscapeAttr(getModem800User()));
    server.sendContent(F(
-     "' autocapitalize='off'>\n"
+     "' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='off'>\n"
      "<label for='modem800_pass'>APN пароль (пусто — не менять)</label>\n"
      "<input type='password' id='modem800_pass' name='modem800_pass' value='' placeholder='"
    ));
@@ -323,7 +326,7 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, bool ovmsConnected,
    if (getModemCallEnabled()) server.sendContent(F(" checked"));
    server.sendContent(F(
      "> Управление климатом входящим звонком</label>\n"
-     "<div class='hint'>Подключение модема: T-2CAN — TXD→GPIO35, RXD→GPIO38, RI→GPIO37; T-Call — встроенный SIM800 (TX=27, RX=26, RI=33). Питание: T-2CAN отдельные 5 В / 2 А, T-Call через IP5306. Первый разрешённый звонок включает климат, следующий выключает.</div>\n"
+     "<div class='hint'>T-2CAN: TXD→GPIO35, RXD→GPIO38, RI→GPIO37. T-Call: встроенный SIM800 отключён — GPIO26/27/32/33 заняты CAN. Питание T-2CAN — отдельные 5 В / 2 А.</div>\n"
    ));
    for (uint8_t i = 0; i < 5; i++) {
      server.sendContent(F("<label for='modem_call_num"));
@@ -347,7 +350,7 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, bool ovmsConnected,
   server.sendContent(String(getModemPwrKey()));
   server.sendContent(F(
     "'>\n"
-    "<div class='hint'>UART модема: T-2CAN — GPIO35/38/37, T-Call — встроенный SIM800 26/27/33. Питание: T-2CAN отдельные 5 В / 2 А, T-Call через IP5306. Wi-Fi имеет приоритет для MQTT. SIM800 требует сети 2G.</div>\n"
+    "<div class='hint'>UART модема: T-2CAN — GPIO35/38/37. T-Call — SIM800 отключён: GPIO26/27/32/33 заняты CAN. Wi-Fi имеет приоритет для MQTT.</div>\n"
     "<button type='submit' class='btn btn-save'>Сохранить и перезагрузить</button>\n"
     "</div></details>\n"
     "<details class='section' data-section='power'><summary>Экономия энергии</summary><div class='section-body'>\n"
@@ -374,6 +377,27 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, bool ovmsConnected,
   server.sendContent(String(getWakeSlowMinutes()));
   server.sendContent(F(
     "'>\n"
+    "</div></details>\n"
+    "<details class='section' data-section='tariff'><summary>Тариф на электричество</summary><div class='section-body'>\n"
+    "<div class='hint'>Цена за кВт·ч. Ночное окно плата использует при разбивке энергии поездок и зарядок. По умолчанию 00:00–07:00.</div>\n"
+    "<label for='tariff_day'>День, ₽/кВт·ч</label><input type='number' step='0.01' min='0' id='tariff_day' name='tariff_day' value='"
+  ));
+  server.sendContent(String((float)tripLogTariffDay(), 2));
+  server.sendContent(F(
+    "'>\n<label for='tariff_night'>Ночь, ₽/кВт·ч</label><input type='number' step='0.01' min='0' id='tariff_night' name='tariff_night' value='"
+  ));
+  server.sendContent(String((float)tripLogTariffNight(), 2));
+  server.sendContent(F(
+    "'>\n<div style='display:flex;gap:10px'>"
+    "<div style='flex:1'><label for='night_from'>Ночь с, час</label><input type='number' min='0' max='23' id='night_from' name='night_from' value='"
+  ));
+  server.sendContent(String((unsigned)tripLogNightFrom()));
+  server.sendContent(F(
+    "'></div><div style='flex:1'><label for='night_to'>Ночь до, час</label><input type='number' min='0' max='23' id='night_to' name='night_to' value='"
+  ));
+  server.sendContent(String((unsigned)tripLogNightTo()));
+  server.sendContent(F(
+    "'></div></div>\n"
     "<button type='submit' class='btn btn-save'>Сохранить и перезагрузить</button>\n"
     "</div></details></div></form>\n"
     "<div class='settings-list' style='margin:18px 16px 0'>\n"
@@ -384,7 +408,7 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, bool ovmsConnected,
     "<div id='reboot-note' style='font-size:12px;color:#8e8e93;min-height:16px;margin-top:8px'></div>\n"
     "</div></details></div>\n"
     "<div style='padding:0 16px'><a href='/' class='btn btn-back'>Назад</a></div>\n"
-    "<script>function showRemote(){var r=document.querySelector('input[name=remote_mode]:checked'),v=r?r.value:'0';document.querySelectorAll('[data-remote-panel]').forEach(function(p){p.hidden=p.dataset.remotePanel!==v})}document.querySelectorAll('input[name=remote_mode]').forEach(function(r){r.addEventListener('change',showRemote)});showRemote();document.querySelectorAll('.section').forEach(function(s){s.addEventListener('toggle',function(){if(!s.open)return;document.querySelectorAll('.section[open]').forEach(function(o){if(o!==s)o.open=false});history.replaceState(null,'','#'+s.dataset.section)})});var h=location.hash.slice(1),d=h&&document.querySelector('[data-section=\"'+h+'\"]');if(d)d.open=true;(function(){var b=document.getElementById('reboot-btn');if(!b)return;var t=null,n=document.getElementById('reboot-note');function stop(){if(t){clearTimeout(t);t=null;b.textContent='Удерживайте 3 секунды'}}function start(e){e.preventDefault();b.textContent='Держите…';t=setTimeout(function(){t=null;b.textContent='Перезагружаем…';n.textContent='плата перезагрузится через несколько секунд';fetch('/reboot',{method:'POST',headers:{'X-Requested-With':'leaf'}}).catch(function(){})},3000)}b.addEventListener('pointerdown',start);['pointerup','pointerleave','pointercancel'].forEach(function(ev){b.addEventListener(ev,stop)})})();</script>\n"
+    "<script>function showRemote(){var r=document.querySelector('input[name=remote_mode]:checked'),v=r?r.value:'0';document.querySelectorAll('[data-remote-panel]').forEach(function(p){p.hidden=p.dataset.remotePanel!==v})}document.querySelectorAll('input[name=remote_mode]').forEach(function(r){r.addEventListener('change',showRemote)});showRemote();document.querySelectorAll('.section').forEach(function(s){s.addEventListener('toggle',function(){if(!s.open)return;document.querySelectorAll('.section[open]').forEach(function(o){if(o!==s)o.open=false});history.replaceState(null,'','#'+s.dataset.section)})});var h=location.hash.slice(1),d=h&&document.querySelector('[data-section=\"'+h+'\"]');if(d)d.open=true;function showWifiPasswords(cb){document.querySelectorAll('input[type=password][id^=wifi_password]').forEach(function(i){i.type=cb.checked?'text':'password'})}(function(){var b=document.getElementById('reboot-btn');if(!b)return;var t=null,n=document.getElementById('reboot-note');function stop(){if(t){clearTimeout(t);t=null;b.textContent='Удерживайте 3 секунды'}}function start(e){e.preventDefault();b.textContent='Держите…';t=setTimeout(function(){t=null;b.textContent='Перезагружаем…';n.textContent='плата перезагрузится через несколько секунд';fetch('/reboot',{method:'POST',headers:{'X-Requested-With':'leaf'}}).catch(function(){})},3000)}b.addEventListener('pointerdown',start);['pointerup','pointerleave','pointercancel'].forEach(function(ev){b.addEventListener(ev,stop)})})();</script>\n"
     "</div></div></body></html>\n"
   ));
 

@@ -78,7 +78,11 @@ static bool callOnlyMode() {
 // In call-only mode the modem must run even if the generic modem switch is off:
 // it exists solely to receive calls.
 static bool modemShouldRun() {
+#if !BOARD_HAS_MODEM
+  return false;
+#else
   return getModemEnable() || callOnlyMode();
+#endif
 }
 
 static bool callControlEnabled() {
