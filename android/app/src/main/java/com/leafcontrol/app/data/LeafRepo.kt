@@ -20,8 +20,19 @@ object LeafRepo {
     @Volatile
     var mqtt: MqttWssClient? = null
 
+    // Retained topic metric/s/v3/connected is the board's will. Use it so
+    // retained metrics are not presented as live after the board went offline.
+    @Volatile
+    private var boardOnline = true
+
     fun setLocal(s: LeafState) {
+        boardOnline = true
         state.value = s
+    }
+
+    fun onMqttConnected() {
+        boardOnline = true
+        state.update { it.copy(connected = true, transport = "mqtt") }
     }
 
     fun setDisconnected(transport: String) {
@@ -35,6 +46,11 @@ object LeafRepo {
         val m = topic.removePrefix(base)
         val num = payload.toDoubleOrNull()
         val now = System.currentTimeMillis()
+        if (m == "s/v3/connected") {
+            boardOnline = payload == "yes"
+            state.update { it.copy(connected = boardOnline, transport = "mqtt") }
+            return
+        }
         state.update { s ->
             val n = when (m) {
                 "v/b/soc" -> s.copy(soc = num ?: s.soc)
@@ -56,7 +72,7 @@ object LeafRepo {
                 "v/vin" -> s.copy(vin = payload)
                 else -> s
             }
-            n.copy(lastUpdateMs = now, connected = true, transport = "mqtt")
+            n.copy(lastUpdateMs = now, connected = boardOnline, transport = "mqtt")
         }
     }
 

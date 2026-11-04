@@ -201,6 +201,7 @@ class LeafMonitorService : Service() {
                     if (ok) {
                         updateForeground("MQTT · подключено")
                         LeafRepo.monitorText.value = "MQTT · подключено"
+                        LeafRepo.onMqttConnected()
                     } else {
                         updateForeground("MQTT · нет связи")
                         LeafRepo.setDisconnected("mqtt")
