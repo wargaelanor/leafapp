@@ -1141,12 +1141,14 @@ function renderNow(){
   renderCarStage();
   const soc = S.soc>=0 ? S.soc : null;
   const km = rangeKm();
-  const iSoc = socInstr();
-  const iRange = rangeInstr();
-  // Garage mirrors the dashboard when it is available, otherwise it shows the
-  // BMS value. A calculated range is always marked with "≈".
-  const socShown = iSoc!=null ? iSoc : soc;
-  const kmShown = iRange!=null ? iRange : km;
+  // Instrument values are only trustworthy while EV-CAN is fresh. The big
+  // number is the BMS value: it matches the car's dashboard on ZE1 and the
+  // board's lite page; a stale 0x59E frame used to show 77 % while the car
+  // showed 69 %.
+  const iSoc = evFresh() ? socInstr() : null;
+  const iRange = evFresh() ? rangeInstr() : null;
+  const socShown = soc != null ? soc : iSoc;
+  const kmShown = iRange != null ? iRange : km;
   $('g-soc').textContent = socShown!=null ? socShown.toFixed(0) : '—';
   $('g-range').textContent = kmShown==null ? '—' : (iRange!=null ? kmShown : '≈'+kmShown);
   $('rm-range').textContent = kmShown==null ? '—' : (iRange!=null ? kmShown : '≈'+kmShown);
@@ -1204,8 +1206,12 @@ function renderNow(){
 
   // Source is spelled out: the dashboard value, the BMS (nominal) value, or a
   // calculated estimate. The UI never presents one as the other.
-  $('s-soc').textContent = iSoc!=null ? fmtPct(iSoc)+' (прибор)'
-                        : (soc!=null ? fmtPct(soc)+' (BMS)' : '—');
+  // BMS first (matches the car), instrument only as a secondary fresh value.
+  let socDetail = soc != null ? fmtPct(soc) + ' (BMS)' : '';
+  if (iSoc != null && (soc == null || Math.abs(iSoc - soc) >= 2)) {
+    socDetail += (socDetail ? ' · ' : '') + fmtPct(iSoc) + ' (прибор)';
+  }
+  $('s-soc').textContent = socDetail || ((S.isoc != null && S.isoc >= 0) ? fmtPct(S.isoc) + ' (прибор)' : '—');
   $('s-range').textContent = iRange!=null ? fmtKm(iRange)+' (прибор)'
                           : (km!=null ? '≈'+fmtKm(km)+' (расч.)' : '—');
   $('s-soh').textContent = S.soh>=0 ? S.soh+' %' : '—';
