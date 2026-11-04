@@ -21,6 +21,8 @@
 
 extern EvBatteryData evData;
 extern bool isChargingNow;
+extern float currentSOC;
+extern void requestVehicleWake();
 extern WebServer server;
 
 static const char* TRIPS_PATH   = "/trips.jsonl";
@@ -207,12 +209,27 @@ void tripLogTick() {
   lastTickMs = now;
 
   float odo = (float)evData.odometerKm;
-  float soc = evData.instrumentSOC >= 0 ? evData.instrumentSOC : -1;
+  float soc = evData.instrumentSOC >= 0 ? evData.instrumentSOC
+                                        : (currentSOC >= 0 ? currentSOC : -1);
   float v = evData.packVoltage;
   float i = evData.packCurrent;
   bool dataOk = evData.packDataValid && evData.packVoltageValid;
-  bool charging = isChargingNow;
+  // The CAR-CAN can be asleep during the first part of a charge, so the board
+  // would otherwise start the session only when the gateway wakes at ~90%.
+  // EV-CAN current is enough to see the charge from the beginning.
+  bool evCharging = dataOk && v > 100.0f && i < -1.0f && evData.vehicleOn != 1;
+  bool charging = isChargingNow || evCharging;
   uint32_t epoch = epochNow();
+
+  // Wake the CAR-CAN gateway read-only when EV-CAN shows a charge but the
+  // gateway has not reported it yet. This brings SOC/charger state early.
+  static unsigned long lastChargeWakeMs = 0;
+  if (evCharging && !isChargingNow && (lastChargeWakeMs == 0 ||
+      now - lastChargeWakeMs > 300000UL)) {
+    lastChargeWakeMs = now;
+    Serial.println("[log] EV-CAN shows charging, requesting CAR-CAN wake");
+    requestVehicleWake();
+  }
 
   // Energy of the interval, split by local time for the day/night tariff.
   float wh = 0;
@@ -277,6 +294,10 @@ void tripLogTick() {
 
 bool tripLogIsDriving() {
   return tripActive;
+}
+
+bool tripLogIsCharging() {
+  return chgActive;
 }
 
 static void sendJsonLines(const char* path) {

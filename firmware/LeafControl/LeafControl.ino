@@ -23,10 +23,10 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.100-TCALL"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.102-TCALL"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: two CAN, onboard SIM800"
 #else
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.100-CMD"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.102-CMD"
 #define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: two CAN, external SIM800"
 #endif
 
@@ -361,6 +361,7 @@ void handleRoot() {
   const size_t htmlLen = useGzip ? INDEX_HTML_GZ_LEN : sizeof(INDEX_HTML) - 1;
   server.setContentLength(htmlLen);
   server.sendHeader("Vary", "Accept-Encoding");
+  server.sendHeader("Cache-Control", "no-store, no-cache, must-revalidate");
   if (useGzip) server.sendHeader("Content-Encoding", "gzip");
   server.send(200, "text/html; charset=utf-8", "");
   size_t chunkIndex = 0;
@@ -381,7 +382,7 @@ static void streamProgmemImage(const unsigned char* data, size_t len, const char
   NetworkClient& client = server.client();
   client.setTimeout(750);
   server.setContentLength(len);
-  server.sendHeader("Cache-Control", "public, max-age=604800");
+  server.sendHeader("Cache-Control", "no-store, no-cache, must-revalidate");
   server.send(200, type, "");
   size_t offset = 0;
   while (offset < len && client.connected()) {
@@ -478,7 +479,7 @@ void handleApiStatus() {
     "\"sleep_on\":%d,\"sleep_after_h\":%d,\"wake_fast_min\":%d,\"idle_s\":%lu,"
     "\"gps\":{\"lat\":%.5f,\"lon\":%.5f,\"age\":%lu}}",
     LEAF_FIRMWARE_VERSION, LEAF_FIRMWARE_DESCRIPTION, BOARD_NAME,
-    currentSOC, cabinTemp, isChargingNow ? 1 : 0, chargerStateStr(currentChargerState),
+    currentSOC, cabinTemp, (isChargingNow || tripLogIsCharging()) ? 1 : 0, chargerStateStr(currentChargerState),
     isHvacOn ? 1 : 0, (int)lockState, currentSetpoint, currentFanSpeed,
     isHeatingEnabled ? 1 : 0, isCoolingEnabled ? 1 : 0, (int)currentVentilationMode,
     evData.soh, evData.gids, evData.packVoltage, evData.packCurrent, evData.packPower,
@@ -1409,6 +1410,15 @@ void handleRefresh() {
   server.send(303);
 }
 
+// Called from the history logger when EV-CAN shows charge current but the
+// gateway has not reported the charge yet. Read-only wake sequence.
+void requestVehicleWake() {
+  if (otaInProgress) return;
+  if (activeSequence == CanSequence::NONE) {
+    startSequence(CanSequence::REFRESH, millis());
+  }
+}
+
 bool handleMqttRefresh() {
   Serial.println("### Refresh! (MQTT) ###");
   if (!startSeqOrBusy(CanSequence::REFRESH)) { sendBusyMqtt(); return false; }
@@ -2083,7 +2093,7 @@ void loop() {
   bool callControlKeepsAwake = getModemEnable() && getModemCallEnabled();
   if (getSleepEnabled() && !callControlKeepsAwake && !canLoggerIsRecording() &&
       !otaInProgress && activeSequence == CanSequence::NONE &&
-      !isChargingNow && !isHvacOn) {
+      !isChargingNow && !tripLogIsCharging() && !isHvacOn) {
     static unsigned long lastIdleTickMs = 0;
     unsigned long now = millis();
     if (lastIdleTickMs == 0) lastIdleTickMs = now;
