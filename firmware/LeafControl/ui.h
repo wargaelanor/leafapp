@@ -196,7 +196,7 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, bool ovmsConnected,
     "<div class='hint'>Этот ID попадает в топики <code>ovms/&lt;user&gt;/&lt;id&gt;/...</code>. "
     "У OVMS Server V2 свой отдельный ID ниже — менять один, чтобы не сломать другой, больше не нужно.</div>\n"
     "<label for='mqtt_password'>Пароль (пусто — не менять)</label>\n"
-    "<input type='password' id='mqtt_password' name='mqtt_password' value='' placeholder='••••••••'>\n"
+    "<input type='password' id='mqtt_password' name='mqtt_password' value='' placeholder='••••••••' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='new-password'>\n"
     "<label class='chk'><input type='checkbox' name='mqtt_tls' value='1'"
   ));
   if (getMqttTls()) server.sendContent(F(" checked"));
@@ -221,9 +221,9 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, bool ovmsConnected,
   server.sendContent(String(getOvmsPort()));
   server.sendContent(F("'>\n"
     "<label for='ovms_password'>Server password (пусто — не менять)</label>"
-    "<input type='password' id='ovms_password' name='ovms_password' value='' placeholder='••••••••'>\n"
+    "<input type='password' id='ovms_password' name='ovms_password' value='' placeholder='••••••••' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='new-password'>\n"
     "<label for='ovms_module_password'>Пароль модуля (пусто — не менять)</label>"
-    "<input type='password' id='ovms_module_password' name='ovms_module_password' value='' placeholder='••••••••'>\n"
+    "<input type='password' id='ovms_module_password' name='ovms_module_password' value='' placeholder='••••••••' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='new-password'>\n"
     "<label class='chk'><input type='checkbox' name='ovms_tls' value='1'"));
   if (getOvmsTls()) server.sendContent(F(" checked"));
   server.sendContent(F("> Использовать TLS</label>\n"
@@ -256,7 +256,7 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, bool ovmsConnected,
   server.sendContent(F(
     "' placeholder='Название вашей Wi-Fi сети' autocapitalize='off'>\n"
     "<label for='wifi_password'>Пароль сети 1 (пусто — не менять)</label>\n"
-    "<input type='password' id='wifi_password' name='wifi_password' value='' placeholder='••••••••'>\n"
+    "<input type='password' id='wifi_password' name='wifi_password' value='' placeholder='••••••••' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='new-password'>\n"
     "<label for='wifi_ssid2'>Сеть 2 (SSID)</label>\n"
     "<input type='text' id='wifi_ssid2' name='wifi_ssid2' value='"
   ));
@@ -264,7 +264,7 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, bool ovmsConnected,
   server.sendContent(F(
     "' placeholder='Вторая сеть' autocapitalize='off'>\n"
     "<label for='wifi_password2'>Пароль сети 2 (пусто — не менять)</label>\n"
-    "<input type='password' id='wifi_password2' name='wifi_password2' value='' placeholder='••••••••'>\n"
+    "<input type='password' id='wifi_password2' name='wifi_password2' value='' placeholder='••••••••' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='new-password'>\n"
     "<label for='wifi_ssid3'>Сеть 3 (SSID)</label>\n"
     "<input type='text' id='wifi_ssid3' name='wifi_ssid3' value='"
   ));
@@ -272,7 +272,7 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, bool ovmsConnected,
   server.sendContent(F(
     "' placeholder='Третья сеть' autocapitalize='off'>\n"
     "<label for='wifi_password3'>Пароль сети 3 (пусто — не менять)</label>\n"
-    "<input type='password' id='wifi_password3' name='wifi_password3' value='' placeholder='••••••••'>\n"
+    "<input type='password' id='wifi_password3' name='wifi_password3' value='' placeholder='••••••••' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='new-password'>\n"
     "<label for='ap_ssid'>Точка доступа (SSID) — пусто = точка доступа выключена</label>\n"
     "<input type='text' id='ap_ssid' name='ap_ssid' value='"
   ));
@@ -280,7 +280,7 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, bool ovmsConnected,
   server.sendContent(F(
     "' placeholder='LeafControl-AP' autocapitalize='off'>\n"
     "<label for='ap_password'>Пароль точки доступа (мин. 8 симв., пусто — не менять)</label>\n"
-    "<input type='password' id='ap_password' name='ap_password' value='' placeholder='••••••••'>\n"
+    "<input type='password' id='ap_password' name='ap_password' value='' placeholder='••••••••' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='new-password'>\n"
     "<div class='hint'>Плата выбирает доступную сохранённую сеть с лучшим сигналом и переключается на другой профиль при потере связи. Пароли не отображаются и не стираются при пустом поле.</div>\n"
     "<button type='submit' class='btn btn-save'>Сохранить и перезагрузить</button>\n"
     "</div></details>\n"

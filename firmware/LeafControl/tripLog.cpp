@@ -157,6 +157,7 @@ static void finishTrip(const char* reason) {
   if (durMs < 20000UL && km < 0.05f) return;
 
   char line[200];
+  // "w"/"wd"/"wn" are watt-hours (Wh), not kWh. The PWA stores Wh directly.
   snprintf(line, sizeof(line),
            "{\"s\":%lu,\"e\":%lu,\"d\":%lu,\"k\":%.2f,\"w\":%.3f,\"wd\":%.3f,\"wn\":%.3f,\"s0\":%d,\"s1\":%d,\"r\":\"%s\"}",
            (unsigned long)tripStartEpoch, (unsigned long)endEpoch,
@@ -175,6 +176,7 @@ static void finishCharge(const char* reason) {
   if (durMs < 60000UL && chgKwh < 0.02f) return;
 
   char line[200];
+  // "w"/"wd"/"wn" are watt-hours (Wh), not kWh. The PWA stores Wh directly.
   snprintf(line, sizeof(line),
            "{\"s\":%lu,\"e\":%lu,\"d\":%lu,\"w\":%.3f,\"wd\":%.3f,\"wn\":%.3f,\"s0\":%d,\"s1\":%d,\"r\":\"%s\"}",
            (unsigned long)chgStartEpoch, (unsigned long)endEpoch,
