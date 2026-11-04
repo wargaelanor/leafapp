@@ -312,7 +312,7 @@ html[data-theme="dark"] .dm-filters button.on{color:#08121a}
 .demo-banner a{color:#fff;font-weight:600;margin-left:6px}
 body.demo .demo-banner{display:block}
 /*DEMO-END*/
-.trip-summary{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:12px 16px}
+.trip-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 16px}
 .trip-summary .cell{background:var(--surface);border-radius:8px;padding:12px 8px;box-shadow:0 1px 3px rgba(0,0,0,.06);text-align:center}
 .trip-summary .cell .num{font-size:20px;color:var(--text);font-weight:600}
 .trip-summary .cell .lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
@@ -645,6 +645,7 @@ body.demo .demo-banner{display:block}
         <div class="cell"><div class="num" id="cs-total">0</div><div class="lbl">Сеансов</div></div>
         <div class="cell"><div class="num" id="cs-kwh">0</div><div class="lbl">кВт·ч</div></div>
         <div class="cell"><div class="num" id="cs-hours">0</div><div class="lbl">часов</div></div>
+        <div class="cell" onclick="openTariff()" title="Нажмите, чтобы задать тариф"><div class="num" id="cs-rub">—</div><div class="lbl">₽</div></div>
       </div>
       <div class="trip-active-banner" id="charge-active-banner"><i></i><span>Идёт зарядка…</span></div>
       <div class="trip-list" id="charge-list"></div>
@@ -661,6 +662,7 @@ body.demo .demo-banner{display:block}
         <div class="cell"><div class="num" id="ts-total">0</div><div class="lbl">Поездок</div></div>
         <div class="cell"><div class="num" id="ts-km">0</div><div class="lbl">км всего</div></div>
         <div class="cell"><div class="num" id="ts-kwh">0</div><div class="lbl">кВт·ч</div></div>
+        <div class="cell" onclick="openTariff()" title="Нажмите, чтобы задать тариф"><div class="num" id="ts-rub">—</div><div class="lbl">₽</div></div>
       </div>
       <div class="trip-active-banner" id="trip-active-banner"><i></i><span>Идёт поездка…</span></div>
       <div class="trip-toggle" id="trip-toggle" onclick="toggleTracks()">
@@ -1938,6 +1940,7 @@ async function refreshTripsScreen(){
   $('ts-total').textContent=done.length;
   $('ts-km').textContent=totalKm.toFixed(1);
   $('ts-kwh').textContent=(totalWh/1000).toFixed(2);
+  $('ts-rub').textContent=summaryRub(done);
   const list=$('trip-list'); if(!list) return;
   if(!done.length){ list.innerHTML=''; $('trip-empty').style.display='block'; $('trip-clear').style.display='none'; return; }
   $('trip-empty').style.display='none'; $('trip-clear').style.display='block';
@@ -2138,6 +2141,7 @@ async function refreshChargesScreen(){
   $('cs-total').textContent=done.length;
   $('cs-kwh').textContent=(totalWh/1000).toFixed(2);
   $('cs-hours').textContent=(totalSec/3600).toFixed(1);
+  $('cs-rub').textContent=summaryRub(done);
   const list=$('charge-list'); if(!list) return;
   if(!done.length){ list.innerHTML=''; $('charge-empty').style.display='block'; $('charge-clear').style.display='none'; return; }
   $('charge-empty').style.display='none'; $('charge-clear').style.display='block';
@@ -2228,6 +2232,12 @@ function recordCost(rec){
 function costText(rec){
   const v = recordCost(rec);
   return v >= 0.5 ? (v.toFixed(0) + ' ₽') : '';
+}
+// Total roubles for a history list; a dash means the tariff is not set yet.
+function summaryRub(records){
+  const c = tariffCfg();
+  if (!(c.day > 0 || c.night > 0)) return '—';
+  return records.reduce((s, r) => s + recordCost(r), 0).toFixed(0);
 }
 function openTariff(){
   const c = tariffCfg();
