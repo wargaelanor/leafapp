@@ -81,12 +81,57 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, bool ovmsConnected,
     ".btn-save:active{background:#005f8c}\n"
     ".btn-back{background:#fff;color:#0077ac;box-shadow:0 1px 3px rgba(0,0,0,.06);text-decoration:none;text-align:center}\n"
     ".saved-banner{background:#e8f7ee;color:#1a7f37;text-align:center;font-size:13px;padding:10px;border-radius:8px;margin:8px 16px}\n"
-    "</style></head><body><div class='app'>"
+    ".net-status{margin:8px 16px;padding:10px 12px;background:#eef4fa;border-radius:8px;font-size:12px;color:#456;line-height:1.5}\n"
+    "/* Dark theme: follows the phone, or ?theme=dark for testing. */\n"
+    ".dark{color-scheme:dark}\n"
+    ".dark body,.dark .app{background:#181c21;color:#e6edf3}\n"
+    ".dark .appbar{background:#20252c;border-bottom-color:#2d333b}\n"
+    ".dark .appbar .brand span{color:#e6edf3}\n"
+    ".dark .appbar svg circle,.dark .appbar svg path{stroke:#e6edf3}\n"
+    ".dark .settings-list,.dark .section{background:#20252c}\n"
+    ".dark .section{border-bottom-color:#2d333b}\n"
+    ".dark .section summary{color:#e6edf3}\n"
+    ".dark .section[open] summary{color:#4da3ff;border-bottom-color:#2d333b}\n"
+    ".dark .section summary:after{color:#8b949e}\n"
+    ".dark .remote-choice{color:#e6edf3;border-bottom-color:#2d333b}\n"
+    ".dark .remote-panel-title,.dark .broker-link{color:#4da3ff}\n"
+    ".dark .accent-line{background:#4da3ff}\n"
+    ".dark .status-line,.dark label,.dark .hint{color:#8b949e}\n"
+    ".dark input[type=text],.dark input[type=password],.dark input[type=number],.dark select{background:#161a1f;border-color:#3a424d;color:#e6edf3}\n"
+    ".dark input:focus{background:#1c2128;border-color:#4da3ff}\n"
+    ".dark input::placeholder{color:#d29922}\n"
+    ".dark .chk{color:#e6edf3}\n"
+    ".dark .btn-back{background:#20252c;color:#4da3ff;box-shadow:none}\n"
+    ".dark .saved-banner{background:#12351f;color:#6ee7a0}\n"
+    ".dark .net-status{background:#20252c;color:#8b949e}\n"
+    "</style>"
+    "<script>(function(){var m=location.search.match(/[?&]theme=(dark|light)\\b/);"
+    "var d=m?m[1]==='dark':window.matchMedia('(prefers-color-scheme: dark)').matches;"
+    "if(d)document.documentElement.className+=' dark';})();</script>"
+    "</head><body><div class='app'>"
     "<div class='appbar'><div class='brand'>"
     "<svg viewBox='0 0 60 24' fill='none'><circle cx='30' cy='12' r='10.5' stroke='#333' stroke-width='1.5'/><path d='M14 12h9m14 0h9' stroke='#333' stroke-width='1.5'/><path d='M20 8.5l-3 3.5 3 3.5M40 8.5l3 3.5-3 3.5' stroke='#333' stroke-width='1.2' fill='none'/></svg>"
     "<span>Leaf Control</span></div></div>"
     "<div class='screens'>\n"
   ));
+
+  // Live network state: the settings page is also the recovery screen when the
+  // board cannot join the house Wi-Fi, so show what it is doing right now.
+  server.sendContent(F("<div class='net-status'>"));
+  if (WiFi.status() == WL_CONNECTED) {
+    server.sendContent(F("Wi-Fi: "));
+    server.sendContent(WiFi.SSID());
+    server.sendContent(F(" · "));
+    server.sendContent(WiFi.localIP().toString());
+    server.sendContent(F(" · "));
+    server.sendContent(String(WiFi.RSSI()));
+    server.sendContent(F(" dBm"));
+  } else {
+    server.sendContent(F("Wi-Fi: нет подключения к сохранённой сети"));
+  }
+  server.sendContent(F("<br>Точка доступа: "));
+  server.sendContent(WiFi.softAPIP().toString());
+  server.sendContent(F("</div>\n"));
 
   if (saveResult != nullptr) {
     server.sendContent(F("<div class='saved-banner'>"));
