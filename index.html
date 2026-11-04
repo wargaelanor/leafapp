@@ -1206,12 +1206,10 @@ function renderNow(){
 
   // Source is spelled out: the dashboard value, the BMS (nominal) value, or a
   // calculated estimate. The UI never presents one as the other.
-  // BMS first (matches the car), instrument only as a secondary fresh value.
-  let socDetail = soc != null ? fmtPct(soc) + ' (BMS)' : '';
-  if (iSoc != null && (soc == null || Math.abs(iSoc - soc) >= 2)) {
-    socDetail += (socDetail ? ' · ' : '') + fmtPct(iSoc) + ' (прибор)';
-  }
-  $('s-soc').textContent = socDetail || ((S.isoc != null && S.isoc >= 0) ? fmtPct(S.isoc) + ' (прибор)' : '—');
+  // BMS is the displayed value; a stale instrument frame must not reappear as
+  // a second 77 % next to the car's 69 %.
+  $('s-soc').textContent = soc != null ? fmtPct(soc) + ' (BMS)'
+    : ((S.isoc != null && S.isoc >= 0) ? fmtPct(S.isoc) + ' (прибор)' : '—');
   $('s-range').textContent = iRange!=null ? fmtKm(iRange)+' (прибор)'
                           : (km!=null ? '≈'+fmtKm(km)+' (расч.)' : '—');
   $('s-soh').textContent = S.soh>=0 ? S.soh+' %' : '—';
