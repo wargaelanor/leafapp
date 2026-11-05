@@ -465,27 +465,36 @@ private fun QuickActions(state: LeafState, onCommand: (String, Double, Int) -> U
             Icons.Outlined.Lightbulb,
             "Вспышка фар",
             state.lights,
+            Color(0xFFFFA726),
         ) { onCommand("lights", 22.0, 15) }
         QuickAction(
             if (state.locked == 1) Icons.Outlined.Lock else Icons.Outlined.LockOpen,
             "Двери",
             state.locked == 1,
+            MaterialTheme.colorScheme.primary,
         ) { onCommand(if (state.locked == 1) "unlock" else "lock", 22.0, 15) }
         QuickAction(
             Icons.Outlined.AcUnit,
             "Климат",
             state.hvac,
+            Color(0xFF34C759),
         ) { onCommand("hvac", 22.0, 15) }
     }
 }
 
 @Composable
-private fun QuickAction(icon: ImageVector, label: String, active: Boolean, onClick: () -> Unit) {
+private fun QuickAction(
+    icon: ImageVector,
+    label: String,
+    active: Boolean,
+    activeColor: Color,
+    onClick: () -> Unit,
+) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Surface(
             shape = CircleShape,
             color = MaterialTheme.colorScheme.surfaceVariant,
-            border = if (active) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
+            border = if (active) BorderStroke(1.5.dp, activeColor) else null,
             modifier = Modifier.size(64.dp).clickable { onClick() },
         ) {
             Box(contentAlignment = Alignment.Center) {
@@ -493,7 +502,7 @@ private fun QuickAction(icon: ImageVector, label: String, active: Boolean, onCli
                     icon,
                     contentDescription = label,
                     modifier = Modifier.size(28.dp),
-                    tint = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    tint = if (active) activeColor else MaterialTheme.colorScheme.onSurface,
                 )
             }
         }
