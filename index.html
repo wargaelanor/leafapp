@@ -1098,7 +1098,8 @@ if(refreshBtn) refreshBtn.addEventListener('click',doRefresh);
 // Calculated range estimate. GIDS are the only honest base: the old
 // SOC*3 fallback produced a fictional 285 km at 95 % and is gone.
 function rangeKm(){
-  if(S.gids>0) return Math.round(S.gids*0.6);
+  // 0x3FF (1023) is an invalid/uninitialised GIDS and used to print 614 km.
+  if(S.gids>0 && S.gids<=500) return Math.round(S.gids*0.6);
   return null;
 }
 // Dashboard (instrument) values from 0x59E / 0x5A9; fall back to the estimates
