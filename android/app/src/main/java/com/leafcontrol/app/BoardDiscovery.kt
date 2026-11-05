@@ -1,6 +1,9 @@
 package com.leafcontrol.app
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.os.Handler
@@ -84,14 +87,15 @@ object BoardDiscovery {
     }
 
     /** Blocking /24 scan; call from a background thread. */
-    fun scanSubnet(timeoutMs: Int = 450): Board? {
+    fun scanSubnet(context: Context, timeoutMs: Int = 450): Board? {
+        val wifi = wifiNetwork(context)
         for (prefix in localPrefixes()) {
             val found = AtomicReference<Board?>(null)
             val pool = Executors.newFixedThreadPool(48)
             for (i in 1..254) {
                 val ip = "$prefix.$i"
                 pool.submit {
-                    if (found.get() == null && probe(ip, timeoutMs)) {
+                    if (found.get() == null && probe(ip, timeoutMs, wifi)) {
                         found.compareAndSet(null, Board(ip, 80))
                     }
                 }
@@ -106,6 +110,13 @@ object BoardDiscovery {
             found.get()?.let { return it }
         }
         return null
+    }
+
+    private fun wifiNetwork(context: Context): Network? {
+        val cm = context.getSystemService(ConnectivityManager::class.java) ?: return null
+        return cm.allNetworks.firstOrNull { n ->
+            cm.getNetworkCapabilities(n)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+        }
     }
 
     private fun localPrefixes(): List<String> {
@@ -129,9 +140,10 @@ object BoardDiscovery {
         return prefixes.take(3)
     }
 
-    private fun probe(host: String, timeoutMs: Int): Boolean {
+    private fun probe(host: String, timeoutMs: Int, network: Network?): Boolean {
         return try {
-            val c = URL("http://$host/api/status").openConnection() as HttpURLConnection
+            val url = URL("http://$host/api/status")
+            val c = (network?.openConnection(url) ?: url.openConnection()) as HttpURLConnection
             c.connectTimeout = timeoutMs
             c.readTimeout = timeoutMs
             c.requestMethod = "GET"

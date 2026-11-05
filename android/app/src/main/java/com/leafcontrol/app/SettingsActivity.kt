@@ -264,7 +264,7 @@ class SettingsActivity : ComponentActivity() {
                 ActionRow("Найти плату") {
                     Toast.makeText(ctx, "Ищем плату в этой сети…", Toast.LENGTH_SHORT).show()
                     Thread {
-                        val board = BoardDiscovery.scanSubnet()
+                        val board = BoardDiscovery.scanSubnet(ctx)
                         runOnUiThread {
                             if (isFinishing || isDestroyed) return@runOnUiThread
                             if (board != null) {
