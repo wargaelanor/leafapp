@@ -109,6 +109,7 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.delay
 
 private val dateFmt = SimpleDateFormat("dd MMM, HH:mm", Locale("ru"))
 private val online = Color(0xFF34C759)
@@ -329,12 +330,7 @@ private fun GarageScreen(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Image(
-                        painterResource(R.drawable.car_leaf),
-                        contentDescription = "Nissan Leaf",
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier.fillMaxWidth().height(180.dp),
-                    )
+                    CarStage(state)
                     Text(
                         "NISSAN LEAF",
                         modifier = Modifier.padding(top = 8.dp),
@@ -383,6 +379,60 @@ private fun GarageScreen(
             }
         }
         item { Spacer(Modifier.height(4.dp)) }
+    }
+}
+
+@Composable
+private fun CarStage(state: LeafState) {
+    var wheelFrame by remember { mutableIntStateOf(0) }
+    val moving = state.on == 1 && !state.charging
+    LaunchedEffect(moving) {
+        if (!moving) {
+            wheelFrame = 0
+            return@LaunchedEffect
+        }
+        while (true) {
+            delay(140)
+            wheelFrame = (wheelFrame + 1) % 4
+        }
+    }
+    Box(Modifier.fillMaxWidth().height(180.dp)) {
+        Image(
+            painterResource(R.drawable.car_leaf),
+            contentDescription = "Nissan Leaf",
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.fillMaxSize(),
+        )
+        if (state.lights && state.lastUpdateMs > 0) {
+            Image(
+                painterResource(R.drawable.car_lights),
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        if (state.charging) {
+            Image(
+                painterResource(R.drawable.car_cable),
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        if (moving) {
+            val wheel = when (wheelFrame) {
+                0 -> R.drawable.car_wheel1
+                1 -> R.drawable.car_wheel2
+                2 -> R.drawable.car_wheel3
+                else -> R.drawable.car_wheel4
+            }
+            Image(
+                painterResource(wheel),
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
     }
 }
 
