@@ -738,10 +738,52 @@ private fun DistanceScreen(state: LeafState, onCommand: (String, Double, Int) ->
                             )
                         }
                     }
+                    if (state.hvac && state.hvacTimer > 0) {
+                        Spacer(Modifier.height(10.dp))
+                        ClimateCountdown(state, minutes)
+                    }
                 }
             }
         SectionTitle("КОМАНДЫ")
         CommandPad(state, setpoint, minutes, onCommand)
+    }
+}
+
+@Composable
+private fun ClimateCountdown(state: LeafState, totalMinutes: Int) {
+    var remaining by remember { mutableIntStateOf(state.hvacTimer) }
+    LaunchedEffect(state.hvac, state.hvacTimer) {
+        remaining = state.hvacTimer
+        if (state.hvac) {
+            while (remaining > 0) {
+                delay(60_000)
+                remaining -= 1
+            }
+        }
+    }
+    val total = maxOf(totalMinutes, state.hvacTimer, remaining, 1)
+    val fraction = (remaining.toFloat() / total).coerceIn(0f, 1f)
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(4.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            Box(
+                Modifier
+                    .fillMaxWidth(fraction)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(MaterialTheme.colorScheme.primary)
+            )
+        }
+        Text(
+            if (remaining > 0) "Климат выключится через $remaining мин" else "Климат выключается…",
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.primary,
+        )
     }
 }
 
