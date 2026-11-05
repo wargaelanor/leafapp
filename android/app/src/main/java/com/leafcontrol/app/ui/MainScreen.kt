@@ -4,11 +4,17 @@ import android.content.Intent
 import android.content.Context
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -88,9 +94,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -282,11 +291,12 @@ private fun LeafBottomBar(selected: Int, onSelect: (Int) -> Unit) {
     ) {
         tabs.forEachIndexed { index, tab ->
             val active = selected == index
+            val interaction = remember { MutableInteractionSource() }
             Column(
                 Modifier
                     .weight(1f)
                     .fillMaxHeight()
-                    .clickable { onSelect(index) },
+                    .pressable(interaction) { onSelect(index) },
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
@@ -563,12 +573,13 @@ private fun QuickAction(
     activeColor: Color,
     onClick: () -> Unit,
 ) {
+    val interaction = remember { MutableInteractionSource() }
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Surface(
             shape = CircleShape,
             color = MaterialTheme.colorScheme.surfaceVariant,
             border = if (active) BorderStroke(1.5.dp, activeColor) else null,
-            modifier = Modifier.size(64.dp).clickable { onClick() },
+            modifier = Modifier.size(64.dp).pressable(interaction) { onClick() },
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
@@ -602,10 +613,11 @@ private fun FunctionRow(
     subtitle: String,
     onClick: () -> Unit,
 ) {
+    val interaction = remember { MutableInteractionSource() }
     Row(
         Modifier
             .fillMaxWidth()
-            .clickable { onClick() }
+            .pressable(interaction) { onClick() }
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -750,10 +762,11 @@ private fun DistanceScreen(state: LeafState, onCommand: (String, Double, Int) ->
 
 @Composable
 private fun CommandRow(title: String, action: String, icon: ImageVector, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
     Surface(
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surface,
-        modifier = Modifier.fillMaxWidth().clickable { onClick() },
+        modifier = Modifier.fillMaxWidth().pressable(interaction) { onClick() },
     ) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
@@ -1153,10 +1166,11 @@ private fun AboutDialog(state: LeafState, onDismiss: () -> Unit) {
 
 @Composable
 private fun MoreRow(icon: ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
     Surface(
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surface,
-        modifier = Modifier.fillMaxWidth().clickable { onClick() },
+        modifier = Modifier.fillMaxWidth().pressable(interaction) { onClick() },
     ) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
@@ -1243,4 +1257,32 @@ private fun openBoard(ctx: Context, path: String) {
     } catch (_: Exception) {
         Toast.makeText(ctx, "Не удалось открыть страницу платы", Toast.LENGTH_SHORT).show()
     }
+}
+
+/** Press feedback: ripple + slight scale + a light haptic tick. */
+@Composable
+private fun Modifier.pressable(
+    source: MutableInteractionSource,
+    onClick: () -> Unit,
+): Modifier {
+    val pressed by source.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.96f else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessHigh),
+        label = "press",
+    )
+    val haptic = LocalHapticFeedback.current
+    return this
+        .graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+        }
+        .clickable(
+            interactionSource = source,
+            indication = LocalIndication.current,
+            onClick = {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onClick()
+            },
+        )
 }
