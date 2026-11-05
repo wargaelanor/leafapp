@@ -189,6 +189,7 @@ class SettingsActivity : ComponentActivity() {
                     Thread {
                         val board = BoardDiscovery.scanSubnet()
                         runOnUiThread {
+                            if (isFinishing || isDestroyed) return@runOnUiThread
                             if (board != null) {
                                 Settings.localHost = board.host
                                 Settings.localPort = board.port
