@@ -65,6 +65,11 @@ object Settings {
         get() = p.getInt("climate_minutes", 15)
         set(v) = p.edit().putInt("climate_minutes", v).apply()
 
+    /** Board profile used by the firmware downloader: "CMD" or "TCALL". */
+    var firmwareBoard: String
+        get() = p.getString("firmware_board", "") ?: ""
+        set(v) = p.edit().putString("firmware_board", v).apply()
+
     /** Last time the app asked GitHub for a newer APK. */
     var lastUpdateCheck: Long
         get() = p.getLong("last_update_check", 0L)
