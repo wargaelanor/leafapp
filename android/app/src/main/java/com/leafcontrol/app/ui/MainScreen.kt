@@ -18,6 +18,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -522,20 +523,14 @@ private fun SocCard(state: LeafState, onCommand: (String, Double, Int) -> Unit) 
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     Box(contentAlignment = Alignment.Center) {
+                        if (pressed && progress > 0f) {
+                            HoldFill(progress, Color.White)
+                        }
                         Text(
                             if (state.charging) "Остановить зарядку" else "Начать зарядку",
                             fontSize = 15.sp,
                             color = MaterialTheme.colorScheme.onPrimary,
                         )
-                        if (pressed && progress > 0f) {
-                            Box(
-                                Modifier
-                                    .align(Alignment.BottomStart)
-                                    .fillMaxWidth(progress.coerceIn(0f, 1f))
-                                    .height(3.dp)
-                                    .background(Color.White.copy(alpha = 0.85f))
-                            )
-                        }
                     }
                 }
             }
@@ -701,13 +696,11 @@ private fun DistanceScreen(state: LeafState, onCommand: (String, Double, Int) ->
         mutableFloatStateOf(if (state.setpoint in 16.0..30.0) state.setpoint.toFloat() else 22f)
     }
     var minutes by rememberSaveable { mutableIntStateOf(15) }
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+    Column(
+        Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        item {
-            Surface(
+        Surface(
                 shape = RoundedCornerShape(14.dp),
                 color = MaterialTheme.colorScheme.surface,
                 modifier = Modifier.fillMaxWidth(),
@@ -747,30 +740,8 @@ private fun DistanceScreen(state: LeafState, onCommand: (String, Double, Int) ->
                     }
                 }
             }
-        }
-        item { SectionTitle("КОМАНДЫ") }
-        item {
-            CommandPad(state, setpoint, minutes, onCommand)
-        }
-        if (!state.connected) {
-            item {
-                Text(
-                    "Нет связи с платой. Команды могут не дойти; показаны последние сохранённые данные.",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-        }
-        if (state.seq) {
-            item {
-                Text(
-                    "Команда выполняется…",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
-        }
-        item { Spacer(Modifier.height(4.dp)) }
+        SectionTitle("КОМАНДЫ")
+        CommandPad(state, setpoint, minutes, onCommand)
     }
 }
 
@@ -868,11 +839,13 @@ private fun CommandPad(
                 "Обновить",
                 Icons.Outlined.Refresh,
                 Modifier.weight(1f),
+                hold = false,
             ) { onCommand("refresh", 22.0, 15) }
         }
         Text(
             "Удерживайте 1,5 с",
             fontSize = 10.sp,
+            textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -927,8 +900,29 @@ private fun PillCommand(
     label: String,
     icon: ImageVector,
     modifier: Modifier = Modifier,
+    hold: Boolean = true,
     onClick: () -> Unit,
 ) {
+    if (!hold) {
+        val interaction = remember { MutableInteractionSource() }
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.2.dp, commandBorderColor()),
+            modifier = modifier.height(53.dp).pressable(interaction) { onClick() },
+        ) {
+            Row(
+                Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(icon, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(6.dp))
+                Text(label, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+        return
+    }
     HoldAction(
         onTrigger = onClick,
         modifier = modifier.height(53.dp),
@@ -941,22 +935,35 @@ private fun PillCommand(
             modifier = Modifier.fillMaxSize(),
         ) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                if (pressed && progress > 0f) {
+                    HoldFill(progress, MaterialTheme.colorScheme.primary)
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(icon, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(6.dp))
                     Text(label, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
                 }
-                if (pressed && progress > 0f) {
-                    Box(
-                        Modifier
-                            .align(Alignment.BottomStart)
-                            .fillMaxWidth(progress.coerceIn(0f, 1f))
-                            .height(3.dp)
-                            .background(MaterialTheme.colorScheme.primary)
-                    )
-                }
             }
         }
+    }
+}
+
+/** Solid fill with a bright leading edge for a hold button. */
+@Composable
+private fun BoxScope.HoldFill(progress: Float, color: Color) {
+    Box(
+        Modifier
+            .fillMaxWidth(progress.coerceIn(0f, 1f))
+            .fillMaxHeight()
+            .background(color.copy(alpha = 0.28f))
+    ) {
+        Box(
+            Modifier
+                .align(Alignment.CenterEnd)
+                .width(2.dp)
+                .fillMaxHeight()
+                .background(color)
+        )
     }
 }
 
