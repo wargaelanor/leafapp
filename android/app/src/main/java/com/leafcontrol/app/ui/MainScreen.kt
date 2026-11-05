@@ -1436,6 +1436,7 @@ private fun exportCharges(vm: LeafViewModel, charges: List<Charge>) {
 }
 
 private fun openBoard(ctx: Context, path: String) {
+    com.leafcontrol.app.net.LocalApi.ensureLocalHost(ctx)
     val url = "http://${Settings.localHost}:${Settings.localPort}$path"
     try {
         ctx.startActivity(

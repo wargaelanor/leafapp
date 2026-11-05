@@ -125,7 +125,12 @@ class SettingsActivity : ComponentActivity() {
                             onClick = {
                                 mode = value
                                 Settings.mode = value
-                                if (Settings.monitorEnabled) LeafMonitorService.reload(ctx)
+                                // Choosing a transport means the user wants data;
+                                // start the monitor even if it was switched off.
+                                Settings.monitorEnabled = true
+                                monitor = true
+                                com.leafcontrol.app.net.LocalApi.ensureLocalHost(ctx)
+                                LeafMonitorService.reload(ctx)
                                 Toast.makeText(ctx, "Режим: $label", Toast.LENGTH_SHORT).show()
                             },
                             label = { Text(label, fontSize = 12.sp) },

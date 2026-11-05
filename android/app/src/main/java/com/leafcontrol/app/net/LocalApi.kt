@@ -17,6 +17,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import java.net.Inet4Address
 import java.util.concurrent.TimeUnit
 
 /**
@@ -47,7 +48,35 @@ object LocalApi {
     private fun url(path: String): String =
         "http://${Settings.localHost}:${Settings.localPort}$path"
 
+    /**
+     * When the phone is on the board's own access point, the board is always
+     * 192.168.4.1. A stale home/VPN address was the reason "Локально" looked
+     * dead even though the board page opened in a browser.
+     */
+    fun ensureLocalHost(context: Context) {
+        try {
+            val cm = context.getSystemService(ConnectivityManager::class.java) ?: return
+            val wifi = cm.allNetworks.firstOrNull { n ->
+                cm.getNetworkCapabilities(n)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+            } ?: return
+            val ip = cm.getLinkProperties(wifi)?.linkAddresses
+                ?.mapNotNull { it.address as? Inet4Address }
+                ?.firstOrNull { !it.isLoopbackAddress }
+                ?: return
+            val b = ip.address
+            val onBoardAp = (b[0].toInt() and 0xff) == 192 &&
+                (b[1].toInt() and 0xff) == 168 &&
+                (b[2].toInt() and 0xff) == 4
+            if (onBoardAp && (Settings.localHost != "192.168.4.1" || Settings.localPort != 80)) {
+                Settings.localHost = "192.168.4.1"
+                Settings.localPort = 80
+            }
+        } catch (_: Exception) {
+        }
+    }
+
     suspend fun status(context: Context): LeafState? = withContext(Dispatchers.IO) {
+        ensureLocalHost(context)
         try {
             val req = Request.Builder().url(url("/api/status")).get().build()
             client(context).newCall(req).execute().use { r ->
@@ -104,6 +133,7 @@ object LocalApi {
     }
 
     suspend fun trips(context: Context): List<Trip> = withContext(Dispatchers.IO) {
+        ensureLocalHost(context)
         try {
             val req = Request.Builder().url(url("/api/trips")).get().build()
             client(context).newCall(req).execute().use { r ->
@@ -133,6 +163,7 @@ object LocalApi {
     }
 
     suspend fun charges(context: Context): List<Charge> = withContext(Dispatchers.IO) {
+        ensureLocalHost(context)
         try {
             val req = Request.Builder().url(url("/api/charges")).get().build()
             client(context).newCall(req).execute().use { r ->
@@ -161,6 +192,7 @@ object LocalApi {
     }
 
     suspend fun command(context: Context, path: String): Boolean = withContext(Dispatchers.IO) {
+        ensureLocalHost(context)
         try {
             val req = Request.Builder()
                 .url(url(path))
@@ -173,6 +205,7 @@ object LocalApi {
     }
 
     suspend fun clearHistory(context: Context, charges: Boolean): Boolean = withContext(Dispatchers.IO) {
+        ensureLocalHost(context)
         try {
             val path = if (charges) "/api/charges/clear" else "/api/trips/clear"
             val req = Request.Builder()
@@ -193,6 +226,7 @@ object LocalApi {
         from: Int,
         to: Int,
     ): Boolean = withContext(Dispatchers.IO) {
+        ensureLocalHost(context)
         try {
             val body = okhttp3.FormBody.Builder()
                 .add("day", day.toString())
