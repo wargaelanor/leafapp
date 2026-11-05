@@ -1026,8 +1026,10 @@ private fun MoreScreen(
                         "mqtt" -> "MQTT"
                         else -> "Авто"
                     }
+                    val mqttConfigured = Settings.mqttUser.isNotEmpty()
                     val mqttUsed = Settings.mode == "mqtt" ||
-                        (Settings.mode == "auto" && state.transport == "mqtt")
+                        (Settings.mode == "auto" &&
+                            (state.transport == "mqtt" || (mqttConfigured && !state.connected)))
                     StatusRow(
                         "MQTT-сервер",
                         when {

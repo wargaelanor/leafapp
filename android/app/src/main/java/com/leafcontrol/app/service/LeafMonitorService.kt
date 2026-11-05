@@ -152,13 +152,13 @@ class LeafMonitorService : Service() {
     }
 
     private suspend fun runAuto() {
-        // Try local first; if the board is not on this Wi-Fi, fall back to MQTT.
-        var failures = 0
+        // Try local first; if the board is not on this Wi-Fi, fall back to MQTT
+        // immediately. Waiting for three 10-second timeouts made auto mode look
+        // dead while the MQTT broker was actually reachable.
         var syncedAt = 0L
         while (monitoring) {
             val s = LocalApi.status(this)
             if (s != null) {
-                failures = 0
                 onState(s)
                 updateForeground("Локально · ${s.soc.takeIf { it >= 0 }?.toInt() ?: "—"}%")
                 if (System.currentTimeMillis() - syncedAt > 300_000L) {
@@ -167,13 +167,13 @@ class LeafMonitorService : Service() {
                 }
                 delay(20_000)
             } else {
-                failures++
-                if (failures >= 3 && Settings.mqttUser.isNotEmpty()) {
+                LeafRepo.setDisconnected("local")
+                if (Settings.mqttUser.isNotEmpty()) {
+                    updateForeground("Локально нет · MQTT…")
                     runMqtt()
                     return
                 }
                 updateForeground("Нет связи с платой")
-                LeafRepo.setDisconnected("local")
                 delay(30_000)
             }
         }
