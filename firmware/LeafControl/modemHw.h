@@ -16,6 +16,7 @@ bool hwGprsConnect(const char* apn, const char* user, const char* pass);
 bool hwGprsDisconnect();
 Client* hwTcpClient();
 bool hwPrepareVoiceCalls();
+bool hwNetworkTime(uint32_t* epoch);
 void hwSetSleep(bool enable);
 bool hwIncomingCaller(String* number, uint32_t timeoutMs);
 void hwRejectCall();

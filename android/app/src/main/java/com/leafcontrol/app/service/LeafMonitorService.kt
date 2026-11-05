@@ -3,9 +3,11 @@ package com.leafcontrol.app.service
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.app.ServiceCompat
 import com.leafcontrol.app.BoardDiscovery
 import com.leafcontrol.app.Notifications
 import com.leafcontrol.app.data.Charge
@@ -21,6 +23,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -72,6 +75,13 @@ class LeafMonitorService : Service() {
     private var startedForeground = false
     @Volatile private var monitoring = false
 
+    // Commands issued while MQTT is not connected yet; flushed on connect.
+    private val pendingCommands = ArrayList<String>()
+    private val pendingLock = Any()
+
+    // Invalidates callbacks from a client that has already been replaced.
+    @Volatile private var mqttGeneration = 0
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -119,7 +129,14 @@ class LeafMonitorService : Service() {
     private fun ensureForeground(text: String) {
         if (!startedForeground) {
             try {
-                startForeground(MONITOR_ID, Notifications.monitor(this, text))
+                // specialUse is not subject to the Android 15 six-hour dataSync
+                // limit, so continuous monitoring survives a longer drive day.
+                val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                } else {
+                    0
+                }
+                ServiceCompat.startForeground(this, MONITOR_ID, Notifications.monitor(this, text), type)
                 startedForeground = true
             } catch (_: Exception) {
                 stopSelf()
@@ -152,27 +169,49 @@ class LeafMonitorService : Service() {
         }
     }
 
-    private suspend fun runAuto() {
-        // Try local first; if the board is not on this Wi-Fi, fall back to MQTT
-        // immediately. Waiting for three 10-second timeouts made auto mode look
-        // dead while the MQTT broker was actually reachable.
+    private suspend fun runAuto() = coroutineScope {
+        // Local first; if the board is not on this Wi-Fi, MQTT takes over.
+        // The local network is still probed while MQTT carries telemetry, so the
+        // app returns to the board's own Wi-Fi without a service restart.
         var syncedAt = 0L
         var lastScanMs = 0L
-        while (monitoring) {
-            val s = LocalApi.status(this)
-            if (s != null) {
-                onState(s)
-                updateForeground("Локально · ${s.soc.takeIf { it >= 0 }?.toInt() ?: "—"}%")
-                if (System.currentTimeMillis() - syncedAt > 300_000L) {
-                    syncedAt = System.currentTimeMillis()
-                    syncHistory()
+        var mqttJob: Job? = null
+
+        fun stopMqtt() {
+            mqttJob?.cancel()
+            mqttJob = null
+            mqttGeneration++
+            val client = mqttClient
+            mqttClient = null
+            LeafRepo.mqtt = null
+            if (client != null) {
+                client.stop()
+                LeafRepo.setMqttConnected(false)
+            }
+        }
+
+        try {
+            while (monitoring) {
+                val s = LocalApi.status(this@LeafMonitorService)
+                if (s != null) {
+                    if (mqttJob != null) {
+                        stopMqtt()
+                        LeafRepo.monitorText.value = "Локально"
+                    }
+                    onState(s)
+                    updateForeground("Локально · ${s.soc.takeIf { it >= 0 }?.toInt() ?: "—"}%")
+                    if (System.currentTimeMillis() - syncedAt > 300_000L) {
+                        syncedAt = System.currentTimeMillis()
+                        syncHistory()
+                    }
+                    delay(20_000)
+                    continue
                 }
-                delay(20_000)
-            } else {
+
                 val now = System.currentTimeMillis()
                 if (now - lastScanMs > 300_000L) {
                     lastScanMs = now
-                    val board = BoardDiscovery.scanSubnet(this, 400)
+                    val board = BoardDiscovery.scanSubnet(this@LeafMonitorService, 400)
                     if (board != null) {
                         Settings.localHost = board.host
                         Settings.localPort = board.port
@@ -180,15 +219,23 @@ class LeafMonitorService : Service() {
                         continue
                     }
                 }
-                LeafRepo.setDisconnected("local")
+                if (mqttJob?.isActive != true) LeafRepo.setDisconnected("local")
+
                 if (Settings.mqttUser.isNotEmpty()) {
-                    updateForeground("Локально нет · MQTT…")
-                    runMqtt()
-                    return
+                    if (mqttJob?.isActive != true) {
+                        updateForeground("Локально нет · MQTT…")
+                        mqttJob = launch { runMqtt() }
+                    }
+                    // Keep looking for the board's Wi-Fi while MQTT is in use.
+                    delay(25_000)
+                    continue
                 }
+
                 updateForeground("Нет связи с платой")
                 delay(30_000)
             }
+        } finally {
+            stopMqtt()
         }
     }
 
@@ -233,6 +280,7 @@ class LeafMonitorService : Service() {
         }
         updateForeground("MQTT · подключение…")
         mqttClient?.stop()
+        val gen = ++mqttGeneration
         val client = MqttWssClient(
             host = Settings.mqttHost,
             port = Settings.mqttPort,
@@ -242,11 +290,13 @@ class LeafMonitorService : Service() {
             vehicleId = Settings.vehicleId,
             onConnected = { ok ->
                 scope.launch {
+                    if (gen != mqttGeneration) return@launch
                     LeafRepo.setMqttConnected(ok)
                     if (ok) {
                         updateForeground("MQTT · подключено")
                         LeafRepo.monitorText.value = "MQTT · подключено"
                         LeafRepo.onMqttConnected()
+                        flushPendingCommands()
                     } else {
                         updateForeground("MQTT · нет связи")
                         LeafRepo.setDisconnected("mqtt")
@@ -262,37 +312,91 @@ class LeafMonitorService : Service() {
         )
         mqttClient = client
         LeafRepo.mqtt = client
-        client.start()
-        while (monitoring) {
-            delay(15_000)
-            val s = LeafRepo.state.value
-            recorder.sample(s, System.currentTimeMillis())
-            handleState(s)
-            if (s.connected) updateForeground("MQTT · ${s.soc.takeIf { it >= 0 }?.toInt() ?: "—"}% · ${s.power.toInt()} кВт")
+        try {
+            client.start()
+            while (monitoring) {
+                delay(15_000)
+                val s = LeafRepo.state.value
+                recorder.sample(s, System.currentTimeMillis())
+                handleState(s)
+                if (s.connected) updateForeground("MQTT · ${s.soc.takeIf { it >= 0 }?.toInt() ?: "—"}% · ${s.power.toInt()} кВт")
+            }
+        } finally {
+            client.stop()
+            if (mqttClient === client) {
+                mqttClient = null
+                LeafRepo.mqtt = null
+            }
+            LeafRepo.setMqttConnected(false)
         }
-        client.stop()
-        LeafRepo.mqtt = null
     }
 
     private fun sendCommand(path: String, payload: String) {
         scope.launch {
             // Local first: the board answers immediately when the phone is on
-            // the same Wi-Fi. If that fails, wait briefly for MQTT (the service
-            // may have just been started by a home-screen shortcut).
+            // the same Wi-Fi. If that fails, wait for MQTT (the service may
+            // have just been started by a home-screen shortcut).
             var sent = false
             if (Settings.mode != "mqtt" && path.isNotEmpty()) {
                 sent = LeafRepo.commandLocal(this@LeafMonitorService, path)
             }
-            if (sent || Settings.mode == "local") return@launch
+            if (sent) {
+                reportCommand("Команда отправлена")
+                return@launch
+            }
+            if (Settings.mode == "local") {
+                reportCommand("Плата не ответила")
+                return@launch
+            }
+            if (payload.isEmpty()) {
+                reportCommand("Плата не ответила")
+                return@launch
+            }
+            if (!Settings.monitorEnabled) {
+                reportCommand("Мониторинг выключен")
+                return@launch
+            }
+            if (Settings.mqttUser.isEmpty()) {
+                reportCommand("MQTT не настроен")
+                return@launch
+            }
             var waited = 0
-            while (LeafRepo.mqtt == null && monitoring && waited < 8000) {
+            while (!LeafRepo.mqttConnected.value && monitoring && waited < 12_000) {
                 delay(500)
                 waited += 500
             }
-            if (payload.isNotEmpty()) {
-                LeafRepo.commandRemote(payload)
+            if (LeafRepo.commandRemote(payload)) {
+                reportCommand("Команда отправлена")
+            } else {
+                queueCommand(payload)
+                reportCommand("Команда в очереди — уйдёт после подключения")
             }
         }
+    }
+
+    private fun reportCommand(text: String) {
+        LeafRepo.commandResult.tryEmit(text)
+    }
+
+    /** Keep a command until the MQTT session is ready instead of dropping it. */
+    private fun queueCommand(payload: String) {
+        synchronized(pendingLock) {
+            if (pendingCommands.contains(payload)) return
+            if (pendingCommands.size >= 20) pendingCommands.removeAt(0)
+            pendingCommands.add(payload)
+        }
+    }
+
+    private fun flushPendingCommands() {
+        val batch = synchronized(pendingLock) { pendingCommands.toList() }
+        if (batch.isEmpty()) return
+        var sentAny = false
+        for (payload in batch) {
+            if (!LeafRepo.commandRemote(payload)) break
+            synchronized(pendingLock) { pendingCommands.remove(payload) }
+            sentAny = true
+        }
+        if (sentAny) reportCommand("Команда отправлена")
     }
 
     private suspend fun syncHistory() {
@@ -348,6 +452,7 @@ class LeafMonitorService : Service() {
 
     private fun stopMonitor() {
         monitoring = false
+        mqttGeneration++
         LeafRepo.setMqttConnected(false)
         monitorJob?.cancel()
         mqttClient?.stop()
@@ -407,7 +512,9 @@ class LeafMonitorService : Service() {
                 if (LeafRepo.isNight(now)) chargeWhNight += wh else chargeWhDay += wh
             } else if (!s.charging && chargeStart > 0) {
                 val dur = now - chargeStart
-                if (dur >= 60_000L || chargeWh >= 20.0) {
+                if ((dur >= 60_000L || chargeWh >= 20.0) &&
+                    !HistoryDb.hasBoardChargeNear(chargeStart, now)
+                ) {
                     HistoryDb.upsertCharge(
                         Charge(
                             startMs = chargeStart,
@@ -447,7 +554,9 @@ class LeafMonitorService : Service() {
                 if (LeafRepo.isNight(now)) tripWhNight += wh else tripWhDay += wh
                 val end = (s.on == 0 && now - lastMoveMs > 180_000L) || now - lastMoveMs > 900_000L
                 if (end) {
-                    if (tripDist >= 0.05 || tripWh >= 10.0) {
+                    if ((tripDist >= 0.05 || tripWh >= 10.0) &&
+                        !HistoryDb.hasBoardTripNear(tripStart, now)
+                    ) {
                         HistoryDb.upsertTrip(
                             Trip(
                                 startMs = tripStart,

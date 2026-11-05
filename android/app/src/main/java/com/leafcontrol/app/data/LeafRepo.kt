@@ -4,6 +4,7 @@ import android.content.Context
 import com.leafcontrol.app.net.LocalApi
 import com.leafcontrol.app.net.MqttWssClient
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
@@ -17,6 +18,9 @@ object LeafRepo {
     val charges = MutableStateFlow<List<Charge>>(emptyList())
     val monitorText = MutableStateFlow("Мониторинг выключен")
     val mqttConnected = MutableStateFlow(false)
+
+    /** Result of the last command attempt; consumed once by the UI. */
+    val commandResult = MutableSharedFlow<String>(extraBufferCapacity = 4)
 
     @Volatile
     var mqtt: MqttWssClient? = null
@@ -140,8 +144,7 @@ object LeafRepo {
 
     fun commandRemote(payload: String): Boolean {
         val c = mqtt ?: return false
-        c.publishCommand(payload)
-        return true
+        return c.publishCommand(payload)
     }
 
     fun recordCost(whDay: Double, whNight: Double, energyWh: Double): Double {

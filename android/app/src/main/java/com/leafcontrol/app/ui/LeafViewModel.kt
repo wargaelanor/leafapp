@@ -28,6 +28,9 @@ class LeafViewModel(app: Application) : AndroidViewModel(app) {
             LeafRepo.refreshHistory(getApplication())
             discoverBoard()
         }
+        viewModelScope.launch {
+            LeafRepo.commandResult.collect { message.value = it }
+        }
     }
 
     fun refresh() {
@@ -89,8 +92,9 @@ class LeafViewModel(app: Application) : AndroidViewModel(app) {
                 if (ok) LeafRepo.refreshHistory(app)
             }
         } else {
+            // The service reports the real outcome: sent locally, published to
+            // MQTT, queued until the broker connects, or failed.
             LeafMonitorService.command(app, path, payload)
-            message.value = "Команда отправлена"
         }
     }
 

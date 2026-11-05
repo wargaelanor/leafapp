@@ -84,9 +84,9 @@ class MqttWssClient(
         }
     }
 
-    fun publishCommand(payload: String) {
-        if (!mqttReady.get()) return
-        send(publishPacket(base + "client/pwa/command/c", payload))
+    fun publishCommand(payload: String): Boolean {
+        if (!mqttReady.get()) return false
+        return send(publishPacket(base + "client/pwa/command/c", payload))
     }
 
     private fun connect() {

@@ -35,6 +35,7 @@ static volatile int8_t callCanRequest = 0;
 // Actual HVAC state decoded from EV-CAN 0x54B in LeafControl.ino.
 extern bool isHvacOn;
 extern void cancelHvacTimer();
+extern void setBoardEpoch(uint32_t epoch);
 
 static bool gpsHasFix = false;
 static float gpsLat = 0, gpsLon = 0, gpsAlt = 0, gpsSpd = 0;
@@ -177,6 +178,17 @@ static void attachTask(void*) {
     return;
   }
   Serial.printf("[modem] network ok, rssi=%d\n", (int)hwSignal());
+
+  // The board has no RTC. The SIM network reports wall-clock time even when
+  // GPRS is not used, so history keeps proper timestamps on a T-Call.
+  uint32_t networkTime = 0;
+  for (uint8_t attempt = 0; attempt < 5; attempt++) {
+    if (modem800::hwNetworkTime(&networkTime)) {
+      setBoardEpoch(networkTime);
+      break;
+    }
+    vTaskDelay(2000);
+  }
 
   if (callControlEnabled()) modem800::hwPrepareVoiceCalls();
 

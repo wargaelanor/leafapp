@@ -106,6 +106,15 @@ bool parseBearerIp(const String& response, String& ip) {
   return ip.length() > 0 && ip != "0.0.0.0";
 }
 
+int64_t daysFromCivil(int y, unsigned m, unsigned d) {
+  y -= m <= 2;
+  const int64_t era = (y >= 0 ? y : y - 399) / 400;
+  const unsigned yoe = (unsigned)(y - era * 400);
+  const unsigned doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+  const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+  return era * 146097 + (int64_t)doe - 719468;
+}
+
 bool bringUpGprs(String& ip) {
   String response;
   if (commandOk("AT+SAPBR=2,1", 4000, &response) && parseBearerIp(response, ip)) return true;
@@ -314,6 +323,40 @@ bool hwNetworkConnected() {
   String response;
   if (!commandOk("AT+CREG?", 3000, &response)) return false;
   return response.indexOf(",1") >= 0 || response.indexOf(",5") >= 0;
+}
+
+// SIM800 reports network time as "yy/MM/dd,hh:mm:ss+zz" (zz is a quarter-hour
+// offset from UTC). Use it to set the board clock when NTP is unavailable.
+bool hwNetworkTime(uint32_t* epoch) {
+  String response;
+  if (!commandOk("AT+CCLK?", 3000, &response)) return false;
+  int marker = response.indexOf("+CCLK:");
+  if (marker < 0) return false;
+  int firstQuote = response.indexOf('"', marker);
+  int secondQuote = response.indexOf('"', firstQuote + 1);
+  if (firstQuote < 0 || secondQuote <= firstQuote) return false;
+  String stamp = response.substring(firstQuote + 1, secondQuote);
+  if (stamp.length() < 17) return false;
+
+  int year = 2000 + stamp.substring(0, 2).toInt();
+  unsigned month = (unsigned)stamp.substring(3, 5).toInt();
+  unsigned day = (unsigned)stamp.substring(6, 8).toInt();
+  int hour = stamp.substring(9, 11).toInt();
+  int minute = stamp.substring(12, 14).toInt();
+  int second = stamp.substring(15, 17).toInt();
+  int tzQuarter = 0;
+  int plus = stamp.indexOf('+', 17);
+  int minus = stamp.indexOf('-', 17);
+  if (plus > 0) tzQuarter = stamp.substring(plus + 1).toInt();
+  else if (minus > 0) tzQuarter = -stamp.substring(minus + 1).toInt();
+
+  if (year < 2020 || month < 1 || month > 12 || day < 1 || day > 31) return false;
+  int64_t value = daysFromCivil(year, month, day) * 86400 +
+                  (int64_t)hour * 3600 + (int64_t)minute * 60 + second -
+                  (int64_t)tzQuarter * 900;
+  if (value < 1600000000) return false;
+  if (epoch) *epoch = (uint32_t)value;
+  return true;
 }
 
 int16_t hwSignal() {

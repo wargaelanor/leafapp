@@ -31,6 +31,9 @@ object LocalApi {
         .callTimeout(10, TimeUnit.SECONDS)
         .build()
 
+    @Volatile
+    private var lastClockPushMs = 0L
+
     private fun client(context: Context, host: String): OkHttpClient {
         val cm = context.getSystemService(ConnectivityManager::class.java) ?: return base
         val wifi: Network? = cm.allNetworks.firstOrNull { n ->
@@ -101,7 +104,7 @@ object LocalApi {
             client(context, Settings.localHost).newCall(req).execute().use { r ->
                 if (!r.isSuccessful) return@withContext null
                 val o = JSONObject(r.body?.string() ?: return@withContext null)
-                LeafState(
+                val state = LeafState(
                     soc = o.optDouble("soc", -1.0),
                     range = o.optInt("irange", -1),
                     charging = o.optInt("charging", 0) == 1,
@@ -145,9 +148,32 @@ object LocalApi {
                     connected = true,
                     transport = "local",
                 )
+                // A board without NTP reports epoch 0 and cannot timestamp trips
+                // or charges. Give it the phone's clock once over local HTTP.
+                if (state.epoch <= 0L) pushClock(context)
+                state
             }
         } catch (_: Exception) {
             null
+        }
+    }
+
+    /**
+     * Sends the phone's wall clock to /api/time. Throttled because a board with
+     * older firmware has no such endpoint and would answer 404 on every poll.
+     */
+    private fun pushClock(context: Context) {
+        val now = System.currentTimeMillis()
+        if (now - lastClockPushMs < 60_000L) return
+        lastClockPushMs = now
+        try {
+            val epoch = now / 1000L
+            val req = Request.Builder()
+                .url(url("/api/time?epoch=$epoch"))
+                .post("".toRequestBody("text/plain".toMediaType()))
+                .build()
+            client(context, Settings.localHost).newCall(req).execute().close()
+        } catch (_: Exception) {
         }
     }
 

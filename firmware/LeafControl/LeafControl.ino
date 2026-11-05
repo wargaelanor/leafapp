@@ -7,6 +7,7 @@
 #include <ArduinoOTA.h>
 #include <esp_sleep.h>
 #include <esp_system.h>
+#include <sys/time.h>
 #include "configuration.h"
 #include "cliParser.h"
 #include "canLeafZE1.h"
@@ -23,10 +24,10 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.114-TCALL"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.115-TCALL"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: two CAN + SIM800, Wi-Fi scan"
 #else
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.114-CMD"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.115-CMD"
 #define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: stable scroll, Wi-Fi scan"
 #endif
 
@@ -336,10 +337,67 @@ void handleLite() {
 
 // Root page: the light one by default. A fresh board must open instantly even
 // over a poor link, and the full app is one tap away.
-// Seconds since the Unix epoch, or 0 while NTP has not answered yet.
+// Seconds since the Unix epoch. NTP is configured only after the board joins a
+// router (STA), so AP-only boards have no wall clock. Keep the last known time
+// in NVS, advance it with millis(), and accept the phone's clock via /api/time.
+static Preferences clockPrefs;
+static uint32_t clockBaseEpoch = 0;
+static unsigned long clockBaseMs = 0;
+static unsigned long clockSavedMs = 0;
+
+static void clockPersist(uint32_t epoch) {
+  clockBaseEpoch = epoch;
+  clockBaseMs = millis();
+  clockSavedMs = millis();
+  if (!clockPrefs.begin("leafclock", false)) return;
+  clockPrefs.putULong("e", epoch);
+  clockPrefs.end();
+}
+
+void setBoardEpoch(uint32_t epoch) {
+  if (epoch < 1600000000UL) return;
+  struct timeval tv;
+  tv.tv_sec = (time_t)epoch;
+  tv.tv_usec = 0;
+  settimeofday(&tv, nullptr);
+  clockPersist(epoch);
+  Serial.printf("[time] clock set to %lu\n", (unsigned long)epoch);
+}
+
+// Restore the stored epoch once, early in setup. Without this tripLog's
+// time(nullptr) stays 0 and no trip/charge record is ever started.
+void clockRestore() {
+  if (clockBaseEpoch) return;
+  if (!clockPrefs.begin("leafclock", false)) return;
+  uint32_t stored = clockPrefs.getULong("e", 0);
+  clockPrefs.end();
+  if (stored < 1600000000UL) return;
+  uint32_t restored = stored + millis() / 1000UL;
+  setBoardEpoch(restored);
+  Serial.println("[time] restored from NVS (approximate, awaiting NTP/phone)");
+}
+
 unsigned long boardEpoch() {
   time_t now = time(nullptr);
-  return (now > 1600000000) ? (unsigned long)now : 0UL;
+  if (now > 1600000000) {
+    uint32_t real = (uint32_t)now;
+    // Persist at most once per ten minutes; NVS wears out otherwise.
+    if (millis() - clockSavedMs > 600000UL) clockPersist(real);
+    return real;
+  }
+  if (!clockBaseEpoch) return 0;
+  return clockBaseEpoch + (millis() - clockBaseMs) / 1000UL;
+}
+
+// The Android app knows the real time and pushes it when the board reports 0.
+void handleApiTime() {
+  uint32_t epoch = server.hasArg("epoch") ? (uint32_t)server.arg("epoch").toInt() : 0;
+  if (epoch < 1600000000UL) {
+    server.send(400, "application/json", "{\"ok\":false}");
+    return;
+  }
+  setBoardEpoch(epoch);
+  server.send(200, "application/json", "{\"ok\":true}");
 }
 
 void handleRootEntry() {
@@ -1889,6 +1947,7 @@ void setup() {
                 BOARD_NAME, (unsigned)ESP.getPsramSize(), (unsigned)ESP.getFlashChipSize());
   WiFi.onEvent(wifiEvent);
   initConfiguration();
+  clockRestore();
   modemInit();
 
   wokeFromTimer = (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER);
@@ -2008,6 +2067,8 @@ for (size_t i = 0; i < WEBAPP_ASSET_COUNT; i++) {
   server.on(WEBAPP_ASSETS[i].path, HTTP_GET, handleWebAppImage);
 }
       server.on("/api/status", handleApiStatus);
+      server.on("/api/time", HTTP_POST, handleApiTime);
+      server.on("/api/time", HTTP_GET, handleApiTime);
       server.on("/api/evscan", HTTP_POST, handleApiEvScan);
       server.on("/api/wifi_scan", HTTP_GET, handleWifiScan);
       server.on("/api/developer/login", HTTP_POST, handleDeveloperLogin);
