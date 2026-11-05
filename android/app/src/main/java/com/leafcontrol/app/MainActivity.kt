@@ -2,213 +2,66 @@ package com.leafcontrol.app
 
 import android.Manifest
 import android.app.AlertDialog
-import android.app.DownloadManager
 import android.app.ProgressDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Environment
-import android.webkit.CookieManager
-import android.webkit.JavascriptInterface
-import android.webkit.URLUtil
-import android.webkit.ValueCallback
-import android.webkit.WebChromeClient
-import android.webkit.WebResourceError
-import android.webkit.WebResourceRequest
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.OnBackPressedCallback
+import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Surface
+import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
-import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.leafcontrol.app.data.Settings
 import com.leafcontrol.app.service.LeafMonitorService
-import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
+import com.leafcontrol.app.ui.LeafTheme
+import com.leafcontrol.app.ui.MainScreen
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
-import kotlin.math.roundToInt
 
 /**
- * The main UI is the real PWA, not a simplified Compose copy: the user asked for
- * exactly the same design and features. This activity is only a shell; the
- * native foreground service still does background MQTT/history/notifications.
+ * Native Compose UI, no WebView and no PWA dependency. The service feeds
+ * LeafRepo; the screens observe the same state and never reload the page.
  */
 class MainActivity : ComponentActivity() {
-    private lateinit var web: WebView
-    private var fileCallback: ValueCallback<Array<Uri>>? = null
-    private var insetTop = 0
-    private var insetBottom = 0
     private var updateDialog: AlertDialog? = null
+    private val checking = AtomicBoolean(false)
 
     private val notificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
-    private val storagePermission =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
-
-    private val filePicker =
-        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            fileCallback?.onReceiveValue(
-                WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data)
-            )
-            fileCallback = null
-        }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Full-screen before the first layout: otherwise the decor already
-        // reserves the status bar and our inset padding doubles the gap.
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        applySystemBars()
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
             PackageManager.PERMISSION_GRANTED
         ) {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
-        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
-            ContextCompat.checkSelfPermission(
-                this, Manifest.permission.WRITE_EXTERNAL_STORAGE
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            storagePermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-        }
         if (Settings.monitorEnabled) {
-            try { LeafMonitorService.start(this) } catch (_: Exception) { }
-        }
-
-        web = WebView(this)
-        setContentView(web)
-        if (BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true)
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-        ViewCompat.setOnApplyWindowInsetsListener(web) { _, insets ->
-            // systemBars().top already includes the notch on every phone we
-            // tested; adding displayCutout as well made the gap far too tall.
-            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            insetTop = bars.top
-            insetBottom = bars.bottom
-            applyPageInsets()
-            insets
-        }
-        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                if (web.canGoBack()) {
-                    web.goBack()
-                } else {
-                    isEnabled = false
-                    onBackPressedDispatcher.onBackPressed()
-                }
-            }
-        })
-        web.settings.apply {
-            javaScriptEnabled = true
-            domStorageEnabled = true
-            databaseEnabled = true
-            allowFileAccess = true
-            allowContentAccess = true
-            mediaPlaybackRequiresUserGesture = false
-            mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-            cacheMode = WebSettings.LOAD_DEFAULT
-            // Match Chrome: honour the page's viewport meta and the phone's
-            // font scale instead of rendering at a fixed desktop width.
-            useWideViewPort = true
-            loadWithOverviewMode = false
-            textZoom = (resources.configuration.fontScale * 100).roundToInt()
-        }
-        web.addJavascriptInterface(Bridge(), "LeafNative")
-        web.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                val u = request?.url ?: return false
-                val host = u.host ?: ""
-                val local = listOf("leaf.local", "leaf", Settings.localHost).any { it == host }
-                val pages = host.endsWith("github.io")
-                if (local || pages || u.scheme == "about" || u.scheme == "data") return false
-                try {
-                    startActivity(Intent(Intent.ACTION_VIEW, u))
-                } catch (_: Exception) { }
-                return true
-            }
-
-            override fun onPageFinished(view: WebView?, url: String?) {
-                super.onPageFinished(view, url)
-                applyTheme()
-                applyPageInsets()
-                injectBridge()
-            }
-
-            override fun onReceivedError(
-                view: WebView?,
-                request: WebResourceRequest?,
-                error: WebResourceError?,
-            ) {
-                super.onReceivedError(view, request, error)
-                if (request?.isForMainFrame != true) return
-                val current = view?.url ?: return
-                if (!current.contains("github.io")) {
-                    // Board page unavailable: open the internet PWA instead.
-                    Toast.makeText(
-                        this@MainActivity,
-                        "Плата недоступна, открываю PWA",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                    view.loadUrl(Settings.appUrl)
-                }
-            }
-        }
-        web.webChromeClient = object : WebChromeClient() {
-            override fun onShowFileChooser(
-                webView: WebView?,
-                callback: ValueCallback<Array<Uri>>?,
-                params: FileChooserParams?,
-            ): Boolean {
-                fileCallback?.onReceiveValue(null)
-                fileCallback = callback
-                return try {
-                    filePicker.launch(Intent(Intent.ACTION_GET_CONTENT).apply {
-                        addCategory(Intent.CATEGORY_OPENABLE)
-                        type = "*/*"
-                    })
-                    true
-                } catch (_: Exception) {
-                    fileCallback = null
-                    false
-                }
-            }
-        }
-        // The PWA links to /api/developer/canlog/download and other files.
-        // WebView would otherwise ignore those clicks.
-        web.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
             try {
-                val name = URLUtil.guessFileName(url, contentDisposition, mimeType)
-                val request = DownloadManager.Request(Uri.parse(url))
-                    .setTitle(name)
-                    .setNotificationVisibility(
-                        DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
-                    )
-                    .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, name)
-                    .addRequestHeader("User-Agent", userAgent)
-                CookieManager.getInstance().getCookie(url)?.let {
-                    request.addRequestHeader("Cookie", it)
-                }
-                (getSystemService(DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
-                Toast.makeText(this, "Скачивание: $name", Toast.LENGTH_SHORT).show()
+                LeafMonitorService.start(this)
             } catch (_: Exception) {
-                Toast.makeText(this, "Не удалось скачать файл", Toast.LENGTH_SHORT).show()
             }
         }
-        loadStart(intent)
-        applyTheme()
+
+        setContent {
+            LeafTheme {
+                Surface(Modifier.fillMaxSize()) { MainScreen() }
+            }
+        }
+
         handleShortcut(intent)
         if (intent?.getBooleanExtra("check_update", false) == true) {
             forceCheckUpdate()
@@ -220,150 +73,29 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        loadStart(intent)
-        applyTheme()
         handleShortcut(intent)
         if (intent.getBooleanExtra("check_update", false)) forceCheckUpdate()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        web.settings.textZoom = (newConfig.fontScale * 100).roundToInt()
-        applyTheme()
-        applyPageInsets()
-    }
-
-    /**
-     * The PWA served by the board has every feature (tariff, history, OTA).
-     * The public GitHub Pages copy is the fallback when the board is not on
-     * this Wi-Fi. An explicit extra from a notification or settings screen wins.
-     */
-    private fun loadStart(intent: Intent?) {
-        val wantBoard = intent?.getBooleanExtra("open_board", false) == true
-        val wantPwa = intent?.getBooleanExtra("open_pwa", false) == true
-        when {
-            wantBoard -> loadBoard()
-            wantPwa -> web.loadUrl(Settings.appUrl)
-            else -> probeBoardThenLoad()
-        }
-    }
-
-    private fun loadBoard(host: String = Settings.localHost, port: Int = Settings.localPort) {
-        val h = if (host.contains(":")) "[$host]" else host
-        web.loadUrl("http://$h:$port/app")
-    }
-
-    private fun probeBoardThenLoad() {
-        val host = Settings.localHost
-        val port = Settings.localPort
-        thread(isDaemon = true) {
-            if (probe(host, port)) {
-                runOnUiThread {
-                    if (!isFinishing && !isDestroyed) loadBoard(host, port)
-                }
-                return@thread
-            }
-            if (probe("leaf.local", 80)) {
-                runOnUiThread {
-                    if (isFinishing || isDestroyed) return@runOnUiThread
-                    Settings.localHost = "leaf.local"
-                    Settings.localPort = 80
-                    loadBoard("leaf.local", 80)
-                }
-                return@thread
-            }
-            // No saved address. The board advertises _http._tcp as "leaf";
-            // discover it instead of asking for an IP.
-            runOnUiThread {
-                if (isFinishing || isDestroyed) return@runOnUiThread
-                BoardDiscovery.discoverNsd(this, 3000) { board ->
-                    if (isFinishing || isDestroyed) return@discoverNsd
-                    if (board != null) {
-                        Settings.localHost = board.host
-                        Settings.localPort = board.port
-                        loadBoard(board.host, board.port)
-                    } else {
-                        web.loadUrl(Settings.appUrl)
-                    }
-                }
-            }
-        }
-    }
-
-    private fun probe(host: String, port: Int, timeoutMs: Int = 1000): Boolean {
-        return try {
-            val c = URL("http://$host:$port/api/status").openConnection() as HttpURLConnection
-            c.connectTimeout = timeoutMs
-            c.readTimeout = timeoutMs
-            c.requestMethod = "GET"
-            val code = c.responseCode
-            c.disconnect()
-            code in 200..399
-        } catch (_: Exception) {
-            false
-        }
+        applySystemBars()
     }
 
     private fun isNight(): Boolean =
         (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
             Configuration.UI_MODE_NIGHT_YES
 
-    /**
-     * The PWA follows the phone through prefers-color-scheme, but WebView keeps
-     * the old media query after a system theme change. Force the same palette
-     * the PWA uses for ?theme=dark|light and update the system bar icons.
-     */
-    private fun applyTheme() {
+    private fun applySystemBars() {
         val dark = isNight()
-        val bg = if (dark) "#0f1216" else "#f4f5f7"
+        val bg = if (dark) "#0F1216" else "#F4F5F7"
         window.statusBarColor = Color.TRANSPARENT
         window.navigationBarColor = Color.TRANSPARENT
         window.setBackgroundDrawable(ColorDrawable(Color.parseColor(bg)))
-        WindowInsetsControllerCompat(window, web).apply {
+        WindowInsetsControllerCompat(window, window.decorView).apply {
             isAppearanceLightStatusBars = !dark
             isAppearanceLightNavigationBars = !dark
         }
-        val theme = if (dark) "dark" else "light"
-        web.evaluateJavascript(
-            """
-            (function(){
-              try{
-                if(location.search.match(/[?&]theme=(dark|light)\b/)) return;
-                document.documentElement.setAttribute('data-theme','$theme');
-                document.documentElement.classList.toggle('dark', ${if (dark) "true" else "false"});
-              }catch(e){}
-            })();
-            """.trimIndent(),
-            null
-        )
-    }
-
-    /** Pad the PWA's .app container, not the WebView, so 100dvh stays correct. */
-    private fun applyPageInsets() {
-        if (!::web.isInitialized) return
-        // Android insets are physical pixels; CSS px in the WebView are dp.
-        // Passing 90 px as 90 CSS px made the header ~2.7x too tall.
-        val density = resources.displayMetrics.density.coerceAtLeast(1f)
-        val topCss = (insetTop / density).roundToInt()
-        val bottomCss = (insetBottom / density).roundToInt()
-        web.evaluateJavascript(
-            """
-            (function(){
-              try{
-                var id='leaf-native-insets';
-                var el=document.getElementById(id);
-                if(!el){el=document.createElement('style');el.id=id;(document.head||document.documentElement).appendChild(el);}
-                el.textContent=
-                  '.app{padding-top:0!important;padding-bottom:0!important}'+
-                  '.appbar{height:calc(48px + ${topCss}px)!important;padding-top:${topCss}px!important;box-sizing:border-box!important}'+
-                  '.tabbar{height:calc(56px + ${bottomCss}px)!important;padding-bottom:${bottomCss}px!important;box-sizing:border-box!important}'+
-                  '.screen{padding-bottom:calc(72px + ${bottomCss}px)!important}'+
-                  '.screens{padding-bottom:calc(24px + ${bottomCss}px)!important}';
-              }catch(e){}
-            })();
-            """.trimIndent(),
-            null
-        )
     }
 
     /** App shortcuts send a command without opening a second UI. */
@@ -392,20 +124,18 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun checkUpdate(manual: Boolean) {
+        if (!checking.compareAndSet(false, true)) return
         if (manual) Toast.makeText(this, "Проверяем обновление…", Toast.LENGTH_SHORT).show()
         thread(isDaemon = true) {
             try {
                 val update = UpdateChecker.check(this)
                 Settings.lastUpdateCheck = System.currentTimeMillis()
                 runOnUiThread {
+                    checking.set(false)
                     if (isFinishing || isDestroyed) return@runOnUiThread
                     if (update == null) {
                         if (manual) {
-                            Toast.makeText(
-                                this,
-                                "У вас последняя версия",
-                                Toast.LENGTH_SHORT
-                            ).show()
+                            Toast.makeText(this, "У вас последняя версия", Toast.LENGTH_SHORT).show()
                         }
                     } else {
                         showUpdateDialog(update)
@@ -413,12 +143,9 @@ class MainActivity : ComponentActivity() {
                 }
             } catch (_: Exception) {
                 runOnUiThread {
+                    checking.set(false)
                     if (manual && !isFinishing && !isDestroyed) {
-                        Toast.makeText(
-                            this,
-                            "Не удалось проверить обновление",
-                            Toast.LENGTH_LONG
-                        ).show()
+                        Toast.makeText(this, "Не удалось проверить обновление", Toast.LENGTH_LONG).show()
                     }
                 }
             }
@@ -478,126 +205,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** Keep the native service in sync with the PWA's own settings. */
-    private fun injectBridge() {        val js = """
-            (function(){
-              function sync(){
-                try {
-                  var c = localStorage.getItem('leafcfg');
-                  if (c && window.LeafNative) LeafNative.saveConfig(c);
-                  if (window.LeafNative) LeafNative.setLocalHost(location.hostname);
-                } catch(e) {}
-              }
-              sync(); if (!window.__leafSync) { window.__leafSync = setInterval(sync, 5000); }
-              // Native-only entry point, styled exactly like the PWA's own rows.
-              // Everything else (design, history, tariff, OTA, developer tools)
-              // remains the real PWA.
-              try {
-                if (window.LeafNative && !document.getElementById('leaf-native-settings')) {
-                  var screen = document.getElementById('screen-more');
-                  var anchor = document.getElementById('more-settings-label');
-                  var row = anchor ? anchor.closest('.more-item') : null;
-                  if (screen) {
-                    var item = document.createElement('div');
-                    item.className = 'more-item';
-                    item.id = 'leaf-native-settings';
-                    item.innerHTML = '<div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M9 18h6"/></svg></div>Настройки Android<div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>';
-                    item.onclick = function(){ LeafNative.openSettings(); };
-                    if (row && row.parentNode) row.parentNode.insertBefore(item, row.nextSibling);
-                    else screen.insertBefore(item, screen.firstChild);
-                  }
-                }
-              } catch(e) {}
-              if (window.LeafNative && typeof downloadCsv === 'function' && !window.__leafCsv) {
-                window.__leafCsv = true;
-                var orig = downloadCsv;
-                window.downloadCsv = function(name, head, rows){
-                  try {
-                    var lines = [head].concat(rows).map(function(r){
-                      return r.map(function(v){
-                        var s = (v === null || v === undefined) ? '' : String(v);
-                        return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-                      }).join(';');
-                    });
-                    LeafNative.saveCsv(name, '\ufeff' + lines.join('\r\n'));
-                    if (typeof toast === 'function') toast('Файл сохранён в Загрузки');
-                  } catch(e) { orig(name, head, rows); }
-                };
-              }
-            })();
-        """.trimIndent()
-        web.evaluateJavascript(js, null)
-    }
-
-    inner class Bridge {
-        @JavascriptInterface
-        fun saveConfig(json: String) {
-            try {
-                val o = JSONObject(json)
-                val old = listOf(
-                    Settings.mqttHost, Settings.mqttPort.toString(), Settings.mqttUser,
-                    Settings.mqttPass, Settings.vehicleId
-                )
-                Settings.mqttHost = o.optString("host", Settings.mqttHost)
-                o.optInt("port", Settings.mqttPort).let { if (it > 0) Settings.mqttPort = it }
-                Settings.mqttUser = o.optString("user", Settings.mqttUser)
-                Settings.mqttPass = o.optString("pass", Settings.mqttPass)
-                Settings.vehicleId = o.optString("vid", Settings.vehicleId)
-                val now = listOf(
-                    Settings.mqttHost, Settings.mqttPort.toString(), Settings.mqttUser,
-                    Settings.mqttPass, Settings.vehicleId
-                )
-                if (old != now && Settings.monitorEnabled) {
-                    LeafMonitorService.reload(this@MainActivity)
-                }
-            } catch (_: Exception) { }
-        }
-
-        @JavascriptInterface
-        fun setLocalHost(host: String) {
-            if (host.isBlank() || host.endsWith("github.io")) return
-            if (Settings.localHost != host) {
-                Settings.localHost = host
-                Settings.localPort = 80
-            }
-        }
-
-        @JavascriptInterface
-        fun openSettings() {
-            runOnUiThread { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) }
-        }
-
-        @JavascriptInterface
-        fun saveCsv(name: String, text: String) {
-            runOnUiThread {
-                val ok = CsvWriter.save(this@MainActivity, name, text)
-                Toast.makeText(
-                    this@MainActivity,
-                    if (ok) "Файл сохранён в Загрузки" else "Не удалось сохранить файл",
-                    Toast.LENGTH_SHORT
-                ).show()
-            }
-        }
-
-        @JavascriptInterface
-        fun toast(text: String) {
-            runOnUiThread { Toast.makeText(this@MainActivity, text, Toast.LENGTH_SHORT).show() }
-        }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        web.onResume()
-    }
-
-    override fun onPause() {
-        web.onPause()
-        super.onPause()
-    }
-
     override fun onDestroy() {
         updateDialog?.dismiss()
-        web.destroy()
         super.onDestroy()
     }
 }

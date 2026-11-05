@@ -9,6 +9,7 @@ import android.content.Intent
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.leafcontrol.app.data.HistoryDb
+import com.leafcontrol.app.data.LeafRepo
 import com.leafcontrol.app.data.Settings
 import com.leafcontrol.app.service.MonitorWorker
 
@@ -82,6 +83,7 @@ class LeafApp : android.app.Application() {
     override fun onCreate() {
         super.onCreate()
         Settings.init(this)
+        LeafRepo.init(this)
         HistoryDb.init(this)
         Notifications.createChannels(this)
         MonitorWorker.schedule(this)

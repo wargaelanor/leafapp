@@ -1,11 +1,12 @@
 package com.leafcontrol.app.ui
 
 import android.app.Application
-import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.leafcontrol.app.BoardDiscovery
 import com.leafcontrol.app.data.Charge
 import com.leafcontrol.app.data.LeafRepo
+import com.leafcontrol.app.data.LeafState
 import com.leafcontrol.app.data.Settings
 import com.leafcontrol.app.data.Trip
 import com.leafcontrol.app.service.LeafMonitorService
@@ -13,90 +14,38 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
-data class SettingsDraft(
-    val mode: String = Settings.mode,
-    val localHost: String = Settings.localHost,
-    val localPort: String = Settings.localPort.toString(),
-    val mqttHost: String = Settings.mqttHost,
-    val mqttPort: String = Settings.mqttPort.toString(),
-    val mqttUser: String = Settings.mqttUser,
-    val mqttPass: String = Settings.mqttPass,
-    val vehicleId: String = Settings.vehicleId,
-    val monitor: Boolean = Settings.monitorEnabled,
-    val notifyChargeStart: Boolean = Settings.notifyChargeStart,
-    val notifyChargeEnd: Boolean = Settings.notifyChargeEnd,
-    val notifyLowSoc: Boolean = Settings.notifyLowSoc,
-    val notifyOffline: Boolean = Settings.notifyOffline,
-    val notifyTripEnd: Boolean = Settings.notifyTripEnd,
-    val lowSoc: String = Settings.lowSocThreshold.toString(),
-    val tariffDay: String = Settings.tariffDay.toString(),
-    val tariffNight: String = Settings.tariffNight.toString(),
-    val nightFrom: String = Settings.nightFrom.toString(),
-    val nightTo: String = Settings.nightTo.toString(),
-) {
-    fun toSettings() {
-        Settings.mode = mode
-        Settings.localHost = localHost
-        localPort.toIntOrNull()?.let { Settings.localPort = it }
-        Settings.mqttHost = mqttHost
-        mqttPort.toIntOrNull()?.let { Settings.mqttPort = it }
-        Settings.mqttUser = mqttUser
-        Settings.mqttPass = mqttPass
-        Settings.vehicleId = vehicleId
-        Settings.monitorEnabled = monitor
-        Settings.notifyChargeStart = notifyChargeStart
-        Settings.notifyChargeEnd = notifyChargeEnd
-        Settings.notifyLowSoc = notifyLowSoc
-        Settings.notifyOffline = notifyOffline
-        Settings.notifyTripEnd = notifyTripEnd
-        lowSoc.toIntOrNull()?.let { Settings.lowSocThreshold = it }
-        tariffDay.replace(',', '.').toDoubleOrNull()?.let { Settings.tariffDay = it }
-        tariffNight.replace(',', '.').toDoubleOrNull()?.let { Settings.tariffNight = it }
-        nightFrom.toIntOrNull()?.let { Settings.nightFrom = it }
-        nightTo.toIntOrNull()?.let { Settings.nightTo = it }
-    }
-}
-
 class LeafViewModel(app: Application) : AndroidViewModel(app) {
-    val state: StateFlow<com.leafcontrol.app.data.LeafState> = LeafRepo.state
+    val state: StateFlow<LeafState> = LeafRepo.state
     val trips: StateFlow<List<Trip>> = LeafRepo.trips
     val charges: StateFlow<List<Charge>> = LeafRepo.charges
     val monitorText: StateFlow<String> = LeafRepo.monitorText
-    val draft = MutableStateFlow(SettingsDraft())
     val message = MutableStateFlow<String?>(null)
 
     init {
         viewModelScope.launch {
             LeafRepo.loadHistory()
             LeafRepo.refreshHistory(getApplication())
+            discoverBoard()
         }
-    }
-
-    fun saveSettings() {
-        draft.value.toSettings()
-        message.value = "Настройки сохранены"
-        val ctx = getApplication<Application>()
-        if (Settings.monitorEnabled) LeafMonitorService.reload(ctx) else LeafMonitorService.stop(ctx)
-    }
-
-    fun startMonitor() {
-        Settings.monitorEnabled = true
-        draft.value = draft.value.copy(monitor = true)
-        LeafMonitorService.start(getApplication())
-        message.value = "Мониторинг запущен"
-    }
-
-    fun stopMonitor() {
-        Settings.monitorEnabled = false
-        draft.value = draft.value.copy(monitor = false)
-        LeafMonitorService.stop(getApplication())
-        message.value = "Мониторинг остановлен"
     }
 
     fun refresh() {
         viewModelScope.launch {
             LeafRepo.refreshHistory(getApplication())
-            message.value = "Обновлено"
+            message.value = if (state.value.connected) "Обновлено" else "Плата не отвечает"
+        }
+    }
+
+    /** Find the board without an IP field; mDNS first, then the service polls. */
+    fun discoverBoard() {
+        val app = getApplication<Application>()
+        BoardDiscovery.discoverNsd(app, 3000) { board ->
+            if (board != null && board.host != Settings.localHost) {
+                Settings.localHost = board.host
+                Settings.localPort = board.port
+                if (Settings.monitorEnabled) LeafMonitorService.reload(app)
+                viewModelScope.launch { LeafRepo.refreshHistory(app) }
+            }
         }
     }
 
@@ -119,26 +68,25 @@ class LeafViewModel(app: Application) : AndroidViewModel(app) {
             }
             else -> return
         }
-        val mode = Settings.mode
-        val local = state.value.transport == "local"
-        if ((mode == "local" || (mode == "auto" && local)) && state.value.connected) {
+        val app = getApplication<Application>()
+        val local = state.value.transport == "local" && state.value.connected
+        if (Settings.mode != "mqtt" && local) {
             viewModelScope.launch {
-                val ok = LeafRepo.commandLocal(getApplication(), path)
+                val ok = LeafRepo.commandLocal(app, path)
                 message.value = if (ok) "Команда отправлена" else "Плата не ответила"
-                if (ok) {
-                    LeafRepo.refreshHistory(getApplication())
-                }
+                if (ok) LeafRepo.refreshHistory(app)
             }
         } else {
-            LeafMonitorService.command(getApplication(), path, payload)
+            LeafMonitorService.command(app, path, payload)
             message.value = "Команда отправлена"
         }
     }
 
     fun clearHistory(charges: Boolean) {
         viewModelScope.launch {
-            if (state.value.transport == "local") {
-                com.leafcontrol.app.net.LocalApi.clearHistory(getApplication(), charges)
+            val app = getApplication<Application>()
+            if (state.value.transport == "local" && state.value.connected) {
+                com.leafcontrol.app.net.LocalApi.clearHistory(app, charges)
             }
             if (charges) com.leafcontrol.app.data.HistoryDb.clearCharges()
             else com.leafcontrol.app.data.HistoryDb.clearTrips()
@@ -147,14 +95,30 @@ class LeafViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun openBatterySettings() {
-        val ctx = getApplication<Application>()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            val i = android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-            i.data = android.net.Uri.parse("package:${ctx.packageName}")
-            try { ctx.startActivity(i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {
-                ctx.startActivity(android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
-            }
+    fun openSettings() {
+        val app = getApplication<Application>()
+        try {
+            app.startActivity(
+                android.content.Intent(app, com.leafcontrol.app.SettingsActivity::class.java)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        } catch (_: Exception) {
+        }
+    }
+
+    fun checkUpdate() {
+        val app = getApplication<Application>()
+        try {
+            app.startActivity(
+                android.content.Intent(app, com.leafcontrol.app.MainActivity::class.java)
+                    .putExtra("check_update", true)
+                    .addFlags(
+                        android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
+                            android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                            android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    )
+            )
+        } catch (_: Exception) {
         }
     }
 }

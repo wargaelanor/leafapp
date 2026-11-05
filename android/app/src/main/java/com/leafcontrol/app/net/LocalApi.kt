@@ -64,12 +64,35 @@ object LocalApi {
                     current = o.optDouble("i", 0.0),
                     batteryTemp = o.optDouble("btemp", -99.0),
                     cabin = o.optDouble("cabin", -99.0),
+                    ambient = o.optDouble("amb", -99.0),
                     odometer = o.optInt("odo", 0),
                     soh = o.optInt("soh", -1),
+                    gids = o.optInt("gids", -1),
+                    cellDelta = o.optInt("cdelta", -1),
                     locked = o.optInt("lock", -1),
                     lights = o.optInt("lights", 0) == 1,
                     on = o.optInt("on", -1),
+                    setpoint = o.optDouble("setpoint", -1.0),
+                    fan = o.optInt("fan", -1),
+                    heat = o.optInt("heat", 0) == 1,
+                    cool = o.optInt("cool", 0) == 1,
+                    vent = o.optInt("vent", -1),
+                    hvacTimer = o.optInt("hvac_timer", 0),
+                    seq = o.optInt("seq", 0) == 1,
+                    locking = o.optInt("locking", 0) == 1,
+                    packValid = o.optInt("pack", 0) == 1,
                     vin = o.optString("vin", ""),
+                    fw = o.optString("fw", ""),
+                    fwDesc = o.optString("fw_desc", ""),
+                    board = o.optString("board", ""),
+                    wifiRssi = o.optInt("wifi_rssi", 0),
+                    uptime = o.optInt("uptime", 0),
+                    modem = o.optString("modem", "off"),
+                    epoch = o.optLong("epoch", 0L),
+                    tariffDay = o.optDouble("tariff_day", 0.0),
+                    tariffNight = o.optDouble("tariff_night", 0.0),
+                    nightFrom = o.optInt("night_from", 0),
+                    nightTo = o.optInt("night_to", 7),
                     lastUpdateMs = System.currentTimeMillis(),
                     connected = true,
                     transport = "local",
@@ -158,6 +181,33 @@ object LocalApi {
                 .post("".toRequestBody("text/plain".toMediaType()))
                 .build()
             client(context).newCall(req).execute().use { it.isSuccessful }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    suspend fun setTariff(
+        context: Context,
+        day: Double,
+        night: Double,
+        from: Int,
+        to: Int,
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val body = okhttp3.FormBody.Builder()
+                .add("day", day.toString())
+                .add("night", night.toString())
+                .add("from", from.toString())
+                .add("to", to.toString())
+                .build()
+            val req = Request.Builder()
+                .url(url("/api/tariff"))
+                .header("X-Requested-With", "leaf")
+                .post(body)
+                .build()
+            client(context).newCall(req).execute().use {
+                it.isSuccessful || it.code == 303
+            }
         } catch (_: Exception) {
             false
         }

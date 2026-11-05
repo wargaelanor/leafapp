@@ -20,14 +20,33 @@ object LeafRepo {
     @Volatile
     var mqtt: MqttWssClient? = null
 
+    private var appContext: Context? = null
+    private var lastCacheMs = 0L
+
     // Retained topic metric/s/v3/connected is the board's will. Use it so
     // retained metrics are not presented as live after the board went offline.
     @Volatile
     private var boardOnline = true
 
+    fun init(context: Context) {
+        appContext = context.applicationContext
+        StateCache.load(context)?.let { cached ->
+            if (state.value.lastUpdateMs == 0L) state.value = cached
+        }
+    }
+
+    private fun cache(s: LeafState) {
+        val ctx = appContext ?: return
+        val now = System.currentTimeMillis()
+        if (now - lastCacheMs < 4000L) return
+        lastCacheMs = now
+        StateCache.save(ctx, s)
+    }
+
     fun setLocal(s: LeafState) {
         boardOnline = true
         state.value = s
+        cache(s)
     }
 
     fun onMqttConnected() {
@@ -37,6 +56,7 @@ object LeafRepo {
 
     fun setDisconnected(transport: String) {
         state.update { it.copy(connected = false, transport = transport) }
+        cache(state.value)
     }
 
     /** Parse one ovms/<user>/<vehicle>/metric/... message. */
@@ -54,14 +74,22 @@ object LeafRepo {
         state.update { s ->
             val n = when (m) {
                 "v/b/soc" -> s.copy(soc = num ?: s.soc)
-                "v/b/soc/instrument" -> s.copy(soc = num ?: s.soc)
                 "v/b/range/instrument" -> s.copy(range = num?.toInt() ?: s.range)
                 "v/b/temp" -> s.copy(batteryTemp = num ?: s.batteryTemp)
                 "v/b/soh" -> s.copy(soh = num?.toInt() ?: s.soh)
+                "v/b/gids" -> s.copy(gids = num?.toInt() ?: s.gids)
                 "v/b/voltage" -> s.copy(voltage = num ?: s.voltage)
                 "v/b/current" -> s.copy(current = num ?: s.current)
                 "v/b/power" -> s.copy(power = num ?: s.power)
+                "v/b/celldelta" -> s.copy(cellDelta = num?.toInt() ?: s.cellDelta)
                 "v/e/cabintemp" -> s.copy(cabin = num ?: s.cabin)
+                "v/e/ambient" -> s.copy(ambient = num ?: s.ambient)
+                "v/e/setpoint" -> s.copy(setpoint = num ?: s.setpoint)
+                "v/e/fan" -> s.copy(fan = num?.toInt() ?: s.fan)
+                "v/e/heat" -> s.copy(heat = payload == "yes")
+                "v/e/cool" -> s.copy(cool = payload == "yes")
+                "v/e/vent" -> s.copy(vent = num?.toInt() ?: s.vent)
+                "v/e/hvac/timer" -> s.copy(hvacTimer = num?.toInt() ?: s.hvacTimer)
                 "v/c/charging" -> s.copy(charging = payload == "yes")
                 "v/c/state" -> s.copy(charger = payload)
                 "v/e/hvac" -> s.copy(hvac = payload == "yes")
@@ -74,6 +102,7 @@ object LeafRepo {
             }
             n.copy(lastUpdateMs = now, connected = boardOnline, transport = "mqtt")
         }
+        cache(state.value)
     }
 
     suspend fun refreshHistory(context: Context) {
@@ -109,8 +138,8 @@ object LeafRepo {
     }
 
     fun recordCost(whDay: Double, whNight: Double, energyWh: Double): Double {
-        val day = Settings.tariffDay
-        val night = Settings.tariffNight
+        val day = state.value.tariffDay.takeIf { it > 0.0 } ?: Settings.tariffDay
+        val night = state.value.tariffNight.takeIf { it > 0.0 } ?: Settings.tariffNight
         if (day <= 0.0 && night <= 0.0) return 0.0
         val d = if (whDay > 0.0 || whNight > 0.0) whDay else energyWh
         val n = if (whDay > 0.0 || whNight > 0.0) whNight else 0.0
@@ -122,8 +151,8 @@ object LeafRepo {
 
     fun isNight(epochMs: Long): Boolean {
         val h = Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()).hour
-        val from = Settings.nightFrom
-        val to = Settings.nightTo
+        val from = state.value.nightFrom.takeIf { it in 0..23 } ?: Settings.nightFrom
+        val to = state.value.nightTo.takeIf { it in 0..23 } ?: Settings.nightTo
         if (from == to) return false
         return if (from < to) h >= from && h < to else h >= from || h < to
     }

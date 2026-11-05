@@ -29,6 +29,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -44,7 +45,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -77,6 +80,17 @@ class SettingsActivity : ComponentActivity() {
         var monitor by remember { mutableStateOf(Settings.monitorEnabled) }
         var autoUpdate by remember { mutableStateOf(Settings.autoUpdate) }
 
+        var mode by remember { mutableStateOf(Settings.mode) }
+        var mqttHost by remember { mutableStateOf(Settings.mqttHost) }
+        var mqttPort by remember { mutableStateOf(Settings.mqttPort.toString()) }
+        var mqttUser by remember { mutableStateOf(Settings.mqttUser) }
+        var mqttPass by remember { mutableStateOf(Settings.mqttPass) }
+        var vehicleId by remember { mutableStateOf(Settings.vehicleId) }
+        var tariffDay by remember { mutableStateOf(Settings.tariffDay.toString()) }
+        var tariffNight by remember { mutableStateOf(Settings.tariffNight.toString()) }
+        var nightFrom by remember { mutableStateOf(Settings.nightFrom.toString()) }
+        var nightTo by remember { mutableStateOf(Settings.nightTo.toString()) }
+
         var chargeStart by remember { mutableStateOf(Settings.notifyChargeStart) }
         var chargeEnd by remember { mutableStateOf(Settings.notifyChargeEnd) }
         var lowSoc by remember { mutableStateOf(Settings.notifyLowSoc) }
@@ -102,6 +116,69 @@ class SettingsActivity : ComponentActivity() {
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text("Настройки", style = MaterialTheme.typography.headlineSmall)
+
+            Group("Связь") {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("auto" to "Авто", "local" to "Локально", "mqtt" to "MQTT").forEach { (value, label) ->
+                        FilterChip(
+                            selected = mode == value,
+                            onClick = { mode = value },
+                            label = { Text(label, fontSize = 12.sp) },
+                        )
+                    }
+                }
+                OutlinedTextField(
+                    value = mqttHost,
+                    onValueChange = { mqttHost = it },
+                    label = { Text("MQTT-сервер") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = mqttPort,
+                    onValueChange = { mqttPort = it.filter(Char::isDigit).take(5) },
+                    label = { Text("Порт") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
+                OutlinedTextField(
+                    value = mqttUser,
+                    onValueChange = { mqttUser = it },
+                    label = { Text("Пользователь") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = mqttPass,
+                    onValueChange = { mqttPass = it },
+                    label = { Text("Пароль") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                )
+                OutlinedTextField(
+                    value = vehicleId,
+                    onValueChange = { vehicleId = it },
+                    label = { Text("Vehicle ID") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+                OutlinedButton(
+                    onClick = {
+                        Settings.mode = mode
+                        Settings.mqttHost = mqttHost
+                        mqttPort.toIntOrNull()?.let { if (it in 1..65535) Settings.mqttPort = it }
+                        Settings.mqttUser = mqttUser
+                        Settings.mqttPass = mqttPass
+                        Settings.vehicleId = vehicleId
+                        if (Settings.monitorEnabled) LeafMonitorService.reload(ctx)
+                        Toast.makeText(ctx, "Связь сохранена", Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Сохранить связь") }
+            }
 
             Group("Уведомления") {
                 SwitchRow("Зарядка началась", chargeStart) {
@@ -221,6 +298,65 @@ class SettingsActivity : ComponentActivity() {
                         }
                     }
                 }
+            }
+
+            Group("Тариф") {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = tariffDay,
+                        onValueChange = { tariffDay = it.filter { c -> c.isDigit() || c == '.' || c == ',' } },
+                        label = { Text("День, ₽/кВт·ч") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    )
+                    OutlinedTextField(
+                        value = tariffNight,
+                        onValueChange = { tariffNight = it.filter { c -> c.isDigit() || c == '.' || c == ',' } },
+                        label = { Text("Ночь, ₽/кВт·ч") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = nightFrom,
+                        onValueChange = { nightFrom = it.filter(Char::isDigit).take(2) },
+                        label = { Text("Ночь с") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    )
+                    OutlinedTextField(
+                        value = nightTo,
+                        onValueChange = { nightTo = it.filter(Char::isDigit).take(2) },
+                        label = { Text("Ночь до") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    )
+                }
+                OutlinedButton(
+                    onClick = {
+                        val day = tariffDay.replace(',', '.').toDoubleOrNull() ?: Settings.tariffDay
+                        val night = tariffNight.replace(',', '.').toDoubleOrNull() ?: Settings.tariffNight
+                        val from = nightFrom.toIntOrNull() ?: Settings.nightFrom
+                        val to = nightTo.toIntOrNull() ?: Settings.nightTo
+                        Settings.tariffDay = day
+                        Settings.tariffNight = night
+                        Settings.nightFrom = from
+                        Settings.nightTo = to
+                        // The board's own tariff splits history energy day/night.
+                        Thread {
+                            kotlinx.coroutines.runBlocking {
+                                com.leafcontrol.app.net.LocalApi.setTariff(ctx, day, night, from, to)
+                            }
+                        }.start()
+                        Toast.makeText(ctx, "Тариф сохранён", Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Сохранить тариф") }
             }
 
             // Update stays outside the grouped cards, as requested.
