@@ -63,6 +63,7 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.SystemUpdate
 import androidx.compose.material.icons.outlined.Thermostat
+import androidx.compose.material.icons.outlined.VolumeUp
 import androidx.compose.material.icons.outlined.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -92,8 +93,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -503,17 +507,42 @@ private fun SocCard(state: LeafState, onCommand: (String, Double, Int) -> Unit) 
                 )
             }
             Spacer(Modifier.height(14.dp))
-            Button(
-                onClick = { onCommand(if (state.charging) "chargeoff" else "charge", 22.0, 15) },
+            HoldAction(
+                onTrigger = {
+                    onCommand(if (state.charging) "chargeoff" else "charge", 22.0, 15)
+                },
                 modifier = Modifier.fillMaxWidth().height(46.dp),
-                shape = RoundedCornerShape(8.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                ),
-            ) {
-                Text(if (state.charging) "Остановить зарядку" else "Начать зарядку", fontSize = 15.sp)
+                ring = false,
+            ) { progress, pressed ->
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            if (state.charging) "Остановить зарядку" else "Начать зарядку",
+                            fontSize = 15.sp,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                        )
+                        if (pressed && progress > 0f) {
+                            Box(
+                                Modifier
+                                    .align(Alignment.BottomStart)
+                                    .fillMaxWidth(progress.coerceIn(0f, 1f))
+                                    .height(3.dp)
+                                    .background(Color.White.copy(alpha = 0.85f))
+                            )
+                        }
+                    }
+                }
             }
+            Text(
+                "Удерживайте 1,5 с",
+                fontSize = 10.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 6.dp),
+            )
         }
     }
 }
@@ -540,28 +569,36 @@ private fun ChargeBar(soc: Double) {
 
 @Composable
 private fun QuickActions(state: LeafState, onCommand: (String, Double, Int) -> Unit) {
-    Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-    ) {
-        QuickAction(
-            Icons.Outlined.Lightbulb,
-            "Вспышка фар",
-            state.lights,
-            Color(0xFFFFA726),
-        ) { onCommand("lights", 22.0, 15) }
-        QuickAction(
-            if (state.locked == 1) Icons.Outlined.Lock else Icons.Outlined.LockOpen,
-            "Двери",
-            state.locked == 1,
-            MaterialTheme.colorScheme.primary,
-        ) { onCommand(if (state.locked == 1) "unlock" else "lock", 22.0, 15) }
-        QuickAction(
-            Icons.Outlined.AcUnit,
-            "Климат",
-            state.hvac,
-            Color(0xFF34C759),
-        ) { onCommand("hvac", 22.0, 15) }
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+        ) {
+            QuickAction(
+                Icons.Outlined.Lightbulb,
+                "Вспышка фар",
+                state.lights,
+                Color(0xFFFFA726),
+            ) { onCommand("lights", 22.0, 15) }
+            QuickAction(
+                if (state.locked == 1) Icons.Outlined.Lock else Icons.Outlined.LockOpen,
+                "Двери",
+                state.locked == 1,
+                MaterialTheme.colorScheme.primary,
+            ) { onCommand(if (state.locked == 1) "unlock" else "lock", 22.0, 15) }
+            QuickAction(
+                Icons.Outlined.AcUnit,
+                "Климат",
+                state.hvac,
+                Color(0xFF34C759),
+            ) { onCommand("hvac", 22.0, 15) }
+        }
+        Text(
+            "Удерживайте 1,5 с",
+            fontSize = 10.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 6.dp),
+        )
     }
 }
 
@@ -573,21 +610,25 @@ private fun QuickAction(
     activeColor: Color,
     onClick: () -> Unit,
 ) {
-    val interaction = remember { MutableInteractionSource() }
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Surface(
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            border = if (active) BorderStroke(1.5.dp, activeColor) else null,
-            modifier = Modifier.size(64.dp).pressable(interaction) { onClick() },
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    icon,
-                    contentDescription = label,
-                    modifier = Modifier.size(28.dp),
-                    tint = if (active) activeColor else MaterialTheme.colorScheme.onSurface,
-                )
+        HoldAction(
+            onTrigger = onClick,
+            modifier = Modifier.size(64.dp),
+        ) { _, _ ->
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                border = if (active) BorderStroke(1.5.dp, activeColor) else null,
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        icon,
+                        contentDescription = label,
+                        modifier = Modifier.size(28.dp),
+                        tint = if (active) activeColor else MaterialTheme.colorScheme.onSurface,
+                    )
+                }
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -703,40 +744,12 @@ private fun DistanceScreen(state: LeafState, onCommand: (String, Double, Int) ->
                             )
                         }
                     }
-                    Spacer(Modifier.height(12.dp))
-                    Button(
-                        onClick = { onCommand("hvac", setpoint.toDouble(), minutes) },
-                        modifier = Modifier.fillMaxWidth().height(46.dp),
-                        shape = RoundedCornerShape(8.dp),
-                    ) {
-                        Text(if (state.hvac) "Выключить климат" else "Включить климат")
-                    }
                 }
             }
         }
         item { SectionTitle("КОМАНДЫ") }
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                CommandRow(
-                    "Зарядка",
-                    if (state.charging) "Остановить" else "Начать",
-                    Icons.Outlined.BatteryChargingFull,
-                ) { onCommand(if (state.charging) "chargeoff" else "charge", 22.0, 15) }
-                CommandRow(
-                    "Двери",
-                    if (state.locked == 1) "Открыть" else "Закрыть",
-                    if (state.locked == 1) Icons.Outlined.Lock else Icons.Outlined.LockOpen,
-                ) { onCommand(if (state.locked == 1) "unlock" else "lock", 22.0, 15) }
-                CommandRow("Вспышка фар", "Выполнить", Icons.Outlined.Lightbulb) {
-                    onCommand("lights", 22.0, 15)
-                }
-                CommandRow("Сигнал и фары", "Выполнить", Icons.Outlined.PowerSettingsNew) {
-                    onCommand("hornlights", 22.0, 15)
-                }
-                CommandRow("Обновить данные", "Запросить у платы", Icons.Outlined.Refresh) {
-                    onCommand("refresh", 22.0, 15)
-                }
-            }
+            CommandPad(state, setpoint, minutes, onCommand)
         }
         if (!state.connected) {
             item {
@@ -757,6 +770,176 @@ private fun DistanceScreen(state: LeafState, onCommand: (String, Double, Int) ->
             }
         }
         item { Spacer(Modifier.height(4.dp)) }
+    }
+}
+
+@Composable
+private fun CommandPad(
+    state: LeafState,
+    setpoint: Float,
+    minutes: Int,
+    onCommand: (String, Double, Int) -> Unit,
+) {
+    val timerProgress = if (state.hvac && state.hvacTimer > 0) {
+        (state.hvacTimer / 15f).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+    Column(
+        Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            CircleCommand("Сигнал и фары", Icons.Outlined.VolumeUp) {
+                onCommand("hornlights", 22.0, 15)
+            }
+            CircleCommand("Закрыть", Icons.Outlined.Lock) {
+                onCommand("lock", 22.0, 15)
+            }
+        }
+        HoldAction(
+            onTrigger = { onCommand("hvac", setpoint.toDouble(), minutes) },
+            modifier = Modifier.size(136.dp),
+            idleProgress = timerProgress,
+        ) { _, _ ->
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                Column(
+                    Modifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Icon(
+                        Icons.Outlined.AcUnit,
+                        contentDescription = null,
+                        modifier = Modifier.size(38.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                    Spacer(Modifier.height(7.dp))
+                    Text(
+                        "КЛИМАТ",
+                        fontSize = 10.sp,
+                        letterSpacing = 1.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            }
+        }
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            CircleCommand("Вспышка фар", Icons.Outlined.Lightbulb) {
+                onCommand("lights", 22.0, 15)
+            }
+            CircleCommand("Открыть", Icons.Outlined.LockOpen) {
+                onCommand("unlock", 22.0, 15)
+            }
+        }
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            PillCommand(
+                if (state.charging) "Стоп зарядки" else "Зарядка",
+                Icons.Outlined.BatteryChargingFull,
+                Modifier.weight(1f),
+            ) { onCommand(if (state.charging) "chargeoff" else "charge", 22.0, 15) }
+            PillCommand(
+                "Обновить",
+                Icons.Outlined.Refresh,
+                Modifier.weight(1f),
+            ) { onCommand("refresh", 22.0, 15) }
+        }
+        Text(
+            "Удерживайте 1,5 с",
+            fontSize = 10.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun CircleCommand(label: String, icon: ImageVector, onClick: () -> Unit) {
+    HoldAction(
+        onTrigger = onClick,
+        modifier = Modifier.size(96.dp),
+    ) { _, _ ->
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            Column(
+                Modifier.fillMaxSize().padding(8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Icon(
+                    icon,
+                    contentDescription = label,
+                    modifier = Modifier.size(26.dp),
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(Modifier.height(5.dp))
+                Text(
+                    label.uppercase(),
+                    fontSize = 8.sp,
+                    lineHeight = 10.sp,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PillCommand(
+    label: String,
+    icon: ImageVector,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    HoldAction(
+        onTrigger = onClick,
+        modifier = modifier.height(44.dp),
+        ring = false,
+    ) { progress, pressed ->
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(icon, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(6.dp))
+                    Text(label, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
+                }
+                if (pressed && progress > 0f) {
+                    Box(
+                        Modifier
+                            .align(Alignment.BottomStart)
+                            .fillMaxWidth(progress.coerceIn(0f, 1f))
+                            .height(3.dp)
+                            .background(MaterialTheme.colorScheme.primary)
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -1267,7 +1450,7 @@ private fun Modifier.pressable(
 ): Modifier {
     val pressed by source.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.96f else 1f,
+        targetValue = if (pressed) 1.03f else 1f,
         animationSpec = spring(stiffness = Spring.StiffnessHigh),
         label = "press",
     )
@@ -1285,4 +1468,84 @@ private fun Modifier.pressable(
                 onClick()
             },
         )
+}
+
+/**
+ * Command buttons require a 1.5 s hold. A short tap does nothing; the ring
+ * fills while holding, so accidental touches cannot lock the car or start a
+ * charge. The same ring can show the remaining climate timer when idle.
+ */
+@Composable
+private fun HoldAction(
+    onTrigger: () -> Unit,
+    modifier: Modifier = Modifier,
+    ring: Boolean = true,
+    idleProgress: Float = 0f,
+    content: @Composable (Float, Boolean) -> Unit,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    var progress by remember { mutableFloatStateOf(0f) }
+    var fired by remember { mutableStateOf(false) }
+    val haptic = LocalHapticFeedback.current
+    val ringColor = MaterialTheme.colorScheme.primary
+
+    LaunchedEffect(pressed) {
+        if (!pressed) {
+            progress = 0f
+            fired = false
+            return@LaunchedEffect
+        }
+        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        val started = System.currentTimeMillis()
+        while (true) {
+            val p = ((System.currentTimeMillis() - started) / 1500f).coerceIn(0f, 1f)
+            progress = p
+            if (p >= 1f) {
+                if (!fired) {
+                    fired = true
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onTrigger()
+                }
+                break
+            }
+            delay(16)
+        }
+    }
+
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 1.1f else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "holdScale",
+    )
+    val shownProgress = if (pressed) progress else idleProgress
+    Box(
+        modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .drawWithContent {
+                drawContent()
+                if (ring && shownProgress > 0f) {
+                    val stroke = 3.dp.toPx()
+                    drawArc(
+                        color = ringColor,
+                        startAngle = -90f,
+                        sweepAngle = 360f * shownProgress.coerceIn(0f, 1f),
+                        useCenter = false,
+                        style = Stroke(stroke),
+                        topLeft = Offset(stroke / 2f, stroke / 2f),
+                        size = Size(size.width - stroke, size.height - stroke),
+                    )
+                }
+            }
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                onClick = {},
+            )
+    ) {
+        content(progress, pressed)
+    }
 }
