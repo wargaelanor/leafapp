@@ -10,6 +10,7 @@ import com.leafcontrol.app.data.LeafState
 import com.leafcontrol.app.data.Settings
 import com.leafcontrol.app.data.Trip
 import com.leafcontrol.app.service.LeafMonitorService
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -40,13 +41,24 @@ class LeafViewModel(app: Application) : AndroidViewModel(app) {
     fun discoverBoard() {
         val app = getApplication<Application>()
         BoardDiscovery.discoverNsd(app, 3000) { board ->
-            if (board != null && board.host != Settings.localHost) {
-                Settings.localHost = board.host
-                Settings.localPort = board.port
-                if (Settings.monitorEnabled) LeafMonitorService.reload(app)
-                viewModelScope.launch { LeafRepo.refreshHistory(app) }
+            if (board != null) {
+                applyBoard(app, board.host, board.port)
+            } else {
+                // mDNS can be blocked on some routers; scan the current /24.
+                viewModelScope.launch(Dispatchers.IO) {
+                    val found = BoardDiscovery.scanSubnet(app)
+                    if (found != null) applyBoard(app, found.host, found.port)
+                }
             }
         }
+    }
+
+    private fun applyBoard(app: Application, host: String, port: Int) {
+        if (host == Settings.localHost && port == Settings.localPort) return
+        Settings.localHost = host
+        Settings.localPort = port
+        if (Settings.monitorEnabled) LeafMonitorService.reload(app)
+        viewModelScope.launch { LeafRepo.refreshHistory(app) }
     }
 
     fun command(type: String, setpoint: Double = 22.0, minutes: Int = 15) {

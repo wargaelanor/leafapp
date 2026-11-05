@@ -31,12 +31,18 @@ object LocalApi {
         .callTimeout(10, TimeUnit.SECONDS)
         .build()
 
-    private fun client(context: Context): OkHttpClient {
+    private fun client(context: Context, host: String): OkHttpClient {
         val cm = context.getSystemService(ConnectivityManager::class.java) ?: return base
         val wifi: Network? = cm.allNetworks.firstOrNull { n ->
             cm.getNetworkCapabilities(n)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
         }
         if (wifi == null) return base
+        val phoneIp = cm.getLinkProperties(wifi)?.linkAddresses
+            ?.mapNotNull { it.address as? Inet4Address }
+            ?.firstOrNull { !it.isLoopbackAddress }
+            ?: return base
+        val hostIp = ipv4(host) ?: return base
+        if (!sameSubnet(hostIp, phoneIp.address)) return base
         return base.newBuilder()
             .socketFactory(wifi.socketFactory)
             .dns(object : Dns {
@@ -44,6 +50,19 @@ object LocalApi {
             })
             .build()
     }
+
+    private fun ipv4(value: String): ByteArray? {
+        if (!Regex("""^\d{1,3}(\.\d{1,3}){3}$""").matches(value)) return null
+        return try {
+            (java.net.InetAddress.getByName(value) as? Inet4Address)?.address
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun sameSubnet(a: ByteArray, b: ByteArray): Boolean =
+        a.size == 4 && b.size == 4 &&
+            a[0] == b[0] && a[1] == b[1] && a[2] == b[2]
 
     private fun url(path: String): String =
         "http://${Settings.localHost}:${Settings.localPort}$path"
@@ -79,7 +98,7 @@ object LocalApi {
         ensureLocalHost(context)
         try {
             val req = Request.Builder().url(url("/api/status")).get().build()
-            client(context).newCall(req).execute().use { r ->
+            client(context, Settings.localHost).newCall(req).execute().use { r ->
                 if (!r.isSuccessful) return@withContext null
                 val o = JSONObject(r.body?.string() ?: return@withContext null)
                 LeafState(
@@ -136,7 +155,7 @@ object LocalApi {
         ensureLocalHost(context)
         try {
             val req = Request.Builder().url(url("/api/trips")).get().build()
-            client(context).newCall(req).execute().use { r ->
+            client(context, Settings.localHost).newCall(req).execute().use { r ->
                 if (!r.isSuccessful) return@withContext emptyList()
                 val arr = JSONArray(r.body?.string() ?: "[]")
                 val out = ArrayList<Trip>(arr.length())
@@ -166,7 +185,7 @@ object LocalApi {
         ensureLocalHost(context)
         try {
             val req = Request.Builder().url(url("/api/charges")).get().build()
-            client(context).newCall(req).execute().use { r ->
+            client(context, Settings.localHost).newCall(req).execute().use { r ->
                 if (!r.isSuccessful) return@withContext emptyList()
                 val arr = JSONArray(r.body?.string() ?: "[]")
                 val out = ArrayList<Charge>(arr.length())
@@ -198,7 +217,7 @@ object LocalApi {
                 .url(url(path))
                 .post("".toRequestBody("text/plain".toMediaType()))
                 .build()
-            client(context).newCall(req).execute().use { it.isSuccessful || it.code == 303 }
+            client(context, Settings.localHost).newCall(req).execute().use { it.isSuccessful || it.code == 303 }
         } catch (_: Exception) {
             false
         }
@@ -213,7 +232,7 @@ object LocalApi {
                 .header("X-Requested-With", "leaf")
                 .post("".toRequestBody("text/plain".toMediaType()))
                 .build()
-            client(context).newCall(req).execute().use { it.isSuccessful }
+            client(context, Settings.localHost).newCall(req).execute().use { it.isSuccessful }
         } catch (_: Exception) {
             false
         }
@@ -239,7 +258,7 @@ object LocalApi {
                 .header("X-Requested-With", "leaf")
                 .post(body)
                 .build()
-            client(context).newCall(req).execute().use {
+            client(context, Settings.localHost).newCall(req).execute().use {
                 it.isSuccessful || it.code == 303
             }
         } catch (_: Exception) {

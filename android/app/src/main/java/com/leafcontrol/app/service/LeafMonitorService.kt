@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationManagerCompat
+import com.leafcontrol.app.BoardDiscovery
 import com.leafcontrol.app.Notifications
 import com.leafcontrol.app.data.Charge
 import com.leafcontrol.app.data.HistoryDb
@@ -156,6 +157,7 @@ class LeafMonitorService : Service() {
         // immediately. Waiting for three 10-second timeouts made auto mode look
         // dead while the MQTT broker was actually reachable.
         var syncedAt = 0L
+        var lastScanMs = 0L
         while (monitoring) {
             val s = LocalApi.status(this)
             if (s != null) {
@@ -167,6 +169,17 @@ class LeafMonitorService : Service() {
                 }
                 delay(20_000)
             } else {
+                val now = System.currentTimeMillis()
+                if (now - lastScanMs > 300_000L) {
+                    lastScanMs = now
+                    val board = BoardDiscovery.scanSubnet(this, 400)
+                    if (board != null) {
+                        Settings.localHost = board.host
+                        Settings.localPort = board.port
+                        updateForeground("Найдена плата: ${board.host}")
+                        continue
+                    }
+                }
                 LeafRepo.setDisconnected("local")
                 if (Settings.mqttUser.isNotEmpty()) {
                     updateForeground("Локально нет · MQTT…")
@@ -182,6 +195,7 @@ class LeafMonitorService : Service() {
     private suspend fun runLocal() {
         updateForeground("Локальный режим")
         var syncedAt = 0L
+        var lastScanMs = 0L
         while (monitoring) {
             val s = LocalApi.status(this)
             if (s != null) {
@@ -192,6 +206,17 @@ class LeafMonitorService : Service() {
                     syncHistory()
                 }
             } else {
+                val now = System.currentTimeMillis()
+                if (now - lastScanMs > 300_000L) {
+                    lastScanMs = now
+                    val board = BoardDiscovery.scanSubnet(this, 400)
+                    if (board != null) {
+                        Settings.localHost = board.host
+                        Settings.localPort = board.port
+                        updateForeground("Найдена плата: ${board.host}")
+                        continue
+                    }
+                }
                 LeafRepo.setDisconnected("local")
                 updateForeground("Нет связи с платой")
                 handleState(LeafRepo.state.value)

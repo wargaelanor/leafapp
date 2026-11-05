@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -804,7 +805,7 @@ private fun CommandPad(
         }
         HoldAction(
             onTrigger = { onCommand("hvac", setpoint.toDouble(), minutes) },
-            modifier = Modifier.size(164.dp),
+            modifier = Modifier.size(164.dp).offset(y = (-10).dp),
             idleProgress = timerProgress,
         ) { _, _ ->
             Surface(
@@ -836,7 +837,10 @@ private fun CommandPad(
             }
         }
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .offset(y = (-20).dp),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             CircleCommand("Вспышка фар", Icons.Outlined.Lightbulb) {
