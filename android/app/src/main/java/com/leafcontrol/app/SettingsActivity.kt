@@ -63,7 +63,10 @@ class SettingsActivity : ComponentActivity() {
         window.navigationBarColor = Color.TRANSPARENT
         setContent {
             LeafTheme {
-                Surface(Modifier.fillMaxSize()) { NativeSettings() }
+                Surface(
+                    Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) { NativeSettings() }
             }
         }
     }
