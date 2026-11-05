@@ -139,6 +139,7 @@ class LeafMonitorService : Service() {
 
     private fun startMonitor() {
         monitoring = true
+        LeafRepo.setMqttConnected(false)
         monitorJob?.cancel()
         monitorJob = scope.launch {
             val mode = Settings.mode
@@ -201,6 +202,7 @@ class LeafMonitorService : Service() {
 
     private suspend fun runMqtt() {
         if (Settings.mqttUser.isEmpty()) {
+            LeafRepo.setMqttConnected(false)
             updateForeground("MQTT не настроен")
             return
         }
@@ -215,6 +217,7 @@ class LeafMonitorService : Service() {
             vehicleId = Settings.vehicleId,
             onConnected = { ok ->
                 scope.launch {
+                    LeafRepo.setMqttConnected(ok)
                     if (ok) {
                         updateForeground("MQTT · подключено")
                         LeafRepo.monitorText.value = "MQTT · подключено"
@@ -320,6 +323,7 @@ class LeafMonitorService : Service() {
 
     private fun stopMonitor() {
         monitoring = false
+        LeafRepo.setMqttConnected(false)
         monitorJob?.cancel()
         mqttClient?.stop()
         LeafRepo.mqtt = null

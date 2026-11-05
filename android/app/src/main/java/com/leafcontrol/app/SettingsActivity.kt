@@ -122,7 +122,12 @@ class SettingsActivity : ComponentActivity() {
                     listOf("auto" to "Авто", "local" to "Локально", "mqtt" to "MQTT").forEach { (value, label) ->
                         FilterChip(
                             selected = mode == value,
-                            onClick = { mode = value },
+                            onClick = {
+                                mode = value
+                                Settings.mode = value
+                                if (Settings.monitorEnabled) LeafMonitorService.reload(ctx)
+                                Toast.makeText(ctx, "Режим: $label", Toast.LENGTH_SHORT).show()
+                            },
                             label = { Text(label, fontSize = 12.sp) },
                         )
                     }

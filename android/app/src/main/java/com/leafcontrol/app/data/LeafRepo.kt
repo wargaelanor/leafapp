@@ -16,6 +16,7 @@ object LeafRepo {
     val trips = MutableStateFlow<List<Trip>>(emptyList())
     val charges = MutableStateFlow<List<Charge>>(emptyList())
     val monitorText = MutableStateFlow("Мониторинг выключен")
+    val mqttConnected = MutableStateFlow(false)
 
     @Volatile
     var mqtt: MqttWssClient? = null
@@ -51,10 +52,16 @@ object LeafRepo {
 
     fun onMqttConnected() {
         boardOnline = true
+        mqttConnected.value = true
         state.update { it.copy(connected = true, transport = "mqtt") }
     }
 
+    fun setMqttConnected(ok: Boolean) {
+        mqttConnected.value = ok
+    }
+
     fun setDisconnected(transport: String) {
+        if (transport == "mqtt") mqttConnected.value = false
         state.update { it.copy(connected = false, transport = transport) }
         cache(state.value)
     }

@@ -28,6 +28,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.PagerSnapDistance
@@ -94,6 +96,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.leafcontrol.app.BuildConfig
@@ -128,6 +131,7 @@ private val tabs = listOf(
 @Composable
 fun MainScreen(vm: LeafViewModel = viewModel()) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val mqttConnected by LeafRepo.mqttConnected.collectAsStateWithLifecycle()
     val trips by vm.trips.collectAsStateWithLifecycle()
     val charges by vm.charges.collectAsStateWithLifecycle()
     val snack = remember { SnackbarHostState() }
@@ -187,6 +191,7 @@ fun MainScreen(vm: LeafViewModel = viewModel()) {
                         } else {
                             MoreScreen(
                                 state = state,
+                                mqttConnected = mqttConnected,
                                 onSettings = { vm.openSettings() },
                                 onCheckUpdate = { vm.checkUpdate() },
                             )
@@ -980,7 +985,12 @@ private fun HistoryValue(value: String, label: String) {
 }
 
 @Composable
-private fun MoreScreen(state: LeafState, onSettings: () -> Unit, onCheckUpdate: () -> Unit) {
+private fun MoreScreen(
+    state: LeafState,
+    mqttConnected: Boolean,
+    onSettings: () -> Unit,
+    onCheckUpdate: () -> Unit,
+) {
     var showAbout by remember { mutableStateOf(false) }
     val ctx = LocalContext.current
     LazyColumn(
@@ -991,7 +1001,7 @@ private fun MoreScreen(state: LeafState, onSettings: () -> Unit, onCheckUpdate: 
         item { SectionTitle("ПРИЛОЖЕНИЕ") }
         item { MoreRow(Icons.Outlined.Settings, "Настройки", "Уведомления, связь, фоновый режим") { onSettings() } }
         item { MoreRow(Icons.Outlined.SystemUpdate, "Проверить обновление", "Версия ${BuildConfig.VERSION_NAME}") { onCheckUpdate() } }
-        item { MoreRow(Icons.Outlined.Info, "О приложении", "Leaf Control") { showAbout = true } }
+        item { MoreRow(Icons.Outlined.Info, "О приложении", "Возможности и версия") { showAbout = true } }
         item { SectionTitle("ПЛАТА") }
         item {
             MoreRow(Icons.Outlined.Wifi, "Настройки платы", "Wi-Fi, MQTT, тариф, OTA") {
@@ -1010,22 +1020,55 @@ private fun MoreScreen(state: LeafState, onSettings: () -> Unit, onCheckUpdate: 
                 color = MaterialTheme.colorScheme.surface,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        when (state.transport) {
-                            "local" -> "Локально · плата"
-                            "mqtt" -> "MQTT · удалённо"
-                            else -> "Нет связи"
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val modeLabel = when (Settings.mode) {
+                        "local" -> "Локально"
+                        "mqtt" -> "MQTT"
+                        else -> "Авто"
+                    }
+                    val mqttUsed = Settings.mode == "mqtt" ||
+                        (Settings.mode == "auto" && state.transport == "mqtt")
+                    StatusRow(
+                        "MQTT-сервер",
+                        when {
+                            !mqttUsed -> "не используется"
+                            mqttConnected -> "подключён"
+                            else -> "нет связи"
                         },
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        when {
+                            !mqttUsed -> null
+                            mqttConnected -> true
+                            else -> false
+                        },
                     )
-                    Text("Плата: ${Settings.localHost}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    StatusRow(
+                        "Плата",
+                        if (state.connected) "на связи" else "нет данных",
+                        if (state.connected) true else false,
+                    )
+                    Text(
+                        "Режим: $modeLabel",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        "Плата: ${Settings.localHost}",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     if (state.fw.isNotEmpty()) {
-                        Text("Прошивка: ${state.fw}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            "Прошивка: ${state.fw}",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                     if (state.uptime > 0) {
-                        Text("Работает: ${state.uptime / 60} мин", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            "Работает: ${state.uptime / 60} мин",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
             }
@@ -1033,20 +1076,76 @@ private fun MoreScreen(state: LeafState, onSettings: () -> Unit, onCheckUpdate: 
         item { Spacer(Modifier.height(4.dp)) }
     }
     if (showAbout) {
-        AlertDialog(
-            onDismissRequest = { showAbout = false },
-            title = { Text("Leaf Control") },
-            text = {
+        AboutDialog(state, onDismiss = { showAbout = false })
+    }
+}
+
+@Composable
+private fun StatusRow(label: String, value: String, ok: Boolean?) {
+    val dot = when (ok) {
+        true -> online
+        false -> MaterialTheme.colorScheme.error
+        null -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(8.dp).background(dot, CircleShape))
+        Spacer(Modifier.width(8.dp))
+        Text(label, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
+        Spacer(Modifier.weight(1f))
+        Text(value, fontSize = 12.sp, color = dot)
+    }
+}
+
+@Composable
+private fun AboutDialog(state: LeafState, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(18.dp),
+            color = MaterialTheme.colorScheme.surface,
+        ) {
+            Column(
+                Modifier
+                    .heightIn(max = 620.dp)
+                    .padding(20.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("Leaf Control", style = MaterialTheme.typography.headlineSmall)
                 Text(
-                    "Версия ${BuildConfig.VERSION_NAME}\n" +
-                        "Прошивка: ${state.fw.ifEmpty { "—" }}\n" +
-                        "Плата: ${state.board.ifEmpty { "—" }}"
+                    "Версия ${BuildConfig.VERSION_NAME}",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            },
-            confirmButton = {
-                TextButton(onClick = { showAbout = false }) { Text("Закрыть") }
-            },
-        )
+                Spacer(Modifier.height(4.dp))
+                Text("Возможности", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "• Гараж: заряд, запас хода, свет, двери, климат\n" +
+                        "• Дистанция: климат с температурой и таймером, зарядка, замки, свет, сигнал\n" +
+                        "• Состояние: заряд, мощность, напряжение, ток, температуры, SOH, пробег, VIN\n" +
+                        "• История поездок и зарядок, стоимость по тарифу, экспорт CSV и очистка\n" +
+                        "• Уведомления: зарядка, низкий заряд, офлайн, завершение поездки\n" +
+                        "• Офлайн-режим: последние данные и история доступны без интернета\n" +
+                        "• Локальная плата или MQTT, автоматический поиск платы в сети\n" +
+                        "• Автообновление приложения из GitHub\n" +
+                        "• Ярлыки: открыть/закрыть двери, климат вкл/выкл\n" +
+                        "• Светлая и тёмная тема, как на телефоне\n" +
+                        "• Настройки платы и OTA отдельными ссылками",
+                    fontSize = 13.sp,
+                    lineHeight = 20.sp,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Плата: ${state.board.ifEmpty { "—" }}\n" +
+                        "Прошивка: ${state.fw.ifEmpty { "—" }}",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+                    Text("Закрыть")
+                }
+            }
+        }
     }
 }
 
