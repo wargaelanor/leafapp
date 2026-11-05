@@ -13,6 +13,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -788,7 +789,7 @@ private fun CommandPad(
     Column(
         Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp),
@@ -803,13 +804,13 @@ private fun CommandPad(
         }
         HoldAction(
             onTrigger = { onCommand("hvac", setpoint.toDouble(), minutes) },
-            modifier = Modifier.size(136.dp),
+            modifier = Modifier.size(164.dp),
             idleProgress = timerProgress,
         ) { _, _ ->
             Surface(
                 shape = CircleShape,
                 color = MaterialTheme.colorScheme.surface,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                border = BorderStroke(1.2.dp, commandBorderColor()),
                 modifier = Modifier.fillMaxSize(),
             ) {
                 Column(
@@ -820,13 +821,13 @@ private fun CommandPad(
                     Icon(
                         Icons.Outlined.AcUnit,
                         contentDescription = null,
-                        modifier = Modifier.size(38.dp),
+                        modifier = Modifier.size(44.dp),
                         tint = MaterialTheme.colorScheme.primary,
                     )
-                    Spacer(Modifier.height(7.dp))
+                    Spacer(Modifier.height(8.dp))
                     Text(
                         "КЛИМАТ",
-                        fontSize = 10.sp,
+                        fontSize = 11.sp,
                         letterSpacing = 1.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface,
@@ -846,7 +847,7 @@ private fun CommandPad(
             }
         }
         Row(
-            Modifier.fillMaxWidth(),
+            Modifier.fillMaxWidth().padding(top = 2.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             PillCommand(
@@ -869,33 +870,37 @@ private fun CommandPad(
 }
 
 @Composable
+private fun commandBorderColor(): Color =
+    if (isSystemInDarkTheme()) Color(0xFF3F4B59) else Color(0xFFC9D2DC)
+
+@Composable
 private fun CircleCommand(label: String, icon: ImageVector, onClick: () -> Unit) {
     HoldAction(
         onTrigger = onClick,
-        modifier = Modifier.size(96.dp),
+        modifier = Modifier.size(116.dp),
     ) { _, _ ->
         Surface(
             shape = CircleShape,
             color = MaterialTheme.colorScheme.surface,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            border = BorderStroke(1.2.dp, commandBorderColor()),
             modifier = Modifier.fillMaxSize(),
         ) {
             Column(
-                Modifier.fillMaxSize().padding(8.dp),
+                Modifier.fillMaxSize().padding(10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
                 Icon(
                     icon,
                     contentDescription = label,
-                    modifier = Modifier.size(26.dp),
+                    modifier = Modifier.size(30.dp),
                     tint = MaterialTheme.colorScheme.onSurface,
                 )
                 Spacer(Modifier.height(5.dp))
                 Text(
                     label.uppercase(),
-                    fontSize = 8.sp,
-                    lineHeight = 10.sp,
+                    fontSize = 9.sp,
+                    lineHeight = 11.sp,
                     textAlign = TextAlign.Center,
                     maxLines = 2,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -914,20 +919,20 @@ private fun PillCommand(
 ) {
     HoldAction(
         onTrigger = onClick,
-        modifier = modifier.height(44.dp),
+        modifier = modifier.height(53.dp),
         ring = false,
     ) { progress, pressed ->
         Surface(
             shape = RoundedCornerShape(50),
             color = MaterialTheme.colorScheme.surface,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            border = BorderStroke(1.2.dp, commandBorderColor()),
             modifier = Modifier.fillMaxSize(),
         ) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(icon, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                    Icon(icon, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(6.dp))
-                    Text(label, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
+                    Text(label, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
                 }
                 if (pressed && progress > 0f) {
                     Box(
