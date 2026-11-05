@@ -695,7 +695,28 @@ private fun DistanceScreen(state: LeafState, onCommand: (String, Double, Int) ->
     var setpoint by rememberSaveable {
         mutableFloatStateOf(if (state.setpoint in 16.0..30.0) state.setpoint.toFloat() else 22f)
     }
-    var minutes by rememberSaveable { mutableIntStateOf(15) }
+    var minutes by remember { mutableIntStateOf(Settings.climateMinutes) }
+    var remaining by remember { mutableIntStateOf(0) }
+    var total by remember { mutableIntStateOf(0) }
+    var wasRunning by remember { mutableStateOf(false) }
+    LaunchedEffect(state.hvac, state.hvacTimer) {
+        if (!state.hvac) {
+            remaining = 0
+            total = 0
+            wasRunning = false
+            return@LaunchedEffect
+        }
+        if (!wasRunning) {
+            total = maxOf(state.hvacTimer, 1)
+            wasRunning = true
+        }
+        remaining = state.hvacTimer
+        while (remaining > 0) {
+            delay(60_000)
+            remaining -= 1
+        }
+    }
+    val climateRunning = state.fresh() && state.hvac && remaining > 0
     Column(
         Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -710,7 +731,11 @@ private fun DistanceScreen(state: LeafState, onCommand: (String, Double, Int) ->
                         Icon(Icons.Outlined.Thermostat, null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            if (state.hvac) "Климат включён" else "Климат выключен",
+                            when {
+                                !state.fresh() -> "Климат: нет данных"
+                                state.hvac -> "Климат включён"
+                                else -> "Климат выключен"
+                            },
                             fontSize = 16.sp,
                             color = MaterialTheme.colorScheme.onSurface,
                         )
@@ -729,18 +754,31 @@ private fun DistanceScreen(state: LeafState, onCommand: (String, Double, Int) ->
                         steps = 13,
                     )
                     Text("Длительность", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf(5, 10, 15, 20, 30).forEach { m ->
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        listOf(5, 10, 15, 20, 30, 0).forEach { m ->
                             FilterChip(
                                 selected = minutes == m,
-                                onClick = { minutes = m },
-                                label = { Text("$m", fontSize = 12.sp) },
+                                onClick = {
+                                    minutes = m
+                                    Settings.climateMinutes = m
+                                },
+                                label = {
+                                    Text(
+                                        if (m == 0) "∞" else "$m",
+                                        fontSize = 12.sp,
+                                        maxLines = 1,
+                                    )
+                                },
+                                modifier = Modifier.weight(1f),
                             )
                         }
                     }
-                    if (state.hvac && state.hvacTimer > 0) {
+                    if (climateRunning) {
                         Spacer(Modifier.height(10.dp))
-                        ClimateCountdown(state, minutes)
+                        ClimateCountdown(remaining, total)
                     }
                 }
             }
@@ -750,19 +788,8 @@ private fun DistanceScreen(state: LeafState, onCommand: (String, Double, Int) ->
 }
 
 @Composable
-private fun ClimateCountdown(state: LeafState, totalMinutes: Int) {
-    var remaining by remember { mutableIntStateOf(state.hvacTimer) }
-    LaunchedEffect(state.hvac, state.hvacTimer) {
-        remaining = state.hvacTimer
-        if (state.hvac) {
-            while (remaining > 0) {
-                delay(60_000)
-                remaining -= 1
-            }
-        }
-    }
-    val total = maxOf(totalMinutes, state.hvacTimer, remaining, 1)
-    val fraction = (remaining.toFloat() / total).coerceIn(0f, 1f)
+private fun ClimateCountdown(remaining: Int, total: Int) {
+    val fraction = (remaining.toFloat() / maxOf(total, 1)).coerceIn(0f, 1f)
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
         Box(
             Modifier
@@ -780,7 +807,7 @@ private fun ClimateCountdown(state: LeafState, totalMinutes: Int) {
             )
         }
         Text(
-            if (remaining > 0) "Климат выключится через $remaining мин" else "Климат выключается…",
+            "Климат выключится через $remaining мин",
             fontSize = 11.sp,
             color = MaterialTheme.colorScheme.primary,
         )

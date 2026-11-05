@@ -60,6 +60,11 @@ object Settings {
         get() = p.getBoolean("monitor", true)
         set(v) = p.edit().putBoolean("monitor", v).apply()
 
+    /** Climate duration selected on the Distance screen; 0 means no timer. */
+    var climateMinutes: Int
+        get() = p.getInt("climate_minutes", 15)
+        set(v) = p.edit().putInt("climate_minutes", v).apply()
+
     /** Last time the app asked GitHub for a newer APK. */
     var lastUpdateCheck: Long
         get() = p.getLong("last_update_check", 0L)
