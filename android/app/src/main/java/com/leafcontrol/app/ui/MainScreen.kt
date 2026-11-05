@@ -141,41 +141,48 @@ fun MainScreen(vm: LeafViewModel = viewModel()) {
     }
 
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        Column(Modifier.fillMaxSize().statusBarsPadding()) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+        ) {
             LeafTopBar(state) { vm.refresh() }
-            HorizontalPager(
-                state = pager,
-                modifier = Modifier.weight(1f),
-                beyondViewportPageCount = 1,
-            ) { page ->
-                when (page) {
-                    0 -> GarageScreen(
-                        state = state,
-                        onCommand = vm::command,
-                        onOpenTab = { scope.launch { pager.animateScrollToPage(it) } },
-                        onSettings = { vm.openSettings() },
-                    )
-                    1 -> DistanceScreen(state, vm::command)
-                    2 -> StateScreen(state)
-                    3 -> HistoryScreen(
-                        charges = charges,
-                        isCharges = true,
-                        onClear = { vm.clearHistory(true) },
-                        onExport = { exportCharges(vm, charges) },
-                    )
-                    else -> if (page == 4) {
-                        HistoryScreen(
-                            trips = trips,
-                            isCharges = false,
-                            onClear = { vm.clearHistory(false) },
-                            onExport = { exportTrips(vm, trips) },
-                        )
-                    } else {
-                        MoreScreen(
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                HorizontalPager(
+                    state = pager,
+                    modifier = Modifier.fillMaxSize(),
+                    beyondViewportPageCount = 1,
+                ) { page ->
+                    when (page) {
+                        0 -> GarageScreen(
                             state = state,
+                            onCommand = vm::command,
+                            onOpenTab = { scope.launch { pager.animateScrollToPage(it) } },
                             onSettings = { vm.openSettings() },
-                            onCheckUpdate = { vm.checkUpdate() },
                         )
+                        1 -> DistanceScreen(state, vm::command)
+                        2 -> StateScreen(state)
+                        3 -> HistoryScreen(
+                            charges = charges,
+                            isCharges = true,
+                            onClear = { vm.clearHistory(true) },
+                            onExport = { exportCharges(vm, charges) },
+                        )
+                        else -> if (page == 4) {
+                            HistoryScreen(
+                                trips = trips,
+                                isCharges = false,
+                                onClear = { vm.clearHistory(false) },
+                                onExport = { exportTrips(vm, trips) },
+                            )
+                        } else {
+                            MoreScreen(
+                                state = state,
+                                onSettings = { vm.openSettings() },
+                                onCheckUpdate = { vm.checkUpdate() },
+                            )
+                        }
                     }
                 }
             }
@@ -251,7 +258,6 @@ private fun LeafBottomBar(selected: Int, onSelect: (Int) -> Unit) {
             .fillMaxWidth()
             .heightIn(min = 56.dp)
             .background(MaterialTheme.colorScheme.surfaceVariant)
-            .navigationBarsPadding()
             .drawBehind {
                 drawLine(
                     outline,
