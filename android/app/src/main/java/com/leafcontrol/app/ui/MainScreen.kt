@@ -703,10 +703,9 @@ private fun DistanceScreen(state: LeafState, onCommand: (String, Double, Int) ->
     var minutes by rememberSaveable { mutableIntStateOf(15) }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        item { SectionTitle("КЛИМАТ") }
         item {
             Surface(
                 shape = RoundedCornerShape(14.dp),
@@ -787,13 +786,12 @@ private fun CommandPad(
     } else {
         0f
     }
-    Column(
-        Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
+    Box(Modifier.fillMaxWidth().height(465.dp)) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .align(Alignment.TopCenter),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             CircleCommand("Сигнал и фары", Icons.Outlined.VolumeUp) {
@@ -805,7 +803,10 @@ private fun CommandPad(
         }
         HoldAction(
             onTrigger = { onCommand("hvac", setpoint.toDouble(), minutes) },
-            modifier = Modifier.size(164.dp).offset(y = (-10).dp),
+            modifier = Modifier
+                .size(164.dp)
+                .align(Alignment.TopCenter)
+                .offset(y = 100.dp),
             idleProgress = timerProgress,
         ) { _, _ ->
             Surface(
@@ -840,7 +841,8 @@ private fun CommandPad(
             Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp)
-                .offset(y = (-20).dp),
+                .align(Alignment.TopCenter)
+                .offset(y = 245.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             CircleCommand("Вспышка фар", Icons.Outlined.Lightbulb) {
@@ -851,7 +853,10 @@ private fun CommandPad(
             }
         }
         Row(
-            Modifier.fillMaxWidth().padding(top = 2.dp),
+            Modifier
+                .fillMaxWidth()
+                .align(Alignment.TopCenter)
+                .offset(y = 385.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             PillCommand(
@@ -869,6 +874,9 @@ private fun CommandPad(
             "Удерживайте 1,5 с",
             fontSize = 10.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = 445.dp),
         )
     }
 }
