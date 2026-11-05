@@ -257,9 +257,18 @@ class MainActivity : ComponentActivity() {
         val host = Settings.localHost
         val port = Settings.localPort
         thread(isDaemon = true) {
-            if (probe(host, port) || probe("leaf.local", 80)) {
+            if (probe(host, port)) {
                 runOnUiThread {
-                    if (!isFinishing && !isDestroyed) loadBoard()
+                    if (!isFinishing && !isDestroyed) loadBoard(host, port)
+                }
+                return@thread
+            }
+            if (probe("leaf.local", 80)) {
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+                    Settings.localHost = "leaf.local"
+                    Settings.localPort = 80
+                    loadBoard("leaf.local", 80)
                 }
                 return@thread
             }
