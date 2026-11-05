@@ -29,6 +29,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerDefaults
+import androidx.compose.foundation.pager.PagerSnapDistance
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -153,6 +155,11 @@ fun MainScreen(vm: LeafViewModel = viewModel()) {
                     state = pager,
                     modifier = Modifier.fillMaxSize(),
                     beyondViewportPageCount = 1,
+                    flingBehavior = PagerDefaults.flingBehavior(
+                        state = pager,
+                        pagerSnapDistance = PagerSnapDistance.atMost(1),
+                        snapPositionalThreshold = 0.2f,
+                    ),
                 ) { page ->
                     when (page) {
                         0 -> GarageScreen(
