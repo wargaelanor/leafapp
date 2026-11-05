@@ -38,6 +38,7 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.concurrent.thread
+import kotlin.math.roundToInt
 
 /**
  * The main UI is the real PWA, not a simplified Compose copy: the user asked for
@@ -119,7 +120,11 @@ class MainActivity : ComponentActivity() {
             mediaPlaybackRequiresUserGesture = false
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             cacheMode = WebSettings.LOAD_DEFAULT
-            textZoom = 100
+            // Match Chrome: honour the page's viewport meta and the phone's
+            // font scale instead of rendering at a fixed desktop width.
+            useWideViewPort = true
+            loadWithOverviewMode = false
+            textZoom = (resources.configuration.fontScale * 100).roundToInt()
         }
         web.addJavascriptInterface(Bridge(), "LeafNative")
         web.webViewClient = object : WebViewClient() {
@@ -223,6 +228,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        web.settings.textZoom = (newConfig.fontScale * 100).roundToInt()
         applyTheme()
         applyPageInsets()
     }
@@ -242,29 +248,50 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun loadBoard() {
-        web.loadUrl("http://${Settings.localHost}:${Settings.localPort}/app")
+    private fun loadBoard(host: String = Settings.localHost, port: Int = Settings.localPort) {
+        val h = if (host.contains(":")) "[$host]" else host
+        web.loadUrl("http://$h:$port/app")
     }
 
     private fun probeBoardThenLoad() {
         val host = Settings.localHost
         val port = Settings.localPort
         thread(isDaemon = true) {
-            val ok = try {
-                val c = URL("http://$host:$port/api/status").openConnection() as HttpURLConnection
-                c.connectTimeout = 1500
-                c.readTimeout = 1500
-                c.requestMethod = "GET"
-                val code = c.responseCode
-                c.disconnect()
-                code in 200..399
-            } catch (_: Exception) {
-                false
+            if (probe(host, port) || probe("leaf.local", 80)) {
+                runOnUiThread {
+                    if (!isFinishing && !isDestroyed) loadBoard()
+                }
+                return@thread
             }
+            // No saved address. The board advertises _http._tcp as "leaf";
+            // discover it instead of asking for an IP.
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
-                if (ok) loadBoard() else web.loadUrl(Settings.appUrl)
+                BoardDiscovery.discoverNsd(this, 3000) { board ->
+                    if (isFinishing || isDestroyed) return@discoverNsd
+                    if (board != null) {
+                        Settings.localHost = board.host
+                        Settings.localPort = board.port
+                        loadBoard(board.host, board.port)
+                    } else {
+                        web.loadUrl(Settings.appUrl)
+                    }
+                }
             }
+        }
+    }
+
+    private fun probe(host: String, port: Int, timeoutMs: Int = 1000): Boolean {
+        return try {
+            val c = URL("http://$host:$port/api/status").openConnection() as HttpURLConnection
+            c.connectTimeout = timeoutMs
+            c.readTimeout = timeoutMs
+            c.requestMethod = "GET"
+            val code = c.responseCode
+            c.disconnect()
+            code in 200..399
+        } catch (_: Exception) {
+            false
         }
     }
 
@@ -305,6 +332,11 @@ class MainActivity : ComponentActivity() {
     /** Pad the PWA's .app container, not the WebView, so 100dvh stays correct. */
     private fun applyPageInsets() {
         if (!::web.isInitialized) return
+        // Android insets are physical pixels; CSS px in the WebView are dp.
+        // Passing 90 px as 90 CSS px made the header ~2.7x too tall.
+        val density = resources.displayMetrics.density.coerceAtLeast(1f)
+        val topCss = (insetTop / density).roundToInt()
+        val bottomCss = (insetBottom / density).roundToInt()
         web.evaluateJavascript(
             """
             (function(){
@@ -314,10 +346,10 @@ class MainActivity : ComponentActivity() {
                 if(!el){el=document.createElement('style');el.id=id;(document.head||document.documentElement).appendChild(el);}
                 el.textContent=
                   '.app{padding-top:0!important;padding-bottom:0!important}'+
-                  '.appbar{height:calc(48px + ${insetTop}px)!important;padding-top:${insetTop}px!important;box-sizing:border-box!important}'+
-                  '.tabbar{height:calc(56px + ${insetBottom}px)!important;padding-bottom:${insetBottom}px!important;box-sizing:border-box!important}'+
-                  '.screen{padding-bottom:calc(72px + ${insetBottom}px)!important}'+
-                  '.screens{padding-bottom:calc(24px + ${insetBottom}px)!important}';
+                  '.appbar{height:calc(48px + ${topCss}px)!important;padding-top:${topCss}px!important;box-sizing:border-box!important}'+
+                  '.tabbar{height:calc(56px + ${bottomCss}px)!important;padding-bottom:${bottomCss}px!important;box-sizing:border-box!important}'+
+                  '.screen{padding-bottom:calc(72px + ${bottomCss}px)!important}'+
+                  '.screens{padding-bottom:calc(24px + ${bottomCss}px)!important}';
               }catch(e){}
             })();
             """.trimIndent(),
@@ -341,39 +373,61 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun maybeCheckUpdate() {
+        if (!Settings.autoUpdate) return
         if (System.currentTimeMillis() - Settings.lastUpdateCheck < 24 * 60 * 60 * 1000L) return
-        Settings.lastUpdateCheck = System.currentTimeMillis()
-        checkUpdate()
+        checkUpdate(manual = false)
     }
 
     private fun forceCheckUpdate() {
-        Settings.lastUpdateCheck = System.currentTimeMillis()
-        checkUpdate()
+        checkUpdate(manual = true)
     }
 
-    private fun checkUpdate() {
+    private fun checkUpdate(manual: Boolean) {
+        if (manual) Toast.makeText(this, "Проверяем обновление…", Toast.LENGTH_SHORT).show()
         thread(isDaemon = true) {
-            val update = try {
-                UpdateChecker.check(this)
-            } catch (_: Exception) {
-                null
-            }
-            if (update == null) return@thread
-            runOnUiThread {
-                if (isFinishing || isDestroyed) return@runOnUiThread
-                updateDialog?.dismiss()
-                updateDialog = AlertDialog.Builder(this)
-                    .setTitle("Доступно обновление ${update.version}")
-                    .setMessage(
-                        update.notes.take(900).ifBlank {
-                            "Новая версия приложения Leaf Control."
+            try {
+                val update = UpdateChecker.check(this)
+                Settings.lastUpdateCheck = System.currentTimeMillis()
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+                    if (update == null) {
+                        if (manual) {
+                            Toast.makeText(
+                                this,
+                                "У вас последняя версия",
+                                Toast.LENGTH_SHORT
+                            ).show()
                         }
-                    )
-                    .setPositiveButton("Скачать") { _, _ -> downloadUpdate(update) }
-                    .setNegativeButton("Позже", null)
-                    .show()
+                    } else {
+                        showUpdateDialog(update)
+                    }
+                }
+            } catch (_: Exception) {
+                runOnUiThread {
+                    if (manual && !isFinishing && !isDestroyed) {
+                        Toast.makeText(
+                            this,
+                            "Не удалось проверить обновление",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
             }
         }
+    }
+
+    private fun showUpdateDialog(update: UpdateChecker.Update) {
+        updateDialog?.dismiss()
+        updateDialog = AlertDialog.Builder(this)
+            .setTitle("Доступно обновление ${update.version}")
+            .setMessage(
+                update.notes.take(900).ifBlank {
+                    "Новая версия приложения Leaf Control."
+                }
+            )
+            .setPositiveButton("Скачать") { _, _ -> downloadUpdate(update) }
+            .setNegativeButton("Позже", null)
+            .show()
     }
 
     private fun downloadUpdate(update: UpdateChecker.Update) {

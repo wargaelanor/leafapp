@@ -12,8 +12,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,9 +23,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -58,9 +60,8 @@ class SettingsActivity : ComponentActivity() {
     @Composable
     private fun NativeSettings() {
         val ctx = LocalContext.current
-        var host by remember { mutableStateOf(Settings.localHost) }
-        var port by remember { mutableStateOf(Settings.localPort.toString()) }
         var monitor by remember { mutableStateOf(Settings.monitorEnabled) }
+        var autoUpdate by remember { mutableStateOf(Settings.autoUpdate) }
 
         var chargeStart by remember { mutableStateOf(Settings.notifyChargeStart) }
         var chargeEnd by remember { mutableStateOf(Settings.notifyChargeEnd) }
@@ -82,92 +83,67 @@ class SettingsActivity : ComponentActivity() {
             Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text("Настройки Android", style = MaterialTheme.typography.headlineSmall)
-            Text(
-                "Внешний вид и все функции — в самой PWA. Здесь адрес платы, фоновая служба и уведомления.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Text("Настройки", style = MaterialTheme.typography.headlineSmall)
 
-            Text("Плата", style = MaterialTheme.typography.titleMedium)
-            OutlinedTextField(
-                value = host,
-                onValueChange = { host = it },
-                label = { Text("IP или leaf.local") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-            OutlinedTextField(
-                value = port,
-                onValueChange = { port = it },
-                label = { Text("Порт") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-            )
-            SwitchRow("Фоновый мониторинг", monitor) {
-                monitor = it
-                Settings.monitorEnabled = it
-                if (it) LeafMonitorService.reload(ctx) else LeafMonitorService.stop(ctx)
-            }
-
-            Text("Уведомления", style = MaterialTheme.typography.titleMedium)
-            SwitchRow("Зарядка началась", chargeStart) {
-                chargeStart = it
-                Settings.notifyChargeStart = it
-            }
-            SwitchRow("Зарядка завершена", chargeEnd) {
-                chargeEnd = it
-                Settings.notifyChargeEnd = it
-            }
-            SwitchRow("Низкий заряд", lowSoc) {
-                lowSoc = it
-                Settings.notifyLowSoc = it
-            }
-            OutlinedTextField(
-                value = lowThreshold,
-                onValueChange = { lowThreshold = it.filter(Char::isDigit).take(2) },
-                label = { Text("Порог низкого заряда, %") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-            )
-            SwitchRow("Плата не в сети", offline) {
-                offline = it
-                Settings.notifyOffline = it
-            }
-            SwitchRow("Поездка завершена", tripEnd) {
-                tripEnd = it
-                Settings.notifyTripEnd = it
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(
-                    onClick = {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                            ContextCompat.checkSelfPermission(
-                                ctx, Manifest.permission.POST_NOTIFICATIONS
-                            ) != PackageManager.PERMISSION_GRANTED
-                        ) {
-                            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-                        } else {
-                            Toast.makeText(ctx, "Уведомления уже разрешены", Toast.LENGTH_SHORT).show()
-                        }
+            Group("Уведомления") {
+                SwitchRow("Зарядка началась", chargeStart) {
+                    chargeStart = it
+                    Settings.notifyChargeStart = it
+                }
+                SwitchRow("Зарядка завершена", chargeEnd) {
+                    chargeEnd = it
+                    Settings.notifyChargeEnd = it
+                }
+                SwitchRow("Низкий заряд", lowSoc) {
+                    lowSoc = it
+                    Settings.notifyLowSoc = it
+                }
+                OutlinedTextField(
+                    value = lowThreshold,
+                    onValueChange = {
+                        lowThreshold = it.filter(Char::isDigit).take(2)
+                        lowThreshold.toIntOrNull()?.let { v -> Settings.lowSocThreshold = v }
                     },
-                    modifier = Modifier.weight(1f)
-                ) { Text("Разрешить") }
-
-                OutlinedButton(
-                    onClick = {
-                        Notifications.event(ctx, "Leaf Control", "Тестовое уведомление")
-                    },
-                    modifier = Modifier.weight(1f)
-                ) { Text("Проверить") }
-            }
-            OutlinedButton(
-                onClick = {
+                    label = { Text("Порог низкого заряда, %") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+                SwitchRow("Плата не в сети", offline) {
+                    offline = it
+                    Settings.notifyOffline = it
+                }
+                SwitchRow("Поездка завершена", tripEnd) {
+                    tripEnd = it
+                    Settings.notifyTripEnd = it
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                                ContextCompat.checkSelfPermission(
+                                    ctx, Manifest.permission.POST_NOTIFICATIONS
+                                ) != PackageManager.PERMISSION_GRANTED
+                            ) {
+                                notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            } else {
+                                Toast.makeText(ctx, "Уведомления уже разрешены", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Разрешить") }
+                    OutlinedButton(
+                        onClick = {
+                            Notifications.event(ctx, "Leaf Control", "Тестовое уведомление")
+                            Toast.makeText(ctx, "Проверьте шторку", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Проверить") }
+                }
+                ActionRow("Каналы уведомлений") {
                     try {
                         ctx.startActivity(
                             Intent(AndroidSettings.ACTION_APP_NOTIFICATION_SETTINGS)
@@ -176,70 +152,47 @@ class SettingsActivity : ComponentActivity() {
                     } catch (_: Exception) {
                         Toast.makeText(ctx, "Настройки каналов недоступны", Toast.LENGTH_SHORT).show()
                     }
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Каналы уведомлений") }
+                }
+            }
 
-            Text("Обновление", style = MaterialTheme.typography.titleMedium)
-            OutlinedButton(
-                onClick = {
-                    lowThreshold.toIntOrNull()?.let { Settings.lowSocThreshold = it }
+            Group("Приложение") {
+                SwitchRow("Фоновый мониторинг", monitor) {
+                    monitor = it
+                    Settings.monitorEnabled = it
+                    if (it) LeafMonitorService.reload(ctx) else LeafMonitorService.stop(ctx)
+                }
+                ActionRow("Открыть плату") {
                     ctx.startActivity(
                         Intent(ctx, MainActivity::class.java)
-                            .putExtra("check_update", true)
+                            .putExtra("open_board", true)
                             .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                     )
                     finish()
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Проверить обновление") }
-            Text(
-                "Версия ${BuildConfig.VERSION_NAME}. Приложение проверяет последний APK в релизах GitHub.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Spacer(Modifier.height(4.dp))
-            Button(
-                onClick = {
-                    Settings.localHost = host
-                    port.toIntOrNull()?.let { if (it in 1..65535) Settings.localPort = it }
-                    Settings.monitorEnabled = monitor
-                    lowThreshold.toIntOrNull()?.let { Settings.lowSocThreshold = it }
-                    finish()
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Сохранить") }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(
-                    onClick = {
-                        Settings.localHost = host
-                        port.toIntOrNull()?.let { if (it in 1..65535) Settings.localPort = it }
-                        startActivity(
-                            Intent(ctx, MainActivity::class.java)
-                                .putExtra("open_board", true)
-                                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                        )
-                        finish()
-                    },
-                    modifier = Modifier.weight(1f)
-                ) { Text("Открыть плату") }
-                OutlinedButton(
-                    onClick = {
-                        startActivity(
-                            Intent(ctx, MainActivity::class.java)
-                                .putExtra("open_pwa", true)
-                                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                        )
-                        finish()
-                    },
-                    modifier = Modifier.weight(1f)
-                ) { Text("PWA") }
-            }
-
-            OutlinedButton(
-                onClick = {
+                }
+                ActionRow("Найти плату") {
+                    Toast.makeText(ctx, "Ищем плату в этой сети…", Toast.LENGTH_SHORT).show()
+                    Thread {
+                        val board = BoardDiscovery.scanSubnet()
+                        runOnUiThread {
+                            if (board != null) {
+                                Settings.localHost = board.host
+                                Settings.localPort = board.port
+                                Toast.makeText(
+                                    ctx,
+                                    "Плата: ${board.host}",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            } else {
+                                Toast.makeText(
+                                    ctx,
+                                    "Плата не найдена. Подключитесь к её Wi-Fi или домашней сети.",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        }
+                    }.start()
+                }
+                ActionRow("Разрешить работу в фоне") {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                         val i = Intent(AndroidSettings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
                             .setData(Uri.parse("package:${ctx.packageName}"))
@@ -251,23 +204,101 @@ class SettingsActivity : ComponentActivity() {
                             )
                         }
                     }
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Разрешить работу в фоне") }
+                }
+            }
 
+            // Update stays outside the grouped cards, as requested.
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 1.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SwitchRow("Проверять обновления автоматически", autoUpdate) {
+                        autoUpdate = it
+                        Settings.autoUpdate = it
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            ctx.startActivity(
+                                Intent(ctx, MainActivity::class.java)
+                                    .putExtra("check_update", true)
+                                    .addFlags(
+                                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                                            Intent.FLAG_ACTIVITY_SINGLE_TOP
+                                    )
+                            )
+                            finish()
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Проверить обновление") }
+                    Text(
+                        "Версия ${BuildConfig.VERSION_NAME}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+        }
+    }
+
+    @Composable
+    private fun Group(title: String, content: @Composable ColumnScope.() -> Unit) {
+        Column(
+            Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
             Text(
-                "MQTT настраивается в самой PWA: Ещё → Настройки. Приложение автоматически передаёт эти данные фоновой службе.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                title,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 4.dp)
             )
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 1.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                    content = content
+                )
+            }
         }
     }
 
     @Composable
     private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(label, modifier = Modifier.weight(1f))
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
             Switch(checked = checked, onCheckedChange = onChange)
+        }
+    }
+
+    @Composable
+    private fun ActionRow(label: String, onClick: () -> Unit) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .clickable { onClick() },
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+            Text(
+                "›",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

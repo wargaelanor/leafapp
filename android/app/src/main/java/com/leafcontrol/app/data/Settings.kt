@@ -65,6 +65,11 @@ object Settings {
         get() = p.getLong("last_update_check", 0L)
         set(v) = p.edit().putLong("last_update_check", v).apply()
 
+    /** Check GitHub automatically once a day; manual checks still work. */
+    var autoUpdate: Boolean
+        get() = p.getBoolean("auto_update", true)
+        set(v) = p.edit().putBoolean("auto_update", v).apply()
+
     var notifyChargeStart: Boolean
         get() = p.getBoolean("n_charge_start", true)
         set(v) = p.edit().putBoolean("n_charge_start", v).apply()

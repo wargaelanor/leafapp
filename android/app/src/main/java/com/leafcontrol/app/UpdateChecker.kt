@@ -33,7 +33,9 @@ object UpdateChecker {
             conn.readTimeout = 12000
             conn.setRequestProperty("User-Agent", "LeafControl/$current")
             conn.setRequestProperty("Accept", "application/vnd.github+json")
-            if (conn.responseCode !in 200..299) return null
+            if (conn.responseCode !in 200..299) {
+                throw java.io.IOException("GitHub HTTP ${conn.responseCode}")
+            }
             val body = conn.inputStream.bufferedReader().use { it.readText() }
             val releases = JSONArray(body)
             for (i in 0 until releases.length()) {
