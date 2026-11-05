@@ -1,53 +1,82 @@
 #include <Arduino.h>
+#include "boardConfig.h"
+#if defined(BOARD_CAR_CAN_MCP2515) && (BOARD_CAR_CAN_MCP2515)
+#include <SPI.h>
+#include "mcp2515.h"
+#else
 #include "driver/twai.h"
+#endif
 #include "canInterface.h"
 #include "canLogger.h"
-#include "boardConfig.h"
 
 // Implemented in canLeafZE1.cpp. Declared here so the low-level CAN layer can
 // gate the one unproven payload (OBD-II VIN read) without including the whole
 // vehicle header.
 bool vinObdProbeActive();
 
-// --- CAN SETTINGS (Port B) ---
-#define CAN_TX_PIN BOARD_CAN_TX
-#define CAN_RX_PIN BOARD_CAN_RX
-
 unsigned long logStartTime = 0;
-static bool busOffRecoveryAttempted = false;
 // Per-frame serial logging costs ~3-5 ms per frame at 115200 — off by default.
 // Enable temporarily via CLI: log on / log off
 bool canLogFrames = false;
 uint32_t canFramesB = 0;
 
-void print_can_message(twai_message_t &message) {
-      unsigned long message_time = millis() - logStartTime;
-      Serial.print(message_time/1000.0, 3);
-      Serial.print(" 0x");
-      Serial.print(message.identifier, HEX);
-      Serial.print(" ");
-      for (int d = 0; d < message.data_length_code; d++) {
-        Serial.print(" 0x");
-        if (message.data[d] < 0x10) Serial.print("0");
-        Serial.print(message.data[d], HEX);
-        Serial.print(" ");
-      }
-      Serial.println();
+#if defined(BOARD_CAR_CAN_MCP2515) && (BOARD_CAR_CAN_MCP2515)
+// --- Port B on a second MCP2515 ------------------------------------------
+// T-Call: CAR-CAN is not TWAI anymore, it uses MCP2515 #1 on the same SPI bus
+// as the EV-CAN controller. Each chip has its own CS line; the library toggles
+// CS inside every SPI transaction, so the bus is safe to share.
+static MCP2515 carCan(BOARD_CAR_MCP_CS, 4000000, &SPI);
+static bool carCanOk = false;
+static CAN_CLOCK carCanClock = MCP_16MHZ;
+static const char* carCanClockName = "16MHz";
+
+// CANSTAT is the cheapest way to prove the chip is really there: a floating
+// MISO reads 0x00/0xFF, a live controller in config mode reads 0x8X.
+static uint8_t carMcpReadStat() {
+  pinMode(BOARD_CAR_MCP_CS, OUTPUT);
+  digitalWrite(BOARD_CAR_MCP_CS, HIGH);
+  SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
+  digitalWrite(BOARD_CAR_MCP_CS, LOW);
+  SPI.transfer(0x03);   // READ
+  SPI.transfer(0x0E);   // CANSTAT
+  uint8_t value = SPI.transfer(0x00);
+  digitalWrite(BOARD_CAR_MCP_CS, HIGH);
+  SPI.endTransaction();
+  return value;
 }
 
-// Helper function to send CAN message. Returns false if the frame was dropped
-// (bus-off / stopped / TX queue full) so callers can retry the step.
-static bool sendCANInternal(uint32_t id, const uint8_t* data, uint8_t len, bool bypassWhitelist) {
-#if LEAF_CAN_RX_ONLY
-  // Software interlock in addition to TWAI_MODE_LISTEN_ONLY. This blocks web,
-  // MQTT, modem/call, timer refresh, VIN/ISO-TP and sequence TX paths.
-  (void)id;
-  (void)data;
-  (void)len;
-  return false;
+static bool carCanApplyClock(CAN_CLOCK clock, const char* name) {
+  if (carCan.reset() != MCP2515::ERROR_OK) return false;
+  if (carCan.setBitrate(CAN_500KBPS, clock) != MCP2515::ERROR_OK) return false;
+  if (carCan.setNormalMode() != MCP2515::ERROR_OK) return false;
+  carCanClock = clock;
+  carCanClockName = name;
+  return true;
+}
 #else
-  // Final TX interlock: ZE1 OVMS remote commands use only the CAR-CAN wake
-  // frame and these exact 0x56E payloads. All other traffic is rejected here.
+// --- Port B on TWAI ------------------------------------------------------
+#define CAN_TX_PIN BOARD_CAN_TX
+#define CAN_RX_PIN BOARD_CAN_RX
+static bool busOffRecoveryAttempted = false;
+
+void print_can_message(twai_message_t &message) {
+  unsigned long message_time = millis() - logStartTime;
+  Serial.print(message_time / 1000.0, 3);
+  Serial.print(" 0x");
+  Serial.print(message.identifier, HEX);
+  Serial.print(" ");
+  for (int d = 0; d < message.data_length_code; d++) {
+    Serial.print(" 0x");
+    if (message.data[d] < 0x10) Serial.print("0");
+    Serial.print(message.data[d], HEX);
+  }
+  Serial.println();
+}
+#endif
+
+// Final TX interlock: ZE1 OVMS remote commands use only these exact frames.
+// All other traffic is rejected here regardless of the transport.
+static bool txAllowed(uint32_t id, const uint8_t* data, uint8_t len, bool bypassWhitelist) {
   static const uint8_t allowed56e[][4] = {
     {0x46, 0x08, 0x00, 0x00}, // wake/init
     {0x4E, 0x08, 0x12, 0x00}, // climate on
@@ -109,7 +138,39 @@ static bool sendCANInternal(uint32_t id, const uint8_t* data, uint8_t len, bool 
     canLoggerAppend('B', '!', id, data, len);
     return false;
   }
+  return true;
+}
+
+// Helper function to send CAN message. Returns false if the frame was dropped
+// (bus-off / stopped / TX queue full) so callers can retry the step.
+static bool sendCANInternal(uint32_t id, const uint8_t* data, uint8_t len, bool bypassWhitelist) {
+#if LEAF_CAN_RX_ONLY
+  // Software interlock in addition to TWAI_MODE_LISTEN_ONLY. This blocks web,
+  // MQTT, modem/call, timer refresh, VIN/ISO-TP and sequence TX paths.
+  (void)id;
+  (void)data;
+  (void)len;
+  (void)bypassWhitelist;
+  return false;
+#else
+  if (!txAllowed(id, data, len, bypassWhitelist)) return false;
   if (len > 8) len = 8;
+
+#if defined(BOARD_CAR_CAN_MCP2515) && (BOARD_CAR_CAN_MCP2515)
+  if (!carCanOk) return false;
+  struct can_frame frame;
+  memset(&frame, 0, sizeof(frame));
+  frame.can_id = id;
+  frame.can_dlc = len;
+  memcpy(frame.data, data, len);
+  bool ok = carCan.sendMessage(&frame) == MCP2515::ERROR_OK;
+  canLoggerAppend('B', ok ? '>' : '!', id, data, len);
+  if (canLogFrames) {
+    Serial.printf("%s 0x%03lX len=%u\n", ok ? ">" : "!",
+                  (unsigned long)id, (unsigned)len);
+  }
+  return ok;
+#else
   twai_status_info_t status;
   if (twai_get_status_info(&status) == ESP_OK) {
     if (status.state == TWAI_STATE_BUS_OFF) {
@@ -147,9 +208,46 @@ static bool sendCANInternal(uint32_t id, const uint8_t* data, uint8_t len, bool 
   }
   return ok;
 #endif
+#endif
 }
 
 void setupCAN() {
+#if defined(BOARD_CAR_CAN_MCP2515) && (BOARD_CAR_CAN_MCP2515)
+  // EV-CAN initialised the shared SPI bus first (setupEvCAN runs before this).
+  // Re-assert every CS line, including the reserved third controller.
+  pinMode(BOARD_CAR_MCP_CS, OUTPUT);
+  digitalWrite(BOARD_CAR_MCP_CS, HIGH);
+  pinMode(BOARD_EVCAN_SPI_CS, OUTPUT);
+  digitalWrite(BOARD_EVCAN_SPI_CS, HIGH);
+#if BOARD_AUXCAN_SPI_CS > 0
+  pinMode(BOARD_AUXCAN_SPI_CS, OUTPUT);
+  digitalWrite(BOARD_AUXCAN_SPI_CS, HIGH);
+  Serial.printf("CAN: MCP2515 #3 reserved on CS%d (not driven)\n", BOARD_AUXCAN_SPI_CS);
+#endif
+  SPI.begin(BOARD_CAN_SPI_SCLK, BOARD_CAN_SPI_MISO, BOARD_CAN_SPI_MOSI);
+  delay(5);
+  // A warm reboot leaves the controller in normal mode; reset first so CANSTAT
+  // can be used reliably as a presence check (config mode reads 0x8X).
+  carCan.reset();
+  uint8_t canstat = carMcpReadStat();
+  if ((canstat & 0xE0) != 0x80) {
+    carCanOk = false;
+    Serial.printf("CAR-CAN: MCP2515 #1 not responding (CS%d SCK%d MOSI%d MISO%d, CANSTAT=0x%02X)\n",
+                  BOARD_CAR_MCP_CS, BOARD_CAN_SPI_SCLK, BOARD_CAN_SPI_MOSI,
+                  BOARD_CAN_SPI_MISO, canstat);
+    return;
+  }
+
+  // Modules exist with 8, 16 and 20 MHz crystals. The old EV module on this
+  // car is 16 MHz; BOARD_CAR_MCP_CLOCK is the single place to change it.
+  if (carCanApplyClock(BOARD_CAR_MCP_CLOCK, BOARD_CAR_MCP_CLOCK_NAME)) {
+    carCanOk = true;
+    Serial.printf("CAR-CAN: MCP2515 #1 normal mode (Port B, 500k / %s, CS%d)\n",
+                  carCanClockName, BOARD_CAR_MCP_CS);
+  } else {
+    Serial.println("CAR-CAN: MCP2515 #1 bitrate/mode setup failed");
+  }
+#else
   twai_timing_config_t t_config = TWAI_TIMING_CONFIG_500KBITS();
   twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(
       (gpio_num_t)CAN_TX_PIN, (gpio_num_t)CAN_RX_PIN,
@@ -178,9 +276,26 @@ void setupCAN() {
   } else {
     Serial.println("Failed to start CAN driver");
   }
+#endif
 }
 
 void readAndHandleCANMessage() {
+#if defined(BOARD_CAR_CAN_MCP2515) && (BOARD_CAR_CAN_MCP2515)
+  if (!carCanOk) return;
+  int drained = 0;
+  // Drain both MCP2515 receive buffers every loop pass (bounded).
+  while (drained < 32 && carCan.checkReceive()) {
+    struct can_frame frame;
+    if (carCan.readMessage(&frame) != MCP2515::ERROR_OK) break;
+    uint8_t len = frame.can_dlc > 8 ? 8 : frame.can_dlc;
+    uint32_t id = frame.can_id & 0x1FFFFFFF;
+    handleReceivedMessage(id, frame.data, len);
+    canWatchRecord('B', id, frame.data, len);
+    canFramesB++;
+    canLoggerAppend('B', '<', id, frame.data, len);
+    drained++;
+  }
+#else
   twai_message_t message;
   int drained = 0;
   // Drain the whole RX queue each loop pass (bounded) — a single read per
@@ -196,13 +311,29 @@ void readAndHandleCANMessage() {
     }
     drained++;
   }
+#endif
 }
 
-// Keep Port B able to receive even when no command is transmitted. Bus-off
-// recovery used to live only inside sendCAN(), so a controller that went
-// bus-off while the car was asleep stayed deaf until the next command — and
-// if that command also failed, indefinitely.
+// Keep Port B able to receive even when no command is transmitted.
 void canMaintainBus() {
+#if defined(BOARD_CAR_CAN_MCP2515) && (BOARD_CAR_CAN_MCP2515)
+  if (!carCanOk) return;
+  // EFLG is an SPI read; once a second is plenty for error recovery.
+  static uint32_t lastCheckMs = 0;
+  uint32_t now = millis();
+  if (now - lastCheckMs < 1000UL) return;
+  lastCheckMs = now;
+  uint8_t flags = carCan.getErrorFlags();
+  if (flags & (MCP2515::EFLG_TXBO | MCP2515::EFLG_TXEP | MCP2515::EFLG_RXEP)) {
+    Serial.printf("CAR-CAN: MCP2515 error flags 0x%02X, re-initialising\n", flags);
+    if (!carCanApplyClock(carCanClock, carCanClockName)) {
+      carCanOk = false;
+      Serial.println("CAR-CAN: MCP2515 re-init failed");
+    }
+  } else if (flags & (MCP2515::EFLG_RX0OVR | MCP2515::EFLG_RX1OVR)) {
+    carCan.clearRXnOVRFlags();
+  }
+#else
   twai_status_info_t status;
   if (twai_get_status_info(&status) != ESP_OK) return;
   if (status.state == TWAI_STATE_BUS_OFF) {
@@ -217,12 +348,29 @@ void canMaintainBus() {
   } else if (busOffRecoveryAttempted) {
     busOffRecoveryAttempted = false;
   }
+#endif
 }
 
 // Drain Port B for a bounded time, blocking the loop. Used only while an
 // ISO-TP diagnostic reply is in flight: 198 bytes arrive back-to-back in a few
 // milliseconds, so the main loop must not be doing Wi-Fi work meanwhile.
 void canDrainFor(uint32_t ms) {
+#if defined(BOARD_CAR_CAN_MCP2515) && (BOARD_CAR_CAN_MCP2515)
+  if (!carCanOk) return;
+  uint32_t start = millis();
+  do {
+    while (carCan.checkReceive()) {
+      struct can_frame frame;
+      if (carCan.readMessage(&frame) != MCP2515::ERROR_OK) break;
+      uint8_t len = frame.can_dlc > 8 ? 8 : frame.can_dlc;
+      uint32_t id = frame.can_id & 0x1FFFFFFF;
+      handleReceivedMessage(id, frame.data, len);
+      canFramesB++;
+      canLoggerAppend('B', '<', id, frame.data, len);
+    }
+    delay(1);
+  } while (millis() - start < ms);
+#else
   twai_message_t message;
   uint32_t start = millis();
   do {
@@ -233,24 +381,41 @@ void canDrainFor(uint32_t ms) {
     }
     delay(1);
   } while (millis() - start < ms);
+#endif
 }
 
 uint8_t canBusState() {
+#if defined(BOARD_CAR_CAN_MCP2515) && (BOARD_CAR_CAN_MCP2515)
+  if (!carCanOk) return 0xFF;
+  uint8_t flags = carCan.getErrorFlags();
+  if (flags & MCP2515::EFLG_TXBO) return 2;             // like TWAI_STATE_BUS_OFF
+  if (flags & (MCP2515::EFLG_TXEP | MCP2515::EFLG_RXEP)) return 1;
+  return 0;                                             // running
+#else
   twai_status_info_t status;
   if (twai_get_status_info(&status) != ESP_OK) return 0xFF;
   return (uint8_t)status.state;
+#endif
 }
 
 uint8_t canBusTxErrors() {
+#if defined(BOARD_CAR_CAN_MCP2515) && (BOARD_CAR_CAN_MCP2515)
+  return carCanOk ? carCan.errorCountTX() : 0xFF;
+#else
   twai_status_info_t status;
   if (twai_get_status_info(&status) != ESP_OK) return 0xFF;
   return status.tx_error_counter;
+#endif
 }
 
 uint8_t canBusRxErrors() {
+#if defined(BOARD_CAR_CAN_MCP2515) && (BOARD_CAR_CAN_MCP2515)
+  return carCanOk ? carCan.errorCountRX() : 0xFF;
+#else
   twai_status_info_t status;
   if (twai_get_status_info(&status) != ESP_OK) return 0xFF;
   return status.rx_error_counter;
+#endif
 }
 
 bool sendCAN(uint32_t id, const uint8_t* data, uint8_t len) {
@@ -263,6 +428,7 @@ bool sendCAN(uint32_t id, const uint8_t* data, uint8_t len) {
 bool sendCANForced(uint32_t id, const uint8_t* data, uint8_t len) {
   return sendCANInternal(id, data, len, true);
 }
+
 void resetCanLogTimestamps() {
   logStartTime = millis();
 }

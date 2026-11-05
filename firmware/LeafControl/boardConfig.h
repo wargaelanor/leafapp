@@ -17,23 +17,39 @@
 #define BOARD_HAS_IP5306 1
 #define BOARD_HAS_MODEM 1   // SIM800 stays on 26/27/32/33; CAN uses other pins
 
-// CAR-CAN: built-in TWAI + MCP2551 transceiver.
-// GPIO35 is the onboard battery-voltage divider on this board and is held
-// high even with no battery, so it cannot be used as CAN RX. GPIO25 is free
-// (the MCP2515 driver polls, so its INT pin is optional).
-#define BOARD_CAN_TX 14
-#define BOARD_CAN_RX 25
+// T-Call: both CAN channels use external MCP2515 controllers on one SPI bus.
+// The onboard TWAI pins (14/25) are not used in this profile.
+//
+// IMPORTANT: the SIM800/IP5306 own GPIO4 (PWRKEY), 5 (RESET), 21/22 (PMU I2C),
+// 23 (POWER_ON), 26/27 (UART), 32 (DTR) and 33 (RI). SPI must never touch
+// them: GPIO5/21/23 in the draft wiring would reset the modem or kill the PMU.
+// Free pins after switching CAR-CAN from TWAI to MCP2515: 13, 14, 15, 18, 19,
+// 25. GPIO34 is input-only and also free. GPIO13 drives the onboard LED, so it
+// is left alone; GPIO15 is a strapping pin and is only used for the reserved
+// third controller (add its 10 kOhm CS pull-up when you wire it).
+#define BOARD_CAR_CAN_MCP2515 1
+#define BOARD_CAN_SPI_SCLK 18
+#define BOARD_CAN_SPI_MISO 34    // input-only pad, exactly what MISO needs
+#define BOARD_CAN_SPI_MOSI 19
+#define BOARD_CAR_MCP_CS   25    // MCP2515 #1: CAR-CAN (commands, normal mode)
+#define BOARD_EVCAN_SPI_CS 14    // MCP2515 #2: EV-CAN (listen-only)
+#define BOARD_AUXCAN_SPI_CS 15   // MCP2515 #3: reserved for the future, not driven
 
-// EV-CAN: MCP2515 over SPI + MCP2551 (listen-only, as on the T-2CAN).
-// GPIO34 is input-only and used for MISO. These pins do not touch SIM800
-// (26/27/32/33/4/23/5), PMU (21/22), PSRAM (16/17), flash (6-11) or any
-// strapping pin.
-#define BOARD_EVCAN_SPI_SCLK 19
-#define BOARD_EVCAN_SPI_MISO 34
-#define BOARD_EVCAN_SPI_MOSI 18
-#define BOARD_EVCAN_SPI_CS   13
-#define BOARD_EVCAN_INT      0    // polled driver; do not wire INT to GPIO25
+#define BOARD_EVCAN_SPI_SCLK BOARD_CAN_SPI_SCLK
+#define BOARD_EVCAN_SPI_MISO BOARD_CAN_SPI_MISO
+#define BOARD_EVCAN_SPI_MOSI BOARD_CAN_SPI_MOSI
+#define BOARD_EVCAN_INT      0    // polled driver; do not wire INT
 #define BOARD_EVCAN_MCP_RST  0    // 0 = tie RST to 3.3 V, no GPIO
+
+// Crystal on the MCP2515 modules. 16 MHz matches the module already used on
+// this car; the common blue clone boards often carry 8 MHz. If CAR-CAN stays
+// silent while the transceiver is wired, change this to MCP_8MHZ and rebuild.
+#define BOARD_CAR_MCP_CLOCK      MCP_16MHZ
+#define BOARD_CAR_MCP_CLOCK_NAME "16MHz"
+
+// Not used by this profile; kept defined so shared diagnostics compile.
+#define BOARD_CAN_TX 0
+#define BOARD_CAN_RX 0
 
 // Onboard SIM800L (LilyGO T-Call v1.4 / IP5306 schematic).
 #define BOARD_MODEM_RX 26
@@ -64,6 +80,7 @@
 #define BOARD_HAS_MODEM 1
 
 // CAR-CAN: built-in TWAI.
+#define BOARD_CAR_CAN_MCP2515 0
 #define BOARD_CAN_TX 7
 #define BOARD_CAN_RX 6
 
@@ -73,6 +90,7 @@
 #define BOARD_EVCAN_SPI_MOSI 11
 #define BOARD_EVCAN_SPI_CS   10
 #define BOARD_EVCAN_MCP_RST  9
+#define BOARD_AUXCAN_SPI_CS  0    // no third controller on this board
 
 // External SIM800 on the 13-pin header.
 #define BOARD_MODEM_RX 35

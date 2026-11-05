@@ -3,8 +3,8 @@
 Одна прошивка, два профиля сборки:
 
 - **T-2CAN** (ESP32-S3, 16 МБ flash): обе CAN-шины, внешний SIM800;
-- **TTGO T-Call 1.4** (ESP32-WROVER-IB, 4 МБ flash): обе CAN-шины
-  (TWAI + MCP2551 и MCP2515 + MCP2551), встроенный SIM800.
+- **TTGO T-Call 1.4** (ESP32-WROVER-IB, 4 МБ flash): обе CAN-шины на двух
+  MCP2515 (общая SPI-шина), встроенный SIM800.
 
 Подробности по пинам и ограничениям — в `docs/BOARDS.md`.
 

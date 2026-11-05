@@ -367,7 +367,8 @@ void setupEvCAN() {
                 (int)rst, canstat, cnf1raw, chipLooksValid ? "ok" : "unexpected",
                 digitalRead(EVCAN_SPI_CS));
   if (!chipLooksValid) {
-    Serial.println("EV-CAN: MCP2515 not responding (check 3V3, RST, CS13, SCK19, MOSI18, SO34)");
+    Serial.printf("EV-CAN: MCP2515 not responding (check 3V3, RST, CS%d, SCK%d, MOSI%d, MISO%d)\n",
+                  EVCAN_SPI_CS, EVCAN_SPI_SCLK, EVCAN_SPI_MOSI, EVCAN_SPI_MISO);
     return;
   }
   if (rst != MCP2515::ERROR_OK) {
