@@ -256,7 +256,7 @@ private fun LeafBottomBar(selected: Int, onSelect: (Int) -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
-            .heightIn(min = 56.dp)
+            .height(56.dp)
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .drawBehind {
                 drawLine(
@@ -342,33 +342,38 @@ private fun GarageScreen(
         item { QuickActions(state, onCommand) }
         item { SectionTitle("ФУНКЦИИ") }
         item {
-            FunctionRow(
-                Icons.Outlined.DirectionsCar,
-                "Состояние авто",
-                "Батарея ${pct(state.soc)} · ${if (state.hvac) "климат включён" else "климат выключен"}",
-            ) { onOpenTab(2) }
-        }
-        item {
-            FunctionRow(
-                Icons.Outlined.BatteryChargingFull,
-                "Зарядка",
-                "${chargerRu(state)} · ${fmt(state.power, 1)} кВт",
-            ) { onOpenTab(1) }
-        }
-        item {
-            FunctionRow(
-                Icons.Outlined.Route,
-                "Поездки",
-                "История поездок и зарядок",
-            ) { onOpenTab(4) }
-        }
-        item {
-            FunctionRow(
-                Icons.Outlined.Settings,
-                "Настройки",
-                "Уведомления, связь и обновления",
-                onSettings,
-            )
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surface,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column {
+                    FunctionRow(
+                        Icons.Outlined.DirectionsCar,
+                        "Состояние авто",
+                        "Батарея ${pct(state.soc)} · ${if (state.hvac) "климат включён" else "климат выключен"}",
+                    ) { onOpenTab(2) }
+                    FunctionDivider()
+                    FunctionRow(
+                        Icons.Outlined.BatteryChargingFull,
+                        "Зарядка",
+                        "${chargerRu(state)} · ${fmt(state.power, 1)} кВт",
+                    ) { onOpenTab(1) }
+                    FunctionDivider()
+                    FunctionRow(
+                        Icons.Outlined.Route,
+                        "Поездки",
+                        "История поездок и зарядок",
+                    ) { onOpenTab(4) }
+                    FunctionDivider()
+                    FunctionRow(
+                        Icons.Outlined.Settings,
+                        "Настройки",
+                        "Уведомления, связь и обновления",
+                        onSettings,
+                    )
+                }
+            }
         }
         item { Spacer(Modifier.height(4.dp)) }
     }
@@ -535,36 +540,42 @@ private fun FunctionRow(
     subtitle: String,
     onClick: () -> Unit,
 ) {
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surface,
-        modifier = Modifier.fillMaxWidth().clickable { onClick() },
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        Surface(
+            shape = RoundedCornerShape(10.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            modifier = Modifier.size(38.dp),
         ) {
-            Surface(
-                shape = RoundedCornerShape(10.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                modifier = Modifier.size(38.dp),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
-                }
+            Box(contentAlignment = Alignment.Center) {
+                Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
             }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(title, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface)
-                Text(subtitle, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Icon(
-                Icons.Outlined.ChevronRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface)
+            Text(subtitle, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Icon(
+            Icons.Outlined.ChevronRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
+}
+
+@Composable
+private fun FunctionDivider() {
+    androidx.compose.material3.HorizontalDivider(
+        color = MaterialTheme.colorScheme.outline,
+        thickness = 1.dp,
+        modifier = Modifier.padding(start = 62.dp),
+    )
 }
 
 @Composable
