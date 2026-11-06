@@ -126,8 +126,8 @@ static ConfigString<64> conf_ovms_module_password("ovms_module_pw", "");
 static ConfigBool       conf_ovms_tls("ovms_tls", true);
 static ConfigBool       conf_sleep_enabled("sleep_enable", false);
 static ConfigInt        conf_sleep_after_h("sleep_after_h", 24);
-static ConfigInt        conf_wake_fast_min("wake_fast_min", 10);
-static ConfigInt        conf_wake_slow_min("wake_slow_min", 60);
+static ConfigInt        conf_wake_fast_min("wake_fast_min", 5);
+static ConfigInt        conf_wake_slow_min("wake_slow_min", 15);
 static ConfigBool       conf_modem_enable("modem_enable", false);
 static ConfigInt        conf_modem_type("modem_type", 0); // 0=SIM800, 1=A7670
 static ConfigInt        conf_modem_pwrkey("modem_pwrkey", 0); // GPIO, 0=not managed

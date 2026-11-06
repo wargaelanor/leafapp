@@ -24,10 +24,10 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.116-TCALL"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.118-TCALL"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: two MCP2515 CAN buses + SIM800"
 #else
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.116-CMD"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.118-CMD"
 #define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: stable scroll, Wi-Fi scan"
 #endif
 
@@ -145,6 +145,17 @@ bool doorFR = false;
 bool doorRL = false;
 bool doorRR = false;
 bool doorTrunk = false;
+
+// Deferred-publish state for the throttled EV-CAN handlers: a frame captured
+// inside a throttle window sets the pending flag and managePendingPublishes()
+// sends the latest cached value once the window expires.
+static bool packPubPending = false;
+static unsigned long packPubLastMs = 0;
+static bool gidsPubPending = false;
+static unsigned long gidsPubLastMs = 0;
+static bool ambientPubPending = false;
+static unsigned long ambientPubLastMs = 0;
+void managePendingPublishes();
 float currentSetpoint = -1.0;
 float currentFanSpeed = -1.0;
 bool isHeatingEnabled = false;
@@ -199,6 +210,7 @@ struct RtcState {
   uint8_t cachedCharger;
   uint8_t cachedFlags;        // bit0 charging, bit1 hvac, bit2 heat, bit3 cool, bit4 packValid
   uint8_t cachedVent;
+  uint8_t cachedDoors;        // bit0 FL, bit1 FR, bit2 RL, bit3 RR, bit4 trunk, bit5 headlights
 };
 RTC_DATA_ATTR RtcState rtcState = {0};
 bool wokeFromTimer = false;
@@ -219,7 +231,7 @@ void noteUserActivity() {
 
 // Restore cached state after deep sleep wake
 void restoreFromRtc() {
-  if (rtcState.magic != 0xA71EE502) return;
+  if (rtcState.magic != 0xA71EE503) return;
   currentSOC = rtcState.cachedSOC;
   cabinTemp = rtcState.cachedCabin;
   currentSetpoint = rtcState.cachedSetpoint;
@@ -241,6 +253,12 @@ void restoreFromRtc() {
   evData.odometerKm = rtcState.cachedOdometerKm;
   memcpy(evData.vin, rtcState.cachedVin, sizeof(evData.vin));
   evData.vin[17] = '\0';
+  doorFL = rtcState.cachedDoors & 0x01;
+  doorFR = rtcState.cachedDoors & 0x02;
+  doorRL = rtcState.cachedDoors & 0x04;
+  doorRR = rtcState.cachedDoors & 0x08;
+  doorTrunk = rtcState.cachedDoors & 0x10;
+  headlightsState = rtcState.cachedDoors & 0x20;
 
   // Push restored values into MQTT dirty flags so reconnect sync republishes them
   if (currentSOC >= 0) mqttUpdateSOC(currentSOC);
@@ -259,11 +277,13 @@ void restoreFromRtc() {
   if (evData.vehicleOn >= 0) mqttUpdateVehicleOn(evData.vehicleOn == 1);
   if (evData.odometerKm > 0) mqttUpdateOdometer(evData.odometerKm);
   if (strlen(evData.vin) == 17) mqttUpdateVin(evData.vin);
+  mqttUpdateDoors(doorFL, doorFR, doorRL, doorRR, doorTrunk);
+  mqttUpdateHeadlights(headlightsState);
 }
 
 // Save current state to RTC memory
 void saveToRtc() {
-  rtcState.magic = 0xA71EE502;
+  rtcState.magic = 0xA71EE503;
   rtcState.cachedSOC = currentSOC;
   rtcState.cachedCabin = cabinTemp;
   rtcState.cachedSetpoint = currentSetpoint;
@@ -285,6 +305,12 @@ void saveToRtc() {
                        | (isCoolingEnabled ? 0x08 : 0x00)
                        | (evData.packDataValid ? 0x10 : 0x00);
   rtcState.cachedVent = (uint8_t)currentVentilationMode;
+  rtcState.cachedDoors = (doorFL ? 0x01 : 0x00)
+                       | (doorFR ? 0x02 : 0x00)
+                       | (doorRL ? 0x04 : 0x00)
+                       | (doorRR ? 0x08 : 0x00)
+                       | (doorTrunk ? 0x10 : 0x00)
+                       | (headlightsState ? 0x20 : 0x00);
 }
 
 void resetData() {
@@ -1355,19 +1381,21 @@ void handleEvSOH(int sohPercent) {
 
 void handleEvGids(int gids) {
   noteCarActivity();
-  static unsigned long lastPub = 0;
   static int lastPubbed = -1;
   evData.gids = gids;
   if (gids == lastPubbed) return;
-  if (lastPub != 0 && millis() - lastPub < 30000) return;
-  lastPub = millis();
+  if (gidsPubLastMs != 0 && millis() - gidsPubLastMs < 30000) {
+    gidsPubPending = true;
+    return;
+  }
+  gidsPubLastMs = millis();
+  gidsPubPending = false;
   lastPubbed = gids;
   mqttUpdateGids(gids);
 }
 
 void handleEvPackStatus(float voltage, float current) {
   noteCarActivity();
-  static unsigned long lastPub = 0;
   static float lastPubbedV = -1.0f;
   static float lastPubbedA = 0.0f;
   evData.packVoltage = voltage;
@@ -1376,11 +1404,40 @@ void handleEvPackStatus(float voltage, float current) {
   evData.packDataValid = true;
   evData.packVoltageValid = true;
   if (voltage == lastPubbedV && current == lastPubbedA) return;
-  if (lastPub != 0 && millis() - lastPub < 5000) return;
-  lastPub = millis();
+  if (packPubLastMs != 0 && millis() - packPubLastMs < 5000) {
+    packPubPending = true;  // window full: publish the LATEST value when it opens
+    return;
+  }
+  packPubLastMs = millis();
+  packPubPending = false;
   lastPubbedV = voltage;
   lastPubbedA = current;
   mqttUpdatePackStatus(voltage, current);
+}
+
+// Fires the deferred publishes scheduled by the throttled EV handlers above.
+// Called from loop() so a value captured inside a throttle window is still
+// sent (with the freshest cached reading) once the window expires.
+void managePendingPublishes() {
+  unsigned long now = millis();
+  if (packPubPending && evData.packDataValid &&
+      now - packPubLastMs >= 5000) {
+    packPubPending = false;
+    packPubLastMs = now;
+    mqttUpdatePackStatus(evData.packVoltage, evData.packCurrent);
+  }
+  if (gidsPubPending &&
+      now - gidsPubLastMs >= 30000) {
+    gidsPubPending = false;
+    gidsPubLastMs = now;
+    mqttUpdateGids(evData.gids);
+  }
+  if (ambientPubPending && evData.ambientTemp > -90 &&
+      now - ambientPubLastMs >= 60000) {
+    ambientPubPending = false;
+    ambientPubLastMs = now;
+    mqttUpdateAmbient(evData.ambientTemp);
+  }
 }
 
 void handleOdometer(uint32_t km) {
@@ -1399,12 +1456,15 @@ void handleVin(const char* vin) {
 
 void handleEvAmbient(float ambientTemp) {
   noteCarActivity();
-  static unsigned long lastPub = 0;
   static float lastPubbed = -99.0f;
   evData.ambientTemp = ambientTemp;
   if (ambientTemp == lastPubbed) return;
-  if (lastPub != 0 && millis() - lastPub < 60000) return;
-  lastPub = millis();
+  if (ambientPubLastMs != 0 && millis() - ambientPubLastMs < 60000) {
+    ambientPubPending = true;
+    return;
+  }
+  ambientPubLastMs = millis();
+  ambientPubPending = false;
   lastPubbed = ambientTemp;
   mqttUpdateAmbient(ambientTemp);
 }
@@ -2233,6 +2293,7 @@ void loop() {
   }
   manageWiFi();
   processSerialInput();
+  managePendingPublishes();
 
   // --- Power save: deep sleep after idle period ---
   // Never sleep while charging or running remote climate
@@ -2249,8 +2310,10 @@ void loop() {
       lastIdleTickMs += secs * 1000UL;
     }
 
-    // After timer wake, stay awake for a grace window (web UI / MQTT publish)
-    const unsigned long WAKE_GRACE_MS = 90000;
+    // After timer wake, stay awake for a grace window (web UI / MQTT publish).
+    // 180 s: enough for the first CAN refresh + reconnect + full metric sync
+    // even on the modem link, where the reconnect alone can take ~10 s.
+    const unsigned long WAKE_GRACE_MS = 180000;
     bool graceOver = !wokeFromTimer || (millis() >= WAKE_GRACE_MS);
 
     if (graceOver && rtcState.idleSec >= (uint64_t)getSleepAfterHours() * 3600ULL) {
@@ -2260,6 +2323,7 @@ void loop() {
       Serial.printf("### Deep sleep: idle %llu s, wake in %llu min ###\n",
                     (unsigned long long)rtcState.idleSec,
                     (unsigned long long)intervalMin);
+      mqttGoingOffline();   // retained "connected = no" before power drop
       modemPowerOffNow();
       saveToRtc();
       esp_sleep_enable_timer_wakeup(intervalMin * 60ULL * 1000000ULL);

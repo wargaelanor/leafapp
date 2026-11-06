@@ -9,6 +9,9 @@ void setupMQTT();
 void manageMQTT();
 bool mqttIsConnected();
 void mqttDisconnect();
+// Publish the retained offline marker and disconnect; call before deep sleep
+// so clients see "connected = no" immediately instead of waiting for the will.
+void mqttGoingOffline();
 
 // Status updates
 void mqttUpdateSOC(float soc);
