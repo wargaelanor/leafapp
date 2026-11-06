@@ -24,10 +24,10 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.125-TCALL"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.126-TCALL"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: two MCP2515 CAN buses + SIM800"
 #else
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.125-CMD"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.126-CMD"
 #define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: stable scroll, Wi-Fi scan"
 #endif
 
@@ -1610,7 +1610,6 @@ void handleEvPackStatus(float voltage, float current) {
   evData.packPower = voltage * current / 1000.0f;
   evData.packDataValid = true;
   evData.packVoltageValid = true;
-  if (voltage == lastPubbedV && current == lastPubbedA) return;
   // Fast lane while the car is doing something (driving / charging): the
   // MQTT subscribers see V/A move in ~real time. Idle: the old 5 s window.
   const bool active = (evData.vehicleOn == 1) || (fabsf(current) > 1.0f);
@@ -1619,11 +1618,17 @@ void handleEvPackStatus(float voltage, float current) {
     packPubPending = true;  // window full: publish the LATEST value when it opens
     return;
   }
+  // While active the 1 s cadence is a heartbeat too: identical values are
+  // still published, so the live view visibly ticks. Idle keeps the
+  // change-only dedup to spare the broker.
+  if (!active && voltage == lastPubbedV && current == lastPubbedA) return;
   packPubLastMs = millis();
   packPubPending = false;
   lastPubbedV = voltage;
   lastPubbedA = current;
-  mqttUpdatePackStatus(voltage, current);
+  // force: while active the 1 s cadence is a heartbeat — identical values
+  // are still published so the live view visibly ticks.
+  mqttUpdatePackStatus(voltage, current, active);
 }
 
 // Fires the deferred publishes scheduled by the throttled EV handlers above.
@@ -1638,7 +1643,9 @@ void managePendingPublishes() {
       now - packPubLastMs >= packWindow) {
     packPubPending = false;
     packPubLastMs = now;
-    mqttUpdatePackStatus(evData.packVoltage, evData.packCurrent);
+    const bool activeNow =
+        (evData.vehicleOn == 1 || fabsf(evData.packCurrent) > 1.0f);
+    mqttUpdatePackStatus(evData.packVoltage, evData.packCurrent, activeNow);
   }
   if (gidsPubPending &&
       now - gidsPubLastMs >= 30000) {

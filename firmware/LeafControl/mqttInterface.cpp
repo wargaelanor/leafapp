@@ -612,8 +612,8 @@ void mqttUpdateGids(int gids) {
   gidsDirty = !mqttPublishMetric(ovmsMetrics.gids, (float)gids, "%.0f");
 }
 
-void mqttUpdatePackStatus(float voltage, float current) {
-  if (lastPackVoltage == voltage && lastPackCurrent == current && !packDirty) return;
+void mqttUpdatePackStatus(float voltage, float current, bool force) {
+  if (!force && lastPackVoltage == voltage && lastPackCurrent == current && !packDirty) return;
   lastPackVoltage = voltage;
   lastPackCurrent = current;
   bool ok = mqttPublishMetric(ovmsMetrics.packVoltage, voltage, "%.1f");

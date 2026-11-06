@@ -26,7 +26,7 @@ void mqttUpdateDoors(bool fl, bool fr, bool rl, bool rr, bool trunk);
 void mqttUpdateLock(bool locked);
 void mqttUpdateSOH(int soh);
 void mqttUpdateGids(int gids);
-void mqttUpdatePackStatus(float voltage, float current);
+void mqttUpdatePackStatus(float voltage, float current, bool force = false);
 void mqttUpdateOdometer(uint32_t km);
 void mqttUpdateVin(const char* vin);
 void mqttUpdateHvacTimer(uint16_t minutes);
