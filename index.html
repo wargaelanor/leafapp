@@ -1254,11 +1254,17 @@ function updateGpsRow(){
 
 // ---------- local mode ----------
 let pollBusy = false;
+// Abort a hung request so pollBusy never locks up permanently (PW-1)
+function fetchTimeout(ms){
+  const ctl=new AbortController();
+  setTimeout(()=>ctl.abort(),ms);
+  return ctl.signal;
+}
 async function pollLocal(){
   if(pollBusy) return; // no overlapping requests if the board hangs
   pollBusy = true;
   try{
-    const r = await fetch('/api/status');
+    const r = await fetch('/api/status', {signal:fetchTimeout(5000)});
     if(!r.ok) throw 0;
     const j = await r.json();
     S.fw=j.fw||''; S.fwDesc=j.fw_desc||'';
@@ -1292,7 +1298,7 @@ async function localCmd(path){
   try{
     // POST-only routes (CSRF protection); redirect:'manual' keeps the 303
     // from downloading the whole HTML page
-    const r = await fetch(path,{method:'POST', redirect:'manual'});
+    const r = await fetch(path,{method:'POST', redirect:'manual', signal:fetchTimeout(5000)});
     if(r.type==='opaqueredirect'){ return true; } // 303 = accepted
     if(!r.ok){ toast('Команда отклонена'); return false; }
     return true;
@@ -1345,7 +1351,16 @@ function mqttConnect(){
     const s=document.createElement('script');
     s.src='https://unpkg.com/mqtt@5.3.5/dist/mqtt.min.js';
     s.onload=()=>mqttConnect();
-    s.onerror=()=>{ updateBadge(); toast('Не удалось загрузить MQTT-клиент'); };
+    // CDN fallback: unpkg goes down occasionally; retry via jsdelivr once
+    s.onerror=()=>{
+      if(!s._fallback){
+        s._fallback=true;
+        s.src='https://cdn.jsdelivr.net/npm/mqtt@5.3.5/dist/mqtt.min.js';
+        s.onerror=()=>{ updateBadge(); toast('Не удалось загрузить MQTT-клиент'); };
+      } else {
+        updateBadge(); toast('Не удалось загрузить MQTT-клиент');
+      }
+    };
     document.head.appendChild(s);
     return;
   }
@@ -1370,7 +1385,11 @@ function mqttConnect(){
     const base='ovms/'+cfg.user+'/'+(cfg.vid||'leaf')+'/';
     // Firmware replies to client/<id>/response/<cmd> — check before the
     // metric prefix (client topics live OUTSIDE metric/)
-    if(topic.startsWith(base+'client/')){ toast(t); return; }
+    if(topic.startsWith(base+'client/')){
+      toast(t);
+      remoteStatusDone(t);
+      return;
+    }
     const p=base+'metric/';
     if(!topic.startsWith(p)) return;
     const m=topic.slice(p.length);
@@ -1534,13 +1553,25 @@ function cmd(type, quiet){
   remoteStatus(type);
   return Promise.resolve(true);
 }
+let remoteStatusTimer=null;
 function remoteStatus(type){
+  // No fake "выполнено": nothing is confirmed until the board replies on
+  // client/pwa/response/<c>. After 15 s the request is shown as unanswered.
   const el=$('remote-status');
   const names={charge:'Зарядка',chargeoff:'Стоп зарядки',lock:'Закрытие',unlock:'Открытие',refresh:'Обновление',hvac:'Климат',
     lights:'Вспышка фар',hornlights:'Сигнал и фары',rhloff:'Отмена'};
   el.textContent=names[type]+': запрос отправлен…';
-  setTimeout(()=>{el.textContent=names[type]+': выполнено';},2000);
-  setTimeout(()=>{el.textContent='Выберите действие';},4500);
+  clearTimeout(remoteStatusTimer);
+  remoteStatusTimer=setTimeout(()=>{
+    el.textContent=names[type]+': нет ответа — плата офлайн или занята';
+    setTimeout(()=>{el.textContent='Выберите действие';},6000);
+  },15000);
+}
+// Called when any response from the board arrives while a request is pending
+function remoteStatusDone(text){
+  clearTimeout(remoteStatusTimer);
+  const el=$('remote-status');
+  if(el){ el.textContent='Ответ: '+text; setTimeout(()=>{el.textContent='Выберите действие';},8000); }
 }
 
 // ---------- garage quick actions ----------

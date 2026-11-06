@@ -4,6 +4,7 @@
 #include <Client.h>
 #include "configuration.h"
 #include "modemHw.h"
+#include "modemPins.h"
 #include "canLeafZE1.h"
 #include "mqttInterface.h"
 
@@ -14,7 +15,11 @@ static const uint32_t GPS_POLL_MS = 20000;
 static const uint32_t ATTACH_AT_TIMEOUT_MS = 90000;
 static const uint32_t ATTACH_SIM_TIMEOUT_MS = 15000;
 static const uint32_t ATTACH_NET_TIMEOUT_MS = 120000;
-static const uint8_t SIM800_RI_PIN = 38;
+static const uint8_t SIM800_RI_PIN = MODEM_RI_PIN;
+static const uint32_t CALL_POLL_MS = 1000;
+// In call-only mode the modem is polled rarely unless the RI line says a call
+// is coming in; the module itself can sleep in between.
+static const uint32_t CALL_POLL_SLOW_MS = 15000;
 
 static volatile uint8_t stateVal = (uint8_t)ModemState::OFF;
 static volatile bool taskBusy = false;
@@ -23,51 +28,66 @@ static unsigned long wifiUpSinceMs = 0;
 static unsigned long wifiDownSinceMs = 0;
 static unsigned long failedAtMs = 0;
 static unsigned long lastGpsPollMs = 0;
-static volatile bool callRingPending = false;
-static bool callRequestedStateValid = false;
-static bool callRequestedClimateOn = false;
+static unsigned long lastCallPollMs = 0;
+static String pendingCaller;
 static volatile int8_t callCanRequest = 0;
 
-static void IRAM_ATTR callRingIsr() { callRingPending = true; }
+// Actual HVAC state decoded from EV-CAN 0x54B in LeafControl.ino.
+extern bool isHvacOn;
+extern void cancelHvacTimer();
+extern void setBoardEpoch(uint32_t epoch);
 
 static bool gpsHasFix = false;
 static float gpsLat = 0, gpsLon = 0, gpsAlt = 0, gpsSpd = 0;
 static unsigned long gpsFixMs = 0;
 
-static bool use7670() { return getModemType() == 1; }
-
 static void setState(ModemState s) { stateVal = (uint8_t)s; }
 
-static const char* apnFor() { return use7670() ? getModem7670Apn() : getModem800Apn(); }
-static const char* userFor() { return use7670() ? getModem7670User() : getModem800User(); }
-static const char* passFor() { return use7670() ? getModem7670Pass() : getModem800Pass(); }
+static const char* apnFor() { return getModem800Apn(); }
+static const char* userFor() { return getModem800User(); }
+static const char* passFor() { return getModem800Pass(); }
 
 static void pulsePwrKey(bool powerOn) {
   int pin = getModemPwrKey();
+#if LEAF_BOARD_TCALL
+  if (pin <= 0) pin = BOARD_MODEM_PWRKEY;   // onboard SIM800L on the T-Call
+#endif
   if (pin <= 0) return;
-  if (use7670()) modem7670::hwPulsePwrKey(pin, powerOn);
-  else modem800::hwPulsePwrKey(pin, powerOn);
+  modem800::hwPulsePwrKey(pin, powerOn);
 }
 
 static void modemHwBegin() {
-  if (use7670()) modem7670::hwBegin();
-  else modem800::hwBegin();
+  modem800::hwBegin();
 }
 
-static bool hwTestAt(uint32_t ms) { return use7670() ? modem7670::hwTestAt(ms) : modem800::hwTestAt(ms); }
-static bool hwSimReady() { return use7670() ? modem7670::hwSimReady() : modem800::hwSimReady(); }
+static bool hwTestAt(uint32_t ms) { return modem800::hwTestAt(ms); }
+static bool hwSimReady() { return modem800::hwSimReady(); }
 static bool hwSelectNetwork(const char* apn, const char* user) {
-  return use7670() ? modem7670::hwSelectNetwork(apn, user) : modem800::hwSelectNetwork(apn, user);
+  return modem800::hwSelectNetwork(apn, user);
 }
-static bool hwNetworkConnected() { return use7670() ? modem7670::hwNetworkConnected() : modem800::hwNetworkConnected(); }
-static int16_t hwSignal() { return use7670() ? modem7670::hwSignal() : modem800::hwSignal(); }
+static bool hwNetworkConnected() { return modem800::hwNetworkConnected(); }
+static int16_t hwSignal() { return modem800::hwSignal(); }
 static bool hwGprsConnect(const char* apn, const char* u, const char* p) {
-  return use7670() ? modem7670::hwGprsConnect(apn, u, p) : modem800::hwGprsConnect(apn, u, p);
+  return modem800::hwGprsConnect(apn, u, p);
 }
-static bool hwGprsDisconnect() { return use7670() ? modem7670::hwGprsDisconnect() : modem800::hwGprsDisconnect(); }
+static bool hwGprsDisconnect() { return modem800::hwGprsDisconnect(); }
+
+static bool callOnlyMode() {
+  return getRemoteTransport() == RemoteTransport::CALL;
+}
+
+// In call-only mode the modem must run even if the generic modem switch is off:
+// it exists solely to receive calls.
+static bool modemShouldRun() {
+#if !BOARD_HAS_MODEM
+  return false;
+#else
+  return getModemEnable() || callOnlyMode();
+#endif
+}
 
 static bool callControlEnabled() {
-  return getModemEnable() && !use7670() && getModemCallEnabled();
+  return callOnlyMode() || (getModemEnable() && getModemCallEnabled());
 }
 
 static String normalizePhone(const char* value) {
@@ -100,9 +120,10 @@ static void attachFailed(const char* message) {
 
 static void attachTask(void*) {
   setState(ModemState::STARTING);
-  Serial.printf("[modem] attach start (%s)\n", use7670() ? "A7670" : "SIM800");
+  Serial.println("[modem] attach start (SIM800)");
 
-  bool needData = WiFi.status() != WL_CONNECTED;
+  // Call-only mode never needs a data connection, even without Wi-Fi.
+  bool needData = (WiFi.status() != WL_CONNECTED) && !callOnlyMode();
   if (needData && strlen(apnFor()) == 0) {
     attachFailed("[modem] APN empty — cannot attach");
     return;
@@ -158,6 +179,17 @@ static void attachTask(void*) {
   }
   Serial.printf("[modem] network ok, rssi=%d\n", (int)hwSignal());
 
+  // The board has no RTC. The SIM network reports wall-clock time even when
+  // GPRS is not used, so history keeps proper timestamps on a T-Call.
+  uint32_t networkTime = 0;
+  for (uint8_t attempt = 0; attempt < 5; attempt++) {
+    if (modem800::hwNetworkTime(&networkTime)) {
+      setBoardEpoch(networkTime);
+      break;
+    }
+    vTaskDelay(2000);
+  }
+
   if (callControlEnabled()) modem800::hwPrepareVoiceCalls();
 
   if (!needData) {
@@ -177,11 +209,6 @@ static void attachTask(void*) {
   }
   Serial.println("[modem] GPRS up");
 
-  if (use7670() && getModem7670Gps()) {
-    if (modem7670::hwEnableGps()) Serial.println("[modem] GPS enabled");
-    else Serial.println("[modem] GPS enable failed");
-  }
-
   setState(ModemState::READY);
   Serial.println("[modem] READY");
   taskBusy = false;
@@ -192,7 +219,6 @@ static void stopTask(void*) {
   setState(ModemState::STOPPING);
   Serial.println("[modem] stopping...");
   hwGprsDisconnect();
-  if (use7670()) modem7670::hwEnableGps();
   pulsePwrKey(false);
   setState(ModemState::OFF);
   wifiUpSinceMs = 0;
@@ -207,6 +233,9 @@ static void standbyTask(void*) {
   mqttDisconnect();
   hwGprsDisconnect();
   modem800::hwPrepareVoiceCalls();
+  // Call-only mode: let the module sleep between calls. It wakes by itself on
+  // an incoming call (RI) or when we send the next AT command.
+  if (callOnlyMode()) modem800::hwSetSleep(true);
   setState(ModemState::STANDBY);
   wifiUpSinceMs = 0;
   taskBusy = false;
@@ -216,8 +245,9 @@ static void standbyTask(void*) {
 static void callTask(void*) {
   setState(ModemState::CALL_ACTIVE);
 
-  String caller;
-  if (!modem800::hwIncomingCaller(&caller, 8000)) {
+  String caller = pendingCaller;
+  pendingCaller = "";
+  if (caller.length() == 0) {
     Serial.println("[call] incoming number unavailable; rejecting");
     modem800::hwRejectCall();
   } else if (!callerAllowed(caller)) {
@@ -227,17 +257,17 @@ static void callTask(void*) {
     Serial.println("[call] rejected authorized call: CAN sequence busy");
     modem800::hwRejectCall();
   } else {
-    bool turnOn = !callRequestedStateValid || !callRequestedClimateOn;
-    Serial.printf("[call] authorized caller %s; climate %s\n", caller.c_str(), turnOn ? "on" : "off");
+    bool turnOn = !isHvacOn;
+    Serial.printf("[call] authorized caller %s; actual climate=%s, command=%s\n",
+                  caller.c_str(), isHvacOn ? "on" : "off", turnOn ? "on" : "off");
     if (modem800::hwAnswerAndPlay(turnOn ? 1 : 2)) {
       callCanRequest = turnOn ? 1 : -1;
-      callRequestedClimateOn = turnOn;
-      callRequestedStateValid = true;
     }
   }
 
-  callRingPending = false;
   setState(WiFi.status() == WL_CONNECTED ? ModemState::STANDBY : ModemState::READY);
+  // Back to sleep right after the call so the module is not left awake.
+  if (callOnlyMode()) modem800::hwSetSleep(true);
   taskBusy = false;
   vTaskDelete(NULL);
 }
@@ -257,15 +287,15 @@ static bool startTask(TaskFunction_t fn) {
 }
 
 void modemInit() {
-  if (!getModemEnable()) {
+  if (!modemShouldRun()) {
     Serial.println("[modem] disabled");
     return;
   }
-  Serial.printf("[modem] early init (%s)\n", use7670() ? "A7670" : "SIM800");
+  Serial.println("[modem] early init (SIM800-only)");
   if (callControlEnabled()) {
     pinMode(SIM800_RI_PIN, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(SIM800_RI_PIN), callRingIsr, FALLING);
-    Serial.printf("[call] RI armed on GPIO%u\n", SIM800_RI_PIN);
+    Serial.printf("[call] incoming calls polled by AT+CLCC; GPIO%u level=%d (RI interrupt disabled)\n",
+                  SIM800_RI_PIN, digitalRead(SIM800_RI_PIN));
   }
   modemHwBegin();
   for (uint8_t attempt = 0; attempt < 3; attempt++) {
@@ -287,13 +317,14 @@ void modemTick() {
   if (requested != 0) {
     callCanRequest = 0;
     bool turnOn = requested > 0;
+    if (!turnOn) cancelHvacTimer();
     Serial.printf("### HVAC %s! (authorized call) ###\n", turnOn ? "ON" : "OFF");
     if (!startSequence(turnOn ? CanSequence::HVAC_ON : CanSequence::HVAC_OFF, millis())) {
       Serial.println("[call] climate command rejected: CAN sequence busy");
     }
   }
 
-  if (!getModemEnable()) {
+  if (!modemShouldRun()) {
     if ((st == ModemState::READY || st == ModemState::STANDBY || st == ModemState::FAILED) && !taskBusy) {
       startTask(stopTask);
     }
@@ -303,11 +334,24 @@ void modemTick() {
   bool wifiUp = (WiFi.status() == WL_CONNECTED);
   unsigned long now = millis();
 
-  if (callControlEnabled() && callRingPending &&
-      (st == ModemState::READY || st == ModemState::STANDBY) && !taskBusy) {
-    mqttDisconnect();
-    startTask(callTask);
-    return;
+  if (callControlEnabled() && (st == ModemState::READY || st == ModemState::STANDBY) &&
+      !taskBusy) {
+    // RI goes low while the phone rings. Watching the pin costs nothing and
+    // lets the module stay in its own sleep mode between calls; without a ring
+    // the modem is polled rarely instead of every second.
+    bool ringing = (digitalRead(SIM800_RI_PIN) == LOW);
+    unsigned long pollMs = callOnlyMode() ? CALL_POLL_SLOW_MS : CALL_POLL_MS;
+    if (ringing || now - lastCallPollMs >= pollMs) {
+      lastCallPollMs = now;
+      String caller;
+      if (modem800::hwIncomingCaller(&caller, 700)) {
+        pendingCaller = caller;
+        Serial.printf("[call] incoming caller %s detected by AT+CLCC\n", caller.c_str());
+        mqttDisconnect();
+        startTask(callTask);
+        return;
+      }
+    }
   }
 
   if (wifiUp) {
@@ -332,18 +376,6 @@ void modemTick() {
     }
   }
 
-  if (st == ModemState::READY && use7670() && getModem7670Gps() &&
-      !taskBusy && now - lastGpsPollMs >= GPS_POLL_MS) {
-    lastGpsPollMs = now;
-    float lat = 0, lon = 0, alt = 0, spd = 0;
-    if (modem7670::hwGetGps(&lat, &lon, &alt, &spd) && lat != 0.0f && lon != 0.0f) {
-      gpsHasFix = true;
-      gpsLat = lat; gpsLon = lon; gpsAlt = alt; gpsSpd = spd;
-      gpsFixMs = now;
-      Serial.printf("[modem] GPS %.5f,%.5f alt=%.0f spd=%.1f\n", lat, lon, alt, spd);
-      mqttUpdateGPS(lat, lon, alt, spd);
-    }
-  }
 }
 
 bool modemMqttReady() {
@@ -352,7 +384,7 @@ bool modemMqttReady() {
 
 Client* modemTcpClient() {
   if (!modemMqttReady()) return nullptr;
-  return use7670() ? modem7670::hwTcpClient() : modem800::hwTcpClient();
+  return modem800::hwTcpClient();
 }
 
 void modemPowerOffNow() {

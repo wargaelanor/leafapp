@@ -17,11 +17,33 @@ enum class ConfigStatus {
 void initConfiguration();
 void factoryReset();
 
+enum class RemoteTransport : uint8_t {
+    OFF = 0,
+    MQTT = 1,
+    OVMS_V2 = 2,
+    // Only the GSM module is used, and only to receive calls that trigger
+    // commands. No data connection at all; the web UI still works over Wi-Fi.
+    CALL = 3
+};
+
+RemoteTransport getRemoteTransport();
+ConfigStatus setRemoteTransport(RemoteTransport value);
+
 const char* getWifiSSID();
 ConfigStatus setWifiSSID(const char* value);
 
 const char* getWifiPassword();
 ConfigStatus setWifiPassword(const char* value);
+
+const char* getWifiSSID2();
+ConfigStatus setWifiSSID2(const char* value);
+const char* getWifiPassword2();
+ConfigStatus setWifiPassword2(const char* value);
+
+const char* getWifiSSID3();
+ConfigStatus setWifiSSID3(const char* value);
+const char* getWifiPassword3();
+ConfigStatus setWifiPassword3(const char* value);
 
 const char* getApSSID();
 ConfigStatus setApSSID(const char* value);
@@ -46,6 +68,10 @@ ConfigStatus setMqttPassword(const char* value);
 
 const char* getVehicleId();
 ConfigStatus setVehicleId(const char* value);
+// Vehicle ID used in the MQTT topics (ovms/<user>/<id>/...). Separate from the
+// OVMS Server V2 id; falls back to it while unset.
+const char* getMqttVehicleId();
+ConfigStatus setMqttVehicleId(const char* value);
 
 bool getLockingEnabled();
 ConfigStatus setLockingEnabled(bool value);
@@ -55,6 +81,20 @@ ConfigStatus setMqttTls(bool value);
 
 bool getHassDiscoveryEnabled();
 ConfigStatus setHassDiscoveryEnabled(bool value);
+// true = the root URL serves the light page, false = the full app.
+bool getUiLite();
+ConfigStatus setUiLite(bool value);
+
+const char* getOvmsServer();
+ConfigStatus setOvmsServer(const char* value);
+int getOvmsPort();
+ConfigStatus setOvmsPort(int value);
+const char* getOvmsPassword();
+ConfigStatus setOvmsPassword(const char* value);
+const char* getOvmsModulePassword();
+ConfigStatus setOvmsModulePassword(const char* value);
+bool getOvmsTls();
+ConfigStatus setOvmsTls(bool value);
 
 bool getSleepEnabled();
 ConfigStatus setSleepEnabled(bool value);
@@ -99,7 +139,7 @@ ConfigStatus setModem7670Pass(const char* value);
 bool getModem7670Gps();
 ConfigStatus setModem7670Gps(bool value);
 
-// SIM800 incoming-call climate control. RI is fixed to GPIO38.
+// SIM800 incoming-call climate control. RI is fixed to GPIO37.
 bool getModemCallEnabled();
 ConfigStatus setModemCallEnabled(bool value);
 const char* getModemCallNumber(uint8_t index);

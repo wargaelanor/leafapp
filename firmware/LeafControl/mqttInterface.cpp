@@ -79,6 +79,17 @@ static bool headlightsDirty = false;
 static bool lastGpsSet = false;
 static float lastGpsLat = 0, lastGpsLon = 0, lastGpsAlt = 0, lastGpsSpd = 0;
 static bool gpsDirty = false;
+static uint32_t lastOdometer = 0;
+static String lastVin;
+static uint16_t lastHvacTimer = 0;
+static float lastInstrumentSoc = -1.0f;
+static bool instrumentSocDirty = false;
+static int lastInstrumentRange = -1;
+static bool instrumentRangeDirty = false;
+static float lastBatteryTemp = -99.0f;
+static bool batteryTempDirty = false;
+static int lastCellDelta = -1;
+static bool cellDeltaDirty = false;
 
 static bool mqttStatusRequested = false;
 static unsigned long statusRequestTime = 0;
@@ -87,6 +98,97 @@ static StringBuffer<128> mqttPrefix;
 // Response topic = prefix + client/<id>/response/<cmd> — external client ids
 // are unbounded, keep headroom so format() never truncates mid-topic
 static StringBuffer<192> currentResponseTopic;
+
+// --- publish outbox --------------------------------------------------------
+// PubSubClient publishes are synchronous QoS 0. Two failure modes used to
+// lose data: a publish that failed mid-session was only retried when the
+// value changed again, and the reconnect path fired ~20 publishes back to
+// back, blocking loop() for seconds on the modem link. Failed publishes are
+// queued here now, and everything queued is drained at a fixed pace from
+// manageMQTT().
+struct MqttOutboxEntry {
+  char topic[112];
+  char payload[56];
+  bool retained;
+};
+static const uint8_t MQTT_OUTBOX_SIZE = 16;
+static MqttOutboxEntry mqttOutbox[MQTT_OUTBOX_SIZE];
+static uint8_t mqttOutboxHead = 0;
+static uint8_t mqttOutboxCount = 0;
+static unsigned long mqttOutboxLastDrainMs = 0;
+static unsigned long mqttOutboxLastFailMs = 0;
+
+static bool mqttEnqueue(const char* topic, const char* payload, bool retained) {
+  if (!topic || !payload) return false;
+  if (strlen(topic) >= sizeof(mqttOutbox[0].topic)) return false;
+  // Long payloads (the GPS JSON) do not fit; their dirty flag covers them.
+  if (strlen(payload) >= sizeof(mqttOutbox[0].payload)) return false;
+  uint8_t slot;
+  if (mqttOutboxCount < MQTT_OUTBOX_SIZE) {
+    slot = (uint8_t)((mqttOutboxHead + mqttOutboxCount) % MQTT_OUTBOX_SIZE);
+    mqttOutboxCount++;
+  } else {
+    // Full: drop the oldest entry. Metrics are last-value-wins, so the
+    // freshest queued value matters more than the order.
+    slot = mqttOutboxHead;
+    mqttOutboxHead = (uint8_t)((mqttOutboxHead + 1) % MQTT_OUTBOX_SIZE);
+  }
+  strlcpy(mqttOutbox[slot].topic, topic, sizeof(mqttOutbox[slot].topic));
+  strlcpy(mqttOutbox[slot].payload, payload, sizeof(mqttOutbox[slot].payload));
+  mqttOutbox[slot].retained = retained;
+  return true;
+}
+
+static void mqttDrainOutbox() {
+  if (mqttOutboxCount == 0 || !mqttClient.connected()) return;
+  unsigned long now = millis();
+  if (now - mqttOutboxLastDrainMs < 15) return;  // pace: ~60 messages per second
+  if (mqttOutboxLastFailMs != 0 && now - mqttOutboxLastFailMs < 1000) return;
+  MqttOutboxEntry& e = mqttOutbox[mqttOutboxHead];
+  if (mqttClient.publish(e.topic, (const uint8_t*)e.payload, strlen(e.payload), e.retained)) {
+    mqttOutboxHead = (uint8_t)((mqttOutboxHead + 1) % MQTT_OUTBOX_SIZE);
+    mqttOutboxCount--;
+    mqttOutboxLastDrainMs = now;
+    mqttOutboxLastFailMs = 0;
+  } else {
+    mqttOutboxLastFailMs = now;
+  }
+}
+
+// Republish one stale metric per call. Every mqttUpdate*() clears its own
+// dirty flag on success, so a fixed-order sweep converges on its own; the
+// fail timestamp backs off for a second when the broker refuses writes.
+static unsigned long mqttDirtyLastDrainMs = 0;
+static unsigned long mqttDirtyLastFailMs = 0;
+
+static void mqttDrainDirty() {
+  if (!mqttClient.connected()) return;
+  unsigned long now = millis();
+  if (now - mqttDirtyLastDrainMs < 50) return;
+  if (mqttDirtyLastFailMs != 0 && now - mqttDirtyLastFailMs < 1000) return;
+  mqttDirtyLastDrainMs = now;
+  if (socDirty && lastSOC >= 0) { mqttUpdateSOC(lastSOC); if (socDirty) mqttDirtyLastFailMs = now; return; }
+  if (chargingDirty && lastChargingStateSet) { mqttUpdateCharging(lastIsCharging, lastChargerState); if (chargingDirty) mqttDirtyLastFailMs = now; return; }
+  if (hvacDirty && lastHvacStateSet) { mqttUpdateHVAC(lastIsHvacOn); if (hvacDirty) mqttDirtyLastFailMs = now; return; }
+  if (packDirty && lastPackVoltage >= 0) { mqttUpdatePackStatus(lastPackVoltage, lastPackCurrent); if (packDirty) mqttDirtyLastFailMs = now; return; }
+  if (lockDirty && lastLockStateSet) { mqttUpdateLock(lastLockState == 1); if (lockDirty) mqttDirtyLastFailMs = now; return; }
+  if (setpointDirty && lastSetpoint >= 0) { mqttUpdateHVACSetpoint(lastSetpoint); if (setpointDirty) mqttDirtyLastFailMs = now; return; }
+  if (fanSpeedDirty && lastFanSpeed >= 0) { mqttUpdateFanSpeed(lastFanSpeed); if (fanSpeedDirty) mqttDirtyLastFailMs = now; return; }
+  if (heatingDirty || coolingDirty) { mqttUpdateHeatingMode(lastHeating, lastCooling); if (heatingDirty || coolingDirty) mqttDirtyLastFailMs = now; return; }
+  if (ventilationModeDirty) { mqttUpdateVentilationMode(lastVentilationMode); if (ventilationModeDirty) mqttDirtyLastFailMs = now; return; }
+  if (doorsDirty && lastDoorsStateSet) { mqttUpdateDoors(lastDoorFL, lastDoorFR, lastDoorRL, lastDoorRR, lastDoorTrunk); if (doorsDirty) mqttDirtyLastFailMs = now; return; }
+  if (sohDirty && lastSOH >= 0) { mqttUpdateSOH(lastSOH); if (sohDirty) mqttDirtyLastFailMs = now; return; }
+  if (gidsDirty && lastGids >= 0) { mqttUpdateGids(lastGids); if (gidsDirty) mqttDirtyLastFailMs = now; return; }
+  if (ambientDirty && lastAmbient > -90) { mqttUpdateAmbient(lastAmbient); if (ambientDirty) mqttDirtyLastFailMs = now; return; }
+  if (vehicleOnDirty && lastVehicleOnSet) { mqttUpdateVehicleOn(lastVehicleOn); if (vehicleOnDirty) mqttDirtyLastFailMs = now; return; }
+  if (headlightsDirty && lastHeadlightsSet) { mqttUpdateHeadlights(lastHeadlights); if (headlightsDirty) mqttDirtyLastFailMs = now; return; }
+  if (cabinTempDirty && lastCabinTemp > -30) { mqttUpdateCabinTemp(lastCabinTemp); if (cabinTempDirty) mqttDirtyLastFailMs = now; return; }
+  if (instrumentSocDirty && lastInstrumentSoc >= 0) { mqttUpdateInstrumentSoc(lastInstrumentSoc); if (instrumentSocDirty) mqttDirtyLastFailMs = now; return; }
+  if (instrumentRangeDirty && lastInstrumentRange >= 0) { mqttUpdateInstrumentRange(lastInstrumentRange); if (instrumentRangeDirty) mqttDirtyLastFailMs = now; return; }
+  if (batteryTempDirty && lastBatteryTemp > -90) { mqttUpdateBatteryTemp(lastBatteryTemp); if (batteryTempDirty) mqttDirtyLastFailMs = now; return; }
+  if (cellDeltaDirty && lastCellDelta >= 0) { mqttUpdateCellDelta(lastCellDelta); if (cellDeltaDirty) mqttDirtyLastFailMs = now; return; }
+  if (gpsDirty && lastGpsSet) { mqttUpdateGPS(lastGpsLat, lastGpsLon, lastGpsAlt, lastGpsSpd); if (gpsDirty) mqttDirtyLastFailMs = now; return; }
+}
 
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
   StringBuffer<64> msg;
@@ -138,10 +240,14 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
         handleMqttUnlock();
       } else if (msg.startsWith(ovmsCmds.hvacOn)) {
         float setpoint = 0.0f;
+        uint16_t minutes = 0;
         if (msg.length() > strlen(ovmsCmds.hvacOn)) {
-            setpoint = atof(msg.c_str() + strlen(ovmsCmds.hvacOn));
+            const char* args = msg.c_str() + strlen(ovmsCmds.hvacOn);
+            setpoint = atof(args);
+            const char* separator = strchr(args + 1, ' ');
+            if (separator) minutes = (uint16_t)atoi(separator + 1);
         }
-        handleMqttHvacOn(setpoint);
+        handleMqttHvacOn(setpoint, minutes);
       } else if (msg.equals(ovmsCmds.hvacOff)) {
         handleMqttHvacOff();
       }
@@ -192,10 +298,12 @@ boolean reconnectMQTT() {
   willTopic.format("%smetric/s/v3/connected", mqttPrefix.c_str());
   
   bool connected = false;
+  // Will at QoS 1 so an abnormal disconnect is actually delivered; broker
+  // must keep the session to queue incoming commands while the board sleeps
   if (strlen(getMqttUser()) > 0) {
-    connected = mqttClient.connect(clientId.c_str(), getMqttUser(), getMqttPassword(), willTopic.c_str(), 0, true, "no");
+    connected = mqttClient.connect(clientId.c_str(), getMqttUser(), getMqttPassword(), willTopic.c_str(), 1, true, "no");
   } else {
-    connected = mqttClient.connect(clientId.c_str(), "", "", willTopic.c_str(), 0, true, "no");
+    connected = mqttClient.connect(clientId.c_str(), "", "", willTopic.c_str(), 1, true, "no");
   }
 
   if (connected) {
@@ -204,10 +312,11 @@ boolean reconnectMQTT() {
     // Mark as connected in Retained message (for OVMS app to see vehicle is online)
     mqttClient.publish(willTopic.c_str(), (const uint8_t*)"yes", 3, true);
     
-    // Subscribe to OVMS commands from any client
+    // Subscribe to OVMS commands from any client (QoS 1: broker retries
+    // delivery if the board drops mid-command)
     StringBuffer<128> cmdTopic;
     cmdTopic.format("%sclient/+/command/+", mqttPrefix.c_str());
-    mqttClient.subscribe(cmdTopic.c_str());
+    mqttClient.subscribe(cmdTopic.c_str(), 1);
     
     if (getHassDiscoveryEnabled()) {
       // Retained configs persist on the broker — publish once per boot only
@@ -236,6 +345,9 @@ boolean reconnectMQTT() {
     if (lastVehicleOnSet) { vehicleOnDirty = true; mqttUpdateVehicleOn(lastVehicleOn); }
     if (lastHeadlightsSet) { headlightsDirty = true; mqttUpdateHeadlights(lastHeadlights); }
     if (lastGpsSet) { gpsDirty = true; mqttUpdateGPS(lastGpsLat, lastGpsLon, lastGpsAlt, lastGpsSpd); }
+    if (lastOdometer > 0) mqttUpdateOdometer(lastOdometer);
+    if (lastVin.length() == 17) mqttUpdateVin(lastVin.c_str());
+    mqttUpdateHvacTimer(lastHvacTimer);
     
     return true;
   }
@@ -244,7 +356,7 @@ boolean reconnectMQTT() {
 }
 
 void setupMQTT() {
-  mqttPrefix.format("ovms/%s/%s/", getMqttUser(), getVehicleId());
+  mqttPrefix.format("ovms/%s/%s/", getMqttUser(), getMqttVehicleId());
   if (getMqttTls()) {
     espClientSecure.setInsecure(); // Skip certificate validation for simplicity
     espClientSecure.setHandshakeTimeout(5); // default 12s blocks loop() too long
@@ -268,7 +380,25 @@ void mqttDisconnect() {
   if (mqttClient.connected()) mqttClient.disconnect();
 }
 
+void mqttGoingOffline() {
+  // Called right before deep sleep. Publish the retained offline marker
+  // synchronously (the will would do it anyway, but only after the TCP
+  // reset is noticed — minutes later on some brokers/clients).
+  if (!mqttClient.connected()) return;
+  StringBuffer<128> willTopic;
+  willTopic.format("%smetric/s/v3/connected", mqttPrefix.c_str());
+  mqttClient.publish(willTopic.c_str(), (const uint8_t*)"no", 2, true);
+  // Give the socket a moment to actually flush before power drops
+  mqttClient.loop();
+  delay(50);
+  mqttClient.disconnect();
+}
+
 void manageMQTT() {
+  if (getRemoteTransport() != RemoteTransport::MQTT) {
+    mqttDisconnect();
+    return;
+  }
   if (strlen(getMqttServer()) == 0) {
     return; // Don't try to connect if MQTT server is not configured
   }
@@ -288,6 +418,13 @@ void manageMQTT() {
     } else {
       mqttClient.loop();
     }
+  }
+
+  // Retry queued metric publishes and refresh any metric whose last publish
+  // failed (outbox is drained even while a reconnect is pending, once linked)
+  if (mqttClient.connected()) {
+    mqttDrainOutbox();
+    mqttDrainDirty();
   }
 
   // Send status with delay if requested
@@ -481,7 +618,23 @@ void mqttUpdatePackStatus(float voltage, float current) {
   lastPackCurrent = current;
   bool ok = mqttPublishMetric(ovmsMetrics.packVoltage, voltage, "%.1f");
   ok &= mqttPublishMetric(ovmsMetrics.packCurrent, current, "%.1f");
+  ok &= mqttPublishMetric(ovmsMetrics.packPower, voltage * current / 1000.0f, "%.1f");
   packDirty = !ok;
+}
+
+void mqttUpdateOdometer(uint32_t km) {
+  lastOdometer = km;
+  mqttPublishMetric(ovmsMetrics.odometer, (float)km, "%.0f");
+}
+
+void mqttUpdateVin(const char* vin) {
+  lastVin = vin ? vin : "";
+  mqttPublishMetricStr(ovmsMetrics.vin, vin);
+}
+
+void mqttUpdateHvacTimer(uint16_t minutes) {
+  lastHvacTimer = minutes;
+  mqttPublishMetric(ovmsMetrics.hvacTimer, (float)minutes, "%.0f");
 }
 
 void mqttUpdateAmbient(float ambientTemp) {
@@ -491,31 +644,27 @@ void mqttUpdateAmbient(float ambientTemp) {
 }
 
 void mqttUpdateInstrumentSoc(float soc) {
-  static float last = -1.0f;
-  if (soc == last) return;
-  last = soc;
-  mqttPublishMetric(ovmsMetrics.socInstrument, soc, "%.1f");
+  if (soc == lastInstrumentSoc && !instrumentSocDirty) return;
+  lastInstrumentSoc = soc;
+  instrumentSocDirty = !mqttPublishMetric(ovmsMetrics.socInstrument, soc, "%.1f");
 }
 
 void mqttUpdateInstrumentRange(int km) {
-  static int last = -1;
-  if (km == last) return;
-  last = km;
-  mqttPublishMetric(ovmsMetrics.rangeInstrument, (float)km, "%.0f");
+  if (km == lastInstrumentRange && !instrumentRangeDirty) return;
+  lastInstrumentRange = km;
+  instrumentRangeDirty = !mqttPublishMetric(ovmsMetrics.rangeInstrument, (float)km, "%.0f");
 }
 
 void mqttUpdateBatteryTemp(float temp) {
-  static float last = -99.0f;
-  if (temp == last) return;
-  last = temp;
-  mqttPublishMetric(ovmsMetrics.batteryTemp, temp, "%.1f");
+  if (temp == lastBatteryTemp && !batteryTempDirty) return;
+  lastBatteryTemp = temp;
+  batteryTempDirty = !mqttPublishMetric(ovmsMetrics.batteryTemp, temp, "%.1f");
 }
 
 void mqttUpdateCellDelta(int mv) {
-  static int last = -1;
-  if (mv == last) return;
-  last = mv;
-  mqttPublishMetric(ovmsMetrics.cellDelta, (float)mv, "%.0f");
+  if (mv == lastCellDelta && !cellDeltaDirty) return;
+  lastCellDelta = mv;
+  cellDeltaDirty = !mqttPublishMetric(ovmsMetrics.cellDelta, mv / 1000.0f, "%.3f");
 }
 
 void mqttUpdateVehicleOn(bool on) {

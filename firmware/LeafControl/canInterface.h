@@ -4,6 +4,11 @@
 #include <stddef.h>
 #include <inttypes.h>
 
+// Port A (EV-CAN) is always listen-only. Port B (CAR-CAN) may transmit only
+// explicitly whitelisted OVMS remote-command frames. Port B is TWAI on the
+// T-2CAN and a second MCP2515 on the T-Call; the API below is identical.
+#define LEAF_CAN_RX_ONLY 0
+
 // Field definition: bit_offset = byte_idx * 8 + bit_in_byte (0-63, bit 0 = MSB of byte)
 struct CANField {
     uint16_t bit_offset;
@@ -55,6 +60,8 @@ struct CANMessage {
 // Can implementation interface (definitions platform specific):
 // Returns false if the frame was dropped (bus-off / stopped / TX full).
 bool sendCAN(uint32_t id, const uint8_t* data, uint8_t len);
+// Bypasses the TX whitelist. Only for the armed developer replay path.
+bool sendCANForced(uint32_t id, const uint8_t* data, uint8_t len);
 
 template <size_t N>
 bool sendCAN(const CANMessage<N> &message) {
@@ -65,7 +72,7 @@ bool sendCAN(const CANMessage<N> &message) {
 extern bool canLogFrames;
 
 // Simple activity counters, printed by the 'status' CLI command
-extern uint32_t canFramesB;  // frames received on Port B (IT-CAN, TWAI)
+extern uint32_t canFramesB;  // frames received on Port B (CAR-CAN)
 extern uint32_t canFramesA;  // frames received on Port A (EV-CAN, MCP2515)
 
 template<size_t N>
@@ -78,7 +85,30 @@ void handleReceivedMessage(uint32_t identifier, uint8_t* data, uint8_t len);
 
 void setupCAN();
 void readAndHandleCANMessage();
+// Bus-off / stopped recovery for Port B, call every loop().
+void canMaintainBus();
+void canDrainFor(uint32_t ms);
+uint8_t canBusState();      // 0 running, 1 stopped, 2 bus-off, 0xFF unknown
+uint8_t canBusTxErrors();
+uint8_t canBusRxErrors();
 
 void resetCanLogTimestamps();
+
+// --- live CAN watch table -------------------------------------------------
+// One row per identifier, updated in place: a CAN log that grows forever is
+// useless when you press a button twenty times and want to see which frames
+// actually changed. Used by the developer monitor in the web UI.
+struct CanWatchRow {
+  uint32_t id;
+  char bus;             // 'B' = CAR-CAN (Port B), 'A' = EV-CAN (Port A)
+  uint8_t dlc;
+  uint8_t data[8];
+  uint32_t changes;     // payload changes since reset
+  uint32_t ageMs;       // milliseconds since the last change
+};
+void canWatchRecord(char bus, uint32_t id, const uint8_t* data, uint8_t dlc);
+void canWatchReset();
+uint16_t canWatchCount();
+bool canWatchGet(uint16_t index, CanWatchRow* out);
 
 #endif

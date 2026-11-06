@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include "configuration.h"
 #include "canInterface.h"
+#include "evCanLeaf.h"
 #include "vehicleTypes.h"
 
 // Live vehicle state, defined in LeafControl.ino (diagnostics only)
@@ -29,6 +30,10 @@ void executeCommand(char* cmd) {
         Serial.println("Current Configuration:");
         Serial.printf("  ssid: %s\n", getWifiSSID());
         Serial.printf("  password: %s\n", showSecrets ? getWifiPassword() : "****");
+        Serial.printf("  ssid2: %s\n", getWifiSSID2());
+        Serial.printf("  password2: %s\n", showSecrets ? getWifiPassword2() : "****");
+        Serial.printf("  ssid3: %s\n", getWifiSSID3());
+        Serial.printf("  password3: %s\n", showSecrets ? getWifiPassword3() : "****");
         Serial.printf("  ap_ssid: %s\n", getApSSID());
         Serial.printf("  ap_password: %s\n", showSecrets ? getApPassword() : "****");
         Serial.printf("  hostName: %s\n", getHostName());
@@ -37,6 +42,7 @@ void executeCommand(char* cmd) {
         Serial.printf("  mqtt_user: %s\n", getMqttUser());
         Serial.printf("  mqtt_password: %s\n", showSecrets ? getMqttPassword() : "****");
         Serial.printf("  vehicle_id: %s\n", getVehicleId());
+        Serial.printf("  mqtt_vehicle_id: %s\n", getMqttVehicleId());
         Serial.printf("  locking_enabled: %s\n", getLockingEnabled() ? "true" : "false");
         Serial.printf("  mqtt_tls: %s\n", getMqttTls() ? "true" : "false");
         Serial.printf("  hass_discovery: %s\n", getHassDiscoveryEnabled() ? "true" : "false");
@@ -59,6 +65,10 @@ void executeCommand(char* cmd) {
         if (key != NULL) {
             if (strcmp(key, "ssid") == 0) Serial.println(getWifiSSID());
             else if (strcmp(key, "password") == 0) Serial.println("****");
+            else if (strcmp(key, "ssid2") == 0) Serial.println(getWifiSSID2());
+            else if (strcmp(key, "password2") == 0) Serial.println("****");
+            else if (strcmp(key, "ssid3") == 0) Serial.println(getWifiSSID3());
+            else if (strcmp(key, "password3") == 0) Serial.println("****");
             else if (strcmp(key, "ap_ssid") == 0) Serial.println(getApSSID());
             else if (strcmp(key, "ap_password") == 0) Serial.println("****");
             else if (strcmp(key, "hostName") == 0) Serial.println(getHostName());
@@ -67,6 +77,7 @@ void executeCommand(char* cmd) {
             else if (strcmp(key, "mqtt_user") == 0) Serial.println(getMqttUser());
             else if (strcmp(key, "mqtt_password") == 0) Serial.println("****");
             else if (strcmp(key, "vehicle_id") == 0) Serial.println(getVehicleId());
+            else if (strcmp(key, "mqtt_vehicle_id") == 0) Serial.println(getMqttVehicleId());
             else if (strcmp(key, "locking_enabled") == 0) Serial.println(getLockingEnabled() ? "true" : "false");
             else if (strcmp(key, "mqtt_tls") == 0) Serial.println(getMqttTls() ? "true" : "false");
             else if (strcmp(key, "hass_discovery") == 0) Serial.println(getHassDiscoveryEnabled() ? "true" : "false");
@@ -92,6 +103,10 @@ void executeCommand(char* cmd) {
 
             if (strcmp(key, "ssid") == 0) status = setWifiSSID(val);
             else if (strcmp(key, "password") == 0) status = setWifiPassword(val);
+            else if (strcmp(key, "ssid2") == 0) status = setWifiSSID2(val);
+            else if (strcmp(key, "password2") == 0) status = setWifiPassword2(val);
+            else if (strcmp(key, "ssid3") == 0) status = setWifiSSID3(val);
+            else if (strcmp(key, "password3") == 0) status = setWifiPassword3(val);
             else if (strcmp(key, "ap_ssid") == 0) status = setApSSID(val);
             else if (strcmp(key, "ap_password") == 0) status = setApPassword(val);
             else if (strcmp(key, "hostName") == 0) status = setHostName(val);
@@ -107,6 +122,7 @@ void executeCommand(char* cmd) {
             else if (strcmp(key, "mqtt_user") == 0) status = setMqttUser(val);
             else if (strcmp(key, "mqtt_password") == 0) status = setMqttPassword(val);
             else if (strcmp(key, "vehicle_id") == 0) status = setVehicleId(val);
+            else if (strcmp(key, "mqtt_vehicle_id") == 0) status = setMqttVehicleId(val);
             else if (strcmp(key, "locking_enabled") == 0) {
                 if (strcmp(val, "true") == 0 || strcmp(val, "1") == 0) {
                     status = setLockingEnabled(true);
@@ -221,6 +237,17 @@ void executeCommand(char* cmd) {
                       headlightsState ? 1 : 0, (int)evData.vehicleOn);
         Serial.printf("CAN frames: Port B %lu | Port A %lu\n",
                       (unsigned long)canFramesB, (unsigned long)canFramesA);
+        Serial.printf("EV-CAN: %s / %s | lock %d scan %d chip %d cfg %d\n",
+                      evCanClockName(), evCanBitrateName(),
+                      evCanIsLocked() ? 1 : 0, evCanScanActive() ? 1 : 0,
+                      evCanChipCheckOk() ? 1 : 0, evCanConfigWritesOk() ? 1 : 0);
+        Serial.printf("EV-CAN errors: REC %u TEC %u EFLG 0x%02X\n",
+                      (unsigned)evCanRxErrorCount(), (unsigned)evCanTxErrorCount(),
+                      (unsigned)evCanErrorFlags());
+    }
+    else if (strcmp(command, "evscan") == 0) {
+        evCanRequestScan();
+        Serial.println("EV-CAN: listen-only clock/bitrate sweep started; run 'status' to see the lock");
     }
     else if (strcmp(command, "reboot") == 0) {
         Serial.println("Rebooting...");

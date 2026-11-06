@@ -1,7 +1,10 @@
 #include "modemHw.h"
+#include "modemPins.h"
 #include "callAudio.h"
-
 #include <Client.h>
+#if LEAF_BOARD_TCALL
+#include <Wire.h>
+#endif
 
 namespace {
 
@@ -101,6 +104,15 @@ bool parseBearerIp(const String& response, String& ip) {
   if (firstQuote < 0 || secondQuote <= firstQuote) return false;
   ip = response.substring(firstQuote + 1, secondQuote);
   return ip.length() > 0 && ip != "0.0.0.0";
+}
+
+int64_t daysFromCivil(int y, unsigned m, unsigned d) {
+  y -= m <= 2;
+  const int64_t era = (y >= 0 ? y : y - 399) / 400;
+  const unsigned yoe = (unsigned)(y - era * 400);
+  const unsigned doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+  const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+  return era * 146097 + (int64_t)doe - 719468;
 }
 
 bool bringUpGprs(String& ip) {
@@ -237,8 +249,37 @@ Sim800Client tcpClient;
 
 namespace modem800 {
 
+#if LEAF_BOARD_TCALL
+// T-Call v1.4 keeps the SIM800 rail alive through an IP5306 PMU. Without this
+// write the boost can turn off and the modem disappears even though the UART is
+// wired correctly.
+static void tcallPmuKeepOn() {
+  Wire.begin(BOARD_PMU_SDA, BOARD_PMU_SCL);
+  Wire.beginTransmission(0x75);
+  Wire.write(0x00);
+  Wire.write(0x37);
+  Wire.endTransmission();
+}
+
+static void tcallModemRails() {
+  pinMode(BOARD_MODEM_POWER_ON, OUTPUT);
+  digitalWrite(BOARD_MODEM_POWER_ON, HIGH);
+  pinMode(BOARD_MODEM_RESET, OUTPUT);
+  digitalWrite(BOARD_MODEM_RESET, HIGH);
+  pinMode(BOARD_MODEM_DTR, OUTPUT);
+  digitalWrite(BOARD_MODEM_DTR, LOW);
+  pinMode(BOARD_MODEM_PWRKEY, OUTPUT);
+  digitalWrite(BOARD_MODEM_PWRKEY, HIGH);
+}
+#endif
+
 void hwBegin() {
-  simSerial.begin(115200, SERIAL_8N1, 1, 2);
+#if LEAF_BOARD_TCALL
+  tcallPmuKeepOn();
+  tcallModemRails();
+#endif
+  // ESP RX <- modem TXD, ESP TX -> modem RXD.
+  simSerial.begin(115200, SERIAL_8N1, MODEM_UART_RX, MODEM_UART_TX);
   delay(100);
   flushInput();
   escapeToAt();
@@ -251,6 +292,14 @@ void hwBegin() {
 }
 
 bool hwTestAt(uint32_t timeoutMs) { return commandOk("AT", timeoutMs); }
+
+// SIM800 sleep. CSCLK=2 lets the module sleep on its own and wake when the
+// host sends data or when a call/SMS arrives, so polling still works and RI
+// signals an incoming call. It needs no DTR line, which this board lacks.
+void hwSetSleep(bool enable) {
+  commandOk(enable ? "AT+CSCLK=2" : "AT+CSCLK=0", 1500);
+  Serial.printf("[call] modem sleep %s\n", enable ? "on (CSCLK=2)" : "off");
+}
 
 bool hwSimReady() {
   String response;
@@ -274,6 +323,40 @@ bool hwNetworkConnected() {
   String response;
   if (!commandOk("AT+CREG?", 3000, &response)) return false;
   return response.indexOf(",1") >= 0 || response.indexOf(",5") >= 0;
+}
+
+// SIM800 reports network time as "yy/MM/dd,hh:mm:ss+zz" (zz is a quarter-hour
+// offset from UTC). Use it to set the board clock when NTP is unavailable.
+bool hwNetworkTime(uint32_t* epoch) {
+  String response;
+  if (!commandOk("AT+CCLK?", 3000, &response)) return false;
+  int marker = response.indexOf("+CCLK:");
+  if (marker < 0) return false;
+  int firstQuote = response.indexOf('"', marker);
+  int secondQuote = response.indexOf('"', firstQuote + 1);
+  if (firstQuote < 0 || secondQuote <= firstQuote) return false;
+  String stamp = response.substring(firstQuote + 1, secondQuote);
+  if (stamp.length() < 17) return false;
+
+  int year = 2000 + stamp.substring(0, 2).toInt();
+  unsigned month = (unsigned)stamp.substring(3, 5).toInt();
+  unsigned day = (unsigned)stamp.substring(6, 8).toInt();
+  int hour = stamp.substring(9, 11).toInt();
+  int minute = stamp.substring(12, 14).toInt();
+  int second = stamp.substring(15, 17).toInt();
+  int tzQuarter = 0;
+  int plus = stamp.indexOf('+', 17);
+  int minus = stamp.indexOf('-', 17);
+  if (plus > 0) tzQuarter = stamp.substring(plus + 1).toInt();
+  else if (minus > 0) tzQuarter = -stamp.substring(minus + 1).toInt();
+
+  if (year < 2020 || month < 1 || month > 12 || day < 1 || day > 31) return false;
+  int64_t value = daysFromCivil(year, month, day) * 86400 +
+                  (int64_t)hour * 3600 + (int64_t)minute * 60 + second -
+                  (int64_t)tzQuarter * 900;
+  if (value < 1600000000) return false;
+  if (epoch) *epoch = (uint32_t)value;
+  return true;
 }
 
 int16_t hwSignal() {
@@ -325,20 +408,25 @@ bool hwPrepareVoiceCalls() {
 
 bool hwIncomingCaller(String* number, uint32_t timeoutMs) {
   if (passthroughActive) tcpClient.stop();
-  commandOk("AT+CLIP=1", 2000);
   unsigned long started = millis();
   while (millis() - started < timeoutMs) {
     String response;
-    if (commandOk("AT+CLCC", 2000, &response)) {
+    uint32_t remaining = timeoutMs - (millis() - started);
+    uint32_t commandTimeout = remaining < 600 ? remaining : 600;
+    if (commandOk("AT+CLCC", commandTimeout, &response)) {
       int marker = response.indexOf("+CLCC:");
+      int firstComma = response.indexOf(',', marker);
+      int secondComma = response.indexOf(',', firstComma + 1);
+      int thirdComma = response.indexOf(',', secondComma + 1);
       int firstQuote = response.indexOf('"', marker);
       int secondQuote = response.indexOf('"', firstQuote + 1);
-      if (marker >= 0 && firstQuote > marker && secondQuote > firstQuote) {
+      int state = secondComma > firstComma ? response.substring(secondComma + 1, thirdComma).toInt() : -1;
+      if (marker >= 0 && state == 4 && firstQuote > marker && secondQuote > firstQuote) {
         if (number) *number = response.substring(firstQuote + 1, secondQuote);
         return true;
       }
     }
-    delay(350);
+    delay(100);
   }
   return false;
 }
@@ -356,9 +444,13 @@ bool hwAnswerAndPlay(uint8_t recordId) {
     hwRejectCall();
     return false;
   }
-  if (!commandOk("ATA", 10000)) {
-    Serial.println("[call] ATA failed");
-    return false;
+  if (!commandOk("ATA", 5000)) {
+    String caller;
+    if (!hwIncomingCaller(&caller, 1200) || !commandOk("ATA", 5000)) {
+      Serial.println("[call] ATA failed");
+      hwRejectCall();
+      return false;
+    }
   }
   delay(500);
   if (!commandOk("AT+DTAM=1", 2000)) {
