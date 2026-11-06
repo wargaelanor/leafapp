@@ -66,6 +66,7 @@ html[data-theme="dark"] .tabs button.on{color:#08121a;font-weight:600}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin-bottom:14px}
 .card h2{font-size:16px;margin-bottom:8px;font-weight:600}
 .card p{font-size:13.5px;color:var(--text-2)}
+.card a{color:var(--accent);text-decoration:none;border-bottom:1px solid var(--accent)}
 .card ul{list-style:none;margin-top:10px;display:grid;gap:8px}
 .card li{position:relative;padding-left:18px;font-size:13.5px;color:var(--text-2)}
 .card li:before{content:'';position:absolute;left:2px;top:8px;width:6px;height:6px;border-radius:50%;background:var(--accent)}
@@ -153,6 +154,26 @@ footer{margin-top:26px;font-size:12px;color:var(--muted);text-align:center;line-
         </ul>
       </div>
 
+      <div class="card">
+        <h2>Android-приложение — то же самое, нативно</h2>
+        <p>Кроме веб-версии есть полноценное приложение для Android (устанавливается
+           APK, обновляется само). Демо слева показывает интерфейс PWA — экраны и
+           возможности у Android-версии те же, плюс нативные:</p>
+        <ul>
+          <li><b>Фоновый мониторинг:</b> телеметрия обновляется, даже когда приложение
+              закрыто; уведомления — зарядка началась/закончилась, подключение пистолета,
+              низкий заряд, плата не в сети.</li>
+          <li><b>Работает без интернета:</b> последние данные и история — из кэша;
+              рядом с машиной управляет напрямую по Wi-Fi, из любой точки — через MQTT.</li>
+          <li><b>Настройки платы из приложения:</b> Wi-Fi, MQTT, тариф, сон — без
+              веб-страницы.</li>
+          <li><b>Обновление прошивки платы из приложения:</b> проверяет релизы,
+              скачивает и заливает в плату по Wi-Fi — разбирать ничего не нужно.</li>
+          <li><b>История в базе телефона:</b> поездки и зарядки с экспортом CSV,
+              дедупликация с записями платы.</li>
+        </ul>
+      </div>
+
       <div class="features">
         <div class="feature">
           <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg></div>
@@ -172,7 +193,7 @@ footer{margin-top:26px;font-size:12px;color:var(--muted);text-align:center;line-
         <div class="feature">
           <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 21h16"/></svg></div>
           <h3>Обновление по Wi-Fi</h3>
-          <p>Прошивка платы обновляется со страницы устройства, разбирать не нужно.</p>
+          <p>Прошивка платы заливается прямо из приложения или со страницы устройства — разбирать не нужно.</p>
         </div>
       </div>
 
@@ -181,6 +202,9 @@ footer{margin-top:26px;font-size:12px;color:var(--muted);text-align:center;line-
         <p>Нажимайте кнопки в приложении слева: команды выполняются в демо-режиме и сразу видно,
            как меняется состояние. Сценарии сменяются сами — покой, свет, климат, зарядка, поездка,
            открытые двери, низкий заряд.</p>
+        <p style="margin-top:8px">Демо-режим открывается и отдельно:
+           <a href="../?demo=1">wargaelanor.github.io/leafapp/?demo=1</a> —
+           полная копия интерфейса с теми же сценариями, работает на любом телефоне в браузере.</p>
       </div>
     </div>
   </div>
