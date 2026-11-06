@@ -706,10 +706,17 @@ private fun DistanceScreen(state: LeafState, onCommand: (String, Double, Int) ->
     var minutes by remember { mutableIntStateOf(Settings.climateMinutes) }
     var remaining by remember { mutableIntStateOf(0) }
     var total by remember { mutableIntStateOf(0) }
+    // Smooth ring: time-based fraction recomputed every 500 ms from the
+    // absolute end moment, so the arc depletes evenly across the whole
+    // countdown instead of stepping once per minute.
+    var ringFrac by remember { mutableFloatStateOf(0f) }
+    var endMs by remember { mutableLongStateOf(0L) }
     LaunchedEffect(state.hvac, state.hvacTimer) {
         if (!state.hvac) {
             remaining = 0
             total = 0
+            ringFrac = 0f
+            endMs = 0L
             LeafRepo.climateTotalMin = 0
             return@LaunchedEffect
         }
@@ -720,10 +727,20 @@ private fun DistanceScreen(state: LeafState, onCommand: (String, Double, Int) ->
             LeafRepo.climateTotalMin = maxOf(state.hvacTimer, 1)
         }
         total = LeafRepo.climateTotalMin
-        remaining = state.hvacTimer
-        while (remaining > 0) {
-            delay(60_000)
-            remaining -= 1
+        // Re-anchor on every fresh board value; between polls the fraction
+        // keeps flowing from the wall clock.
+        endMs = System.currentTimeMillis() + state.hvacTimer * 60_000L
+        val totalMs = total * 60_000L
+        while (true) {
+            val left = endMs - System.currentTimeMillis()
+            if (left <= 0) {
+                remaining = 0
+                ringFrac = 0f
+                break
+            }
+            remaining = ((left + 59_999L) / 60_000L).toInt()
+            ringFrac = (left.toFloat() / totalMs).coerceIn(0f, 1f)
+            delay(500)
         }
     }
     val climateRunning = state.fresh() && state.hvac && remaining > 0
@@ -732,7 +749,7 @@ private fun DistanceScreen(state: LeafState, onCommand: (String, Double, Int) ->
     // left (or ∞ when the board runs climate without a timer).
     val climateInfinite = state.fresh() && state.hvac && state.hvacTimer == 0
     val ringFraction = when {
-        climateRunning -> (remaining.toFloat() / maxOf(total, 1)).coerceIn(0f, 1f)
+        climateRunning -> ringFrac
         climateInfinite -> 1f
         else -> 0f
     }
