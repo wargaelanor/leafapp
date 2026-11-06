@@ -99,6 +99,11 @@ ConfigStatus setOvmsTls(bool value);
 bool getSleepEnabled();
 ConfigStatus setSleepEnabled(bool value);
 
+// Wi-Fi recovery hint: raise the setup AP at boot when the last session
+// ended with the saved network unreachable (see manageWiFi).
+bool getWifiRecoveryHint();
+ConfigStatus setWifiRecoveryHint(bool value);
+
 int getSleepAfterHours();
 ConfigStatus setSleepAfterHours(int value);
 

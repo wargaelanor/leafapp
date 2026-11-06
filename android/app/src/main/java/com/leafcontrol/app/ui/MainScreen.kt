@@ -52,6 +52,7 @@ import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.DirectionsCar
+import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Info
@@ -116,6 +117,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.leafcontrol.app.BuildConfig
+import com.leafcontrol.app.BoardSettingsActivity
+import com.leafcontrol.app.BoardUpdateActivity
 import com.leafcontrol.app.CsvWriter
 import com.leafcontrol.app.R
 import com.leafcontrol.app.SettingsActivity
@@ -1298,13 +1301,18 @@ private fun MoreScreen(
         item { MoreRow(Icons.Outlined.Info, "О приложении", "Возможности и версия") { showAbout = true } }
         item { SectionTitle("ПЛАТА") }
         item {
-            MoreRow(Icons.Outlined.Wifi, "Настройки платы", "Wi-Fi, MQTT, тариф, OTA") {
-                openBoard(ctx, "/settings")
+            MoreRow(Icons.Outlined.Wifi, "Настройки платы", "Wi-Fi, MQTT, тариф — прямо в приложении") {
+                ctx.startActivity(Intent(ctx, BoardSettingsActivity::class.java))
             }
         }
         item {
-            MoreRow(Icons.Outlined.SystemUpdate, "Обновление прошивки", "OTA через страницу платы") {
-                openBoard(ctx, "/ota")
+            MoreRow(Icons.Outlined.SystemUpdate, "Обновление прошивки платы", "Проверка и заливка без браузера") {
+                ctx.startActivity(Intent(ctx, BoardUpdateActivity::class.java))
+            }
+        }
+        item {
+            MoreRow(Icons.Outlined.Language, "Web-интерфейс платы", "Полная страница платы в браузере") {
+                openBoard(ctx, "/")
             }
         }
         item { SectionTitle("СВЯЗЬ") }

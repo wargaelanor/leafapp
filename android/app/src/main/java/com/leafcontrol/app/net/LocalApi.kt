@@ -12,11 +12,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Dns
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import okio.BufferedSink
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.net.Inet4Address
 import java.util.concurrent.TimeUnit
 
@@ -267,6 +271,88 @@ object LocalApi {
                 .post("".toRequestBody("text/plain".toMediaType()))
                 .build()
             client(context, Settings.localHost).newCall(req).execute().use { it.isSuccessful || it.code == 303 }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /** Board settings for the native screen: GET /api/config. */
+    suspend fun getConfig(context: Context): JSONObject? = withContext(Dispatchers.IO) {
+        ensureLocalHost(context)
+        dropBoardApHostWhenOffAp(context)
+        try {
+            val req = Request.Builder().url(url("/api/config")).get().build()
+            client(context, Settings.localHost).newCall(req).execute().use { r ->
+                if (!r.isSuccessful) return@withContext null
+                JSONObject(r.body?.string() ?: return@withContext null)
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** Applies a partial settings JSON: POST /api/config. */
+    suspend fun saveConfig(context: Context, json: JSONObject): JSONObject? =
+        withContext(Dispatchers.IO) {
+            ensureLocalHost(context)
+            try {
+                val req = Request.Builder()
+                    .url(url("/api/config"))
+                    .post(json.toString().toRequestBody("application/json".toMediaType()))
+                    .build()
+                client(context, Settings.localHost).newCall(req).execute().use { r ->
+                    if (!r.isSuccessful) return@withContext null
+                    JSONObject(r.body?.string() ?: return@withContext null)
+                }
+            } catch (_: Exception) {
+                null
+            }
+        }
+
+    /**
+     * Streams a firmware image into the board's web-OTA endpoint
+     * (POST /ota_update, multipart field "firmware"). The board reboots into
+     * the new firmware on its own after a successful upload.
+     */
+    suspend fun otaUpdate(
+        context: Context,
+        file: File,
+        onProgress: (Int) -> Unit,
+    ): Boolean = withContext(Dispatchers.IO) {
+        ensureLocalHost(context)
+        try {
+            val firmwarePart = object : RequestBody() {
+                override fun contentType() = "application/octet-stream".toMediaType()
+                override fun contentLength(): Long = file.length()
+                override fun writeTo(sink: BufferedSink) {
+                    file.inputStream().use { input ->
+                        val total = file.length().coerceAtLeast(1L)
+                        var sent = 0L
+                        val buf = ByteArray(16 * 1024)
+                        while (true) {
+                            val n = input.read(buf)
+                            if (n < 0) break
+                            sink.write(buf, 0, n)
+                            sent += n
+                            onProgress((sent * 100 / total).toInt())
+                        }
+                        onProgress(100)
+                    }
+                }
+            }
+            val body = MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("firmware", file.name, firmwarePart)
+                .build()
+            val req = Request.Builder().url(url("/ota_update")).post(body).build()
+            // An OTA push takes minutes on the ESP32 web server: drop the
+            // global call timeout for this single call.
+            val c = client(context, Settings.localHost).newBuilder()
+                .callTimeout(0, TimeUnit.MILLISECONDS)
+                .readTimeout(90, TimeUnit.SECONDS)
+                .writeTimeout(90, TimeUnit.SECONDS)
+                .build()
+            c.newCall(req).execute().use { it.isSuccessful }
         } catch (_: Exception) {
             false
         }

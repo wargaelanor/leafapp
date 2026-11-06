@@ -45,6 +45,16 @@
             android:exported="false"
             android:label="Настройки Android" />
 
+        <activity
+            android:name=".BoardSettingsActivity"
+            android:exported="false"
+            android:label="Настройки платы" />
+
+        <activity
+            android:name=".BoardUpdateActivity"
+            android:exported="false"
+            android:label="Обновление прошивки платы" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

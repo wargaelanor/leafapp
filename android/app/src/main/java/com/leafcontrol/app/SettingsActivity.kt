@@ -106,25 +106,6 @@ class SettingsActivity : ComponentActivity() {
         var lowThreshold by remember { mutableStateOf(Settings.lowSocThreshold.toString()) }
 
         val leafState by LeafRepo.state.collectAsStateWithLifecycle()
-        var fwBoard by remember {
-            mutableStateOf(
-                Settings.firmwareBoard.ifEmpty { FirmwareChecker.boardKind(LeafRepo.state.value) }
-            )
-        }
-        var fwBusy by remember { mutableStateOf(false) }
-        var fwProgress by remember { mutableStateOf(-1) }
-        var fwStatus by remember { mutableStateOf("") }
-        var fwCandidate by remember { mutableStateOf<FirmwareChecker.Firmware?>(null) }
-
-        // A firmware download over a slow mobile link must not be interrupted
-        // by the screen timeout while the user is on this screen.
-        LaunchedEffect(fwBusy) {
-            if (fwBusy) {
-                window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            } else {
-                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            }
-        }
 
         val notificationPermission =
             rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
@@ -339,72 +320,10 @@ class SettingsActivity : ComponentActivity() {
             }
 
             Group("Прошивка платы") {
+                // Moved to Ещё → ПЛАТА → «Обновление прошивки платы»:
+                // check, download and flashing the board all live there now.
                 Text(
-                    buildString {
-                        append("Плата: ")
-                        append(if (leafState.board.isEmpty()) "ещё не подключалась" else leafState.board)
-                        if (leafState.fw.isNotEmpty()) append(" · ${leafState.fw}")
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("CMD" to "T-2CAN", "TCALL" to "T-Call").forEach { (value, label) ->
-                        FilterChip(
-                            selected = fwBoard == value,
-                            onClick = {
-                                fwBoard = value
-                                Settings.firmwareBoard = value
-                            },
-                            label = { Text(label, fontSize = 12.sp) },
-                        )
-                    }
-                }
-                OutlinedButton(
-                    onClick = {
-                        if (fwBusy) return@OutlinedButton
-                        fwBusy = true
-                        fwProgress = -1
-                        fwStatus = "Проверяем GitHub…"
-                        Thread {
-                            val found = FirmwareChecker.latest(fwBoard)
-                            runOnUiThread {
-                                if (isFinishing || isDestroyed) return@runOnUiThread
-                                fwBusy = false
-                                if (found == null) {
-                                    fwStatus = "Прошивка не найдена"
-                                    Toast.makeText(
-                                        ctx,
-                                        "GitHub недоступен или релиз не содержит файл для этой платы",
-                                        Toast.LENGTH_LONG,
-                                    ).show()
-                                } else {
-                                    fwStatus = ""
-                                    fwCandidate = found
-                                }
-                            }
-                        }.start()
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !fwBusy,
-                ) {
-                    Text(
-                        when {
-                            !fwBusy -> "Скачать последнюю прошивку"
-                            fwProgress >= 0 -> "Загрузка… $fwProgress%"
-                            else -> "Проверяем…"
-                        }
-                    )
-                }
-                if (fwStatus.isNotEmpty()) {
-                    Text(
-                        fwStatus,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Text(
-                    "Файл сохраняется в «Загрузки». Заливка — через веб-страницу платы: Настройки → Прошивка.",
+                    "Проверка и заливка прошивки платы — в разделе «Ещё → Плата».",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -504,60 +423,6 @@ class SettingsActivity : ComponentActivity() {
             }
 
             Spacer(Modifier.height(8.dp))
-        }
-
-        fwCandidate?.let { fw ->
-            val sizeText = if (fw.sizeBytes > 0) {
-                String.format(Locale.US, "%.1f МБ", fw.sizeBytes / 1024.0 / 1024.0)
-            } else {
-                "размер неизвестен"
-            }
-            AlertDialog(
-                onDismissRequest = { fwCandidate = null },
-                title = { Text("Прошивка ${fw.version}") },
-                text = {
-                    Text(
-                        "${FirmwareChecker.boardLabel(fw.board)} · $sizeText\n\n" +
-                            "Скачать ${fw.assetName} в папку «Загрузки»?"
-                    )
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            fwCandidate = null
-                            fwBusy = true
-                            fwProgress = 0
-                            fwStatus = "Загрузка ${fw.assetName}…"
-                            Thread {
-                                val saved = FirmwareChecker.download(ctx, fw) { percent ->
-                                    runOnUiThread {
-                                        if (!isFinishing && !isDestroyed) fwProgress = percent
-                                    }
-                                }
-                                runOnUiThread {
-                                    if (isFinishing || isDestroyed) return@runOnUiThread
-                                    fwBusy = false
-                                    fwProgress = -1
-                                    if (saved != null) {
-                                        fwStatus = "Скачано: $saved"
-                                        Toast.makeText(
-                                            ctx,
-                                            "Прошивка сохранена в «Загрузки»",
-                                            Toast.LENGTH_LONG,
-                                        ).show()
-                                    } else {
-                                        fwStatus = "Не удалось скачать прошивку"
-                                        Toast.makeText(ctx, "Ошибка загрузки", Toast.LENGTH_LONG).show()
-                                    }
-                                }
-                            }.start()
-                        }
-                    ) { Text("Скачать") }
-                },
-                dismissButton = {
-                    TextButton(onClick = { fwCandidate = null }) { Text("Отмена") }
-                },
-            )
         }
     }
 

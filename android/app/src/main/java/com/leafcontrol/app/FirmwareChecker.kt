@@ -83,6 +83,39 @@ object FirmwareChecker {
     }
 
     /**
+     * Downloads the firmware into a plain file (app cache) so it can be
+     * streamed straight into the board's OTA endpoint. Blocking call.
+     */
+    fun downloadToFile(firmware: Firmware, dest: File, onProgress: (Int) -> Unit): Boolean {
+        val conn = URL(firmware.url).openConnection() as HttpURLConnection
+        try {
+            conn.instanceFollowRedirects = true
+            conn.connectTimeout = 10000
+            conn.readTimeout = 30000
+            if (conn.responseCode !in 200..299) return false
+            val total = conn.contentLength.toLong()
+            dest.outputStream().use { out ->
+                val input = conn.inputStream
+                val buf = ByteArray(16 * 1024)
+                var done = 0L
+                while (true) {
+                    val n = input.read(buf)
+                    if (n < 0) break
+                    out.write(buf, 0, n)
+                    done += n
+                    onProgress(if (total > 0) (done * 100 / total).toInt() else 0)
+                }
+            }
+            return dest.length() > 0
+        } catch (_: Exception) {
+            dest.delete()
+            return false
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    /**
      * Downloads the firmware into the phone's Downloads folder. Blocking call:
      * run it from a background thread.
      *

@@ -24,10 +24,10 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.120-TCALL"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.122-TCALL"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: two MCP2515 CAN buses + SIM800"
 #else
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.120-CMD"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.122-CMD"
 #define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: stable scroll, Wi-Fi scan"
 #endif
 
@@ -1279,6 +1279,197 @@ void handleWifiProfilesSave() {
   server.send(200, "application/json", "{\"ok\":true,\"rebooting\":true}");
 }
 
+// --- JSON config API for the native app -------------------------------------
+// The web form is the only writer of settings so far; the Android app needs
+// the same fields without a browser. GET returns the current values (passwords
+// only as *_set booleans), POST accepts any subset of them. Semantics mirror
+// handleSettingsSave: empty password = keep, empty wifi_ssid = STA off, and a
+// deferred reboot 2 s later so Wi-Fi/AP changes take effect.
+
+// Minimal flat-JSON reader: finds "key" and copies its value (string, number,
+// bool) into out. No nesting is used by this API.
+static bool jsonFindValue(const String& body, const char* key, String& out) {
+  String needle = String("\"") + key + "\"";
+  int pos = 0;
+  while ((pos = body.indexOf(needle, pos)) >= 0) {
+    int i = pos + needle.length();
+    while (i < (int)body.length() && (body[i] == ' ' || body[i] == '\t')) i++;
+    if (i >= (int)body.length() || body[i] != ':') { pos += 1; continue; }
+    i++;
+    while (i < (int)body.length() && (body[i] == ' ' || body[i] == '\t')) i++;
+    if (i >= (int)body.length()) return false;
+    out = "";
+    if (body[i] == '"') {
+      i++;
+      while (i < (int)body.length()) {
+        char c = body[i];
+        if (c == '\\' && i + 1 < (int)body.length()) {
+          char n = body[i + 1];
+          out += (n == 'n') ? '\n' : (n == 't') ? '\t' : n;
+          i += 2;
+          continue;
+        }
+        if (c == '"') { return true; }
+        out += c;
+        i++;
+      }
+      return false;  // unterminated string
+    }
+    while (i < (int)body.length() && body[i] != ',' && body[i] != '}') {
+      out += body[i];
+      i++;
+    }
+    out.trim();
+    return true;
+  }
+  return false;
+}
+
+static bool jsonHas(const String& body, const char* key) {
+  String v;
+  return jsonFindValue(body, key, v);
+}
+
+static bool jsonStr(const String& body, const char* key, String& out) {
+  return jsonFindValue(body, key, out);
+}
+
+static bool jsonBool(const String& body, const char* key, bool& out) {
+  String v;
+  if (!jsonFindValue(body, key, v)) return false;
+  out = (v == "true" || v == "1");
+  return true;
+}
+
+static bool jsonInt(const String& body, const char* key, long& out) {
+  String v;
+  if (!jsonFindValue(body, key, v)) return false;
+  out = strtol(v.c_str(), nullptr, 10);
+  return true;
+}
+
+static bool jsonFloat(const String& body, const char* key, float& out) {
+  String v;
+  if (!jsonFindValue(body, key, v)) return false;
+  out = strtof(v.c_str(), nullptr);
+  return true;
+}
+
+void handleApiConfigGet() {
+  String out;
+  out.reserve(900);
+  out += "{\"fw\":\""; out += LEAF_FIRMWARE_VERSION;
+  out += "\",\"board\":\""; out += BOARD_NAME;
+  out += "\",\"remote_mode\":"; out += String((int)getRemoteTransport());
+  out += ",\"mqtt_server\":\""; out += getMqttServer();
+  out += "\",\"mqtt_port\":"; out += String(getMqttPort());
+  out += ",\"mqtt_user\":\""; out += getMqttUser();
+  out += "\",\"mqtt_password_set\":"; out += strlen(getMqttPassword()) > 0 ? "true" : "false";
+  out += ",\"mqtt_tls\":"; out += getMqttTls() ? "true" : "false";
+  out += ",\"hass_discovery\":"; out += getHassDiscoveryEnabled() ? "true" : "false";
+  out += ",\"mqtt_vehicle_id\":\""; out += getMqttVehicleId();
+  out += "\",\"vehicle_id\":\""; out += getVehicleId();
+  out += ",\"mqtt_connected\":"; out += mqttIsConnected() ? "1" : "0";
+  out += ",\"wifi_ssid\":\""; out += getWifiSSID();
+  out += "\",\"wifi_password_set\":"; out += strlen(getWifiPassword()) > 0 ? "true" : "false";
+  out += ",\"wifi_ssid2\":\""; out += getWifiSSID2();
+  out += "\",\"wifi_password2_set\":"; out += strlen(getWifiPassword2()) > 0 ? "true" : "false";
+  out += ",\"wifi_ssid3\":\""; out += getWifiSSID3();
+  out += "\",\"wifi_password3_set\":"; out += strlen(getWifiPassword3()) > 0 ? "true" : "false";
+  out += ",\"ap_ssid\":\""; out += getApSSID();
+  out += "\",\"ap_password_set\":"; out += strlen(getApPassword()) > 0 ? "true" : "false";
+  out += ",\"host_name\":\""; out += getHostName();
+  out += "\",\"locking_enabled\":"; out += getLockingEnabled() ? "true" : "false";
+  out += ",\"sleep_enable\":"; out += getSleepEnabled() ? "true" : "false";
+  out += ",\"sleep_after_h\":"; out += String(getSleepAfterHours());
+  out += ",\"wake_fast_min\":"; out += String(getWakeFastMinutes());
+  out += ",\"wake_slow_min\":"; out += String(getWakeSlowMinutes());
+  out += ",\"tariff_day\":"; out += String(tripLogTariffDay(), 2);
+  out += ",\"tariff_night\":"; out += String(tripLogTariffNight(), 2);
+  out += ",\"night_from\":"; out += String((int)tripLogNightFrom());
+  out += ",\"night_to\":"; out += String((int)tripLogNightTo());
+  out += ",\"ui_lite\":"; out += getUiLite() ? "true" : "false";
+  out += ",\"modem_enable\":"; out += getModemEnable() ? "true" : "false";
+  out += ",\"ovms_server\":\""; out += getOvmsServer();
+  out += "\",\"ovms_port\":"; out += String(getOvmsPort());
+  out += ",\"ovms_tls\":"; out += getOvmsTls() ? "true" : "false";
+  out += ",\"ovms_password_set\":"; out += strlen(getOvmsPassword()) > 0 ? "true" : "false";
+  out += ",\"ovms_module_password_set\":"; out += strlen(getOvmsModulePassword()) > 0 ? "true" : "false";
+  out += "}";
+  server.send(200, "application/json", out);
+}
+
+void handleApiConfigSave() {
+  if (!server.hasArg("plain")) {
+    server.send(400, "application/json", "{\"ok\":false,\"error\":\"no_body\"}");
+    return;
+  }
+  String body = server.arg("plain");
+  Serial.println("### Settings saved via app JSON API ###");
+  bool noReboot = false;
+  jsonBool(body, "no_reboot", noReboot);  // optional: apply without restarting
+
+  String s;
+  long n;
+  bool b;
+  float f;
+
+  if (jsonHas(body, "remote_mode") && jsonInt(body, "remote_mode", n) && n >= 0 && n <= 2) {
+    setRemoteTransport(static_cast<RemoteTransport>(n));
+  }
+  if (jsonStr(body, "mqtt_server", s)) { s.trim(); setMqttServer(s.c_str()); }
+  if (jsonInt(body, "mqtt_port", n) && n >= 1 && n <= 65535) setMqttPort((int)n);
+  if (jsonStr(body, "mqtt_user", s)) { s.trim(); setMqttUser(s.c_str()); }
+  if (jsonStr(body, "mqtt_password", s) && s.length() > 0) setMqttPassword(s.c_str());
+  if (jsonStr(body, "vehicle_id", s)) { s.trim(); if (s.length() > 0) setVehicleId(s.c_str()); }
+  if (jsonStr(body, "mqtt_vehicle_id", s)) { s.trim(); if (s.length() > 0) setMqttVehicleId(s.c_str()); }
+  if (jsonBool(body, "mqtt_tls", b)) setMqttTls(b);
+  if (jsonBool(body, "hass_discovery", b)) setHassDiscoveryEnabled(b);
+
+  if (jsonStr(body, "wifi_ssid", s)) { s.trim(); setWifiSSID(s.c_str()); }
+  if (jsonStr(body, "wifi_password", s) && s.length() > 0) setWifiPassword(s.c_str());
+  if (jsonStr(body, "wifi_ssid2", s)) { s.trim(); setWifiSSID2(s.c_str()); }
+  if (jsonStr(body, "wifi_password2", s) && s.length() > 0) setWifiPassword2(s.c_str());
+  if (jsonStr(body, "wifi_ssid3", s)) { s.trim(); setWifiSSID3(s.c_str()); }
+  if (jsonStr(body, "wifi_password3", s) && s.length() > 0) setWifiPassword3(s.c_str());
+
+  if (jsonStr(body, "ap_ssid", s)) { s.trim(); setApSSID(s.c_str()); }
+  if (jsonStr(body, "ap_password", s) && s.length() > 0) {
+    if (setApPassword(s.c_str()) != ConfigStatus::OK) {
+      Serial.println("AP password rejected (must be >= 8 chars), keeping previous");
+    }
+  }
+  if (jsonStr(body, "host_name", s)) { s.trim(); if (s.length() > 0) setHostName(s.c_str()); }
+
+  if (jsonBool(body, "locking_enabled", b)) setLockingEnabled(b);
+  if (jsonBool(body, "ui_lite", b)) setUiLite(b);
+
+  if (jsonBool(body, "sleep_enable", b)) setSleepEnabled(b);
+  if (jsonInt(body, "sleep_after_h", n) && n >= 1 && n <= 168) setSleepAfterHours((int)n);
+  if (jsonInt(body, "wake_fast_min", n) && n >= 1 && n <= 1440) setWakeFastMinutes((int)n);
+  if (jsonInt(body, "wake_slow_min", n) && n >= 1 && n <= 1440) setWakeSlowMinutes((int)n);
+
+  if (jsonHas(body, "tariff_day") || jsonHas(body, "night_from")) {
+    float day = (float)tripLogTariffDay(), night = (float)tripLogTariffNight();
+    uint8_t from = tripLogNightFrom(), to = tripLogNightTo();
+    if (jsonFloat(body, "tariff_day", f)) day = f;
+    if (jsonFloat(body, "tariff_night", f)) night = f;
+    if (jsonInt(body, "night_from", n) && n >= 0 && n <= 23) from = (uint8_t)n;
+    if (jsonInt(body, "night_to", n) && n >= 0 && n <= 23) to = (uint8_t)n;
+    tripLogSetTariff(day, night, from, to);
+  }
+
+  if (jsonBool(body, "modem_enable", b)) setModemEnable(b);
+
+  if (!noReboot) {
+    rebootPendingAt = millis() + 2000;
+    rebootPendingReason = 3;
+    server.send(200, "application/json", "{\"ok\":true,\"rebooting\":true}");
+  } else {
+    server.send(200, "application/json", "{\"ok\":true,\"rebooting\":false}");
+  }
+}
+
 void handleCarAwake() {
   noteCarActivity();
   carIsAwake = true;
@@ -1904,11 +2095,15 @@ void manageWiFi() {
         return;
       }
     }
-    // After two minutes without a link, raise a recovery AP. This is the only
+    // After 45 s without a link, raise a recovery AP. This is the only
     // way back in when the saved password is wrong (e.g. autocapitalised on a
-    // phone keyboard) and the board is not on the house network.
-    if (currentTime - staDownSinceMs > 120000UL && (WiFi.getMode() & WIFI_AP) == 0) {
+    // phone keyboard) and the board is not on the house network. Two minutes
+    // used to feel broken: the user power-cycled the board and still waited
+    // with no AP in sight. The hint flag also makes the next boot start the
+    // AP immediately instead of re-waiting.
+    if (currentTime - staDownSinceMs > 45000UL && (WiFi.getMode() & WIFI_AP) == 0) {
       Serial.println("WiFi: starting recovery AP");
+      setWifiRecoveryHint(true);
       WiFi.mode(WIFI_AP_STA);
       WiFi.setSleep(false);
       startSoftAp();
@@ -1955,6 +2150,9 @@ void manageWiFi() {
     previousAttemptTime = currentTime;
     Serial.println("\nWi-Fi connected!");
     wifiRadioRestarts = 0;
+    // The saved network is reachable again — the next reboot must not raise
+    // the setup AP on the stale recovery hint.
+    if (getWifiRecoveryHint()) setWifiRecoveryHint(false);
     if (!timeSyncStarted) {
       // No RTC on the board. NTP gives the real UTC epoch and the +3 h offset
       // makes localtime_r() (used for the night tariff) Moscow time.
@@ -2049,10 +2247,23 @@ void setup() {
       WiFi.setSleep(false);
       wifiEnabled = true;
   } else if (staEnabled) {
-      WiFi.mode(WIFI_STA);
-      WiFi.setAutoReconnect(false);
-      connectWifiProfile();
-      WiFi.setSleep(false);
+      if (getWifiRecoveryHint()) {
+        // The previous session ended with the saved network unreachable
+        // (recovery AP). Raise the setup AP right at boot: making the user
+        // wait through the 45 s timeout after every power cycle felt broken.
+        Serial.println("WiFi: recovery hint - starting setup AP at boot");
+        WiFi.mode(WIFI_AP_STA);
+        WiFi.setSleep(false);
+        WiFi.softAP("LeafControl-Setup");
+        WiFi.setAutoReconnect(false);
+        connectWifiProfile();
+        WiFi.setSleep(false);
+      } else {
+        WiFi.mode(WIFI_STA);
+        WiFi.setAutoReconnect(false);
+        connectWifiProfile();
+        WiFi.setSleep(false);
+      }
       wifiEnabled = true;
   } else if (apEnabled) {
       WiFi.mode(WIFI_AP_STA);
@@ -2137,6 +2348,8 @@ for (size_t i = 0; i < WEBAPP_ASSET_COUNT; i++) {
   server.on(WEBAPP_ASSETS[i].path, HTTP_GET, handleWebAppImage);
 }
       server.on("/api/status", handleApiStatus);
+      server.on("/api/config", HTTP_GET, handleApiConfigGet);
+      server.on("/api/config", HTTP_POST, handleApiConfigSave);
       server.on("/api/time", HTTP_POST, handleApiTime);
       server.on("/api/time", HTTP_GET, handleApiTime);
       server.on("/api/evscan", HTTP_POST, handleApiEvScan);

@@ -144,6 +144,10 @@ static ConfigString<24> conf_call_num2("call_num2", "");
 static ConfigString<24> conf_call_num3("call_num3", "");
 static ConfigString<24> conf_call_num4("call_num4", "");
 static ConfigString<24> conf_call_num5("call_num5", "");
+// Runtime hint: the previous session ended in Wi-Fi recovery (the saved
+// network was unreachable). The board then raises the setup AP right at
+// boot instead of waiting through the timeout again after every reboot.
+static ConfigBool       conf_wifi_recap("wifi_recap", false);
 
 void initConfiguration() {
     nvsReady = preferences.begin("config", false);
@@ -196,6 +200,7 @@ void initConfiguration() {
     conf_call_num3.load();
     conf_call_num4.load();
     conf_call_num5.load();
+    conf_wifi_recap.load();
 }
 
 void factoryReset() {
@@ -385,6 +390,8 @@ bool getModem7670Gps() { return conf_modem7670_gps.get(); }
 ConfigStatus setModem7670Gps(bool value) { return conf_modem7670_gps.set(value); }
 
 bool getModemCallEnabled() { return conf_call_enable.get(); }
+bool getWifiRecoveryHint() { return conf_wifi_recap.get(); }
+ConfigStatus setWifiRecoveryHint(bool value) { return conf_wifi_recap.set(value); }
 ConfigStatus setModemCallEnabled(bool value) { return conf_call_enable.set(value); }
 
 static ConfigString<24>* callNumberConfig(uint8_t index) {
