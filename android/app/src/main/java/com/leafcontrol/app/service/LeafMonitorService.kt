@@ -27,6 +27,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.abs
 
 class LeafMonitorService : Service() {
@@ -210,7 +211,7 @@ class LeafMonitorService : Service() {
                 }
 
                 val now = System.currentTimeMillis()
-                if (now - lastScanMs > 300_000L) {
+                if (now - lastScanMs > 120_000L) {
                     lastScanMs = now
                     val board = BoardDiscovery.scanSubnet(this@LeafMonitorService, 400)
                     if (board != null) {
@@ -255,7 +256,7 @@ class LeafMonitorService : Service() {
                 }
             } else {
                 val now = System.currentTimeMillis()
-                if (now - lastScanMs > 300_000L) {
+                if (now - lastScanMs > 120_000L) {
                     lastScanMs = now
                     val board = BoardDiscovery.scanSubnet(this, 400)
                     if (board != null) {
@@ -340,6 +341,20 @@ class LeafMonitorService : Service() {
             var sent = false
             if (Settings.mode != "mqtt" && path.isNotEmpty()) {
                 sent = LeafRepo.commandLocal(this@LeafMonitorService, path)
+                if (!sent) {
+                    // The saved host may be stale (e.g. 192.168.4.1 from the
+                    // board's own AP). Find the board on this Wi-Fi right now
+                    // and retry once instead of falling back to MQTT for
+                    // another five minutes.
+                    val board = withContext(Dispatchers.IO) {
+                        BoardDiscovery.scanSubnet(this@LeafMonitorService, 350)
+                    }
+                    if (board != null) {
+                        Settings.localHost = board.host
+                        Settings.localPort = board.port
+                        sent = LeafRepo.commandLocal(this@LeafMonitorService, path)
+                    }
+                }
             }
             if (sent) {
                 reportCommand("Команда отправлена")

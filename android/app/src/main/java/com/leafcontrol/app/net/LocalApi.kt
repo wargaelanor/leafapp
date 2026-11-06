@@ -40,12 +40,11 @@ object LocalApi {
             cm.getNetworkCapabilities(n)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
         }
         if (wifi == null) return base
-        val phoneIp = cm.getLinkProperties(wifi)?.linkAddresses
-            ?.mapNotNull { it.address as? Inet4Address }
-            ?.firstOrNull { !it.isLoopbackAddress }
-            ?: return base
-        val hostIp = ipv4(host) ?: return base
-        if (!sameSubnet(hostIp, phoneIp.address)) return base
+        // Bind to Wi-Fi unconditionally — for "leaf.local" too. Without the
+        // binding Android sent hostname lookups and requests to the mobile
+        // network, where the board's mDNS/DNS never answers, and "same
+        // network" control looked dead even though the board page opened in
+        // a browser by IP.
         return base.newBuilder()
             .socketFactory(wifi.socketFactory)
             .dns(object : Dns {
@@ -63,9 +62,32 @@ object LocalApi {
         }
     }
 
-    private fun sameSubnet(a: ByteArray, b: ByteArray): Boolean =
-        a.size == 4 && b.size == 4 &&
-            a[0] == b[0] && a[1] == b[1] && a[2] == b[2]
+    /**
+     * A host saved from the board's own access point (192.168.4.1) is dead on
+     * every other network, but it used to stick until a manual scan: with the
+     * phone on the home Wi-Fi the app kept knocking on 192.168.4.1 and
+     * reported "плата — нет данных" while the board sat on the same network.
+     * Reset it to the mDNS name so the subnet scan can take over.
+     */
+    fun dropBoardApHostWhenOffAp(context: Context) {
+        try {
+            if (Settings.localHost != "192.168.4.1") return
+            val cm = context.getSystemService(ConnectivityManager::class.java) ?: return
+            val wifi = cm.allNetworks.firstOrNull { n ->
+                cm.getNetworkCapabilities(n)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+            } ?: return
+            val ip = cm.getLinkProperties(wifi)?.linkAddresses
+                ?.mapNotNull { it.address as? Inet4Address }
+                ?.firstOrNull { !it.isLoopbackAddress }
+                ?: return
+            val b = ip.address
+            val onBoardAp = (b[0].toInt() and 0xff) == 192 &&
+                (b[1].toInt() and 0xff) == 168 &&
+                (b[2].toInt() and 0xff) == 4
+            if (!onBoardAp) Settings.localHost = "leaf.local"
+        } catch (_: Exception) {
+        }
+    }
 
     private fun url(path: String): String =
         "http://${Settings.localHost}:${Settings.localPort}$path"
@@ -99,6 +121,7 @@ object LocalApi {
 
     suspend fun status(context: Context): LeafState? = withContext(Dispatchers.IO) {
         ensureLocalHost(context)
+        dropBoardApHostWhenOffAp(context)
         try {
             val req = Request.Builder().url(url("/api/status")).get().build()
             client(context, Settings.localHost).newCall(req).execute().use { r ->
