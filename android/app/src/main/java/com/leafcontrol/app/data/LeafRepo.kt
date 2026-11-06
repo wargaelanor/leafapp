@@ -22,6 +22,16 @@ object LeafRepo {
     /** Result of the last command attempt; consumed once by the UI. */
     val commandResult = MutableSharedFlow<String>(extraBufferCapacity = 4)
 
+    /**
+     * Duration the climate was last armed with, minutes. Lives outside the
+     * composition so the countdown ring keeps its scale across screen
+     * navigation and activity recreation (a composition-local total was
+     * re-derived from the CURRENT remaining and the ring jumped back to
+     * full whenever the user left the screen).
+     */
+    @Volatile
+    var climateTotalMin: Int = 0
+
     @Volatile
     var mqtt: MqttWssClient? = null
 

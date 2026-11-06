@@ -705,22 +705,21 @@ private fun DistanceScreen(state: LeafState, onCommand: (String, Double, Int) ->
     }
     var minutes by remember { mutableIntStateOf(Settings.climateMinutes) }
     var remaining by remember { mutableIntStateOf(0) }
-    // total/wasRunning must survive pager navigation: off-screen pages are
-    // disposed, and re-deriving total from the CURRENT remaining made the
-    // ring jump back to full whenever the user returned to this screen.
-    var total by rememberSaveable { mutableIntStateOf(0) }
-    var wasRunning by rememberSaveable { mutableStateOf(false) }
+    var total by remember { mutableIntStateOf(0) }
     LaunchedEffect(state.hvac, state.hvacTimer) {
         if (!state.hvac) {
             remaining = 0
             total = 0
-            wasRunning = false
+            LeafRepo.climateTotalMin = 0
             return@LaunchedEffect
         }
-        if (!wasRunning || total <= 0) {
-            total = maxOf(state.hvacTimer, 1)
-            wasRunning = true
+        // The armed duration lives in LeafRepo: it survives navigation and
+        // activity recreation. Only re-arm when a longer session starts (or
+        // after a process restart), never from the current remaining.
+        if (LeafRepo.climateTotalMin < state.hvacTimer || LeafRepo.climateTotalMin <= 0) {
+            LeafRepo.climateTotalMin = maxOf(state.hvacTimer, 1)
         }
+        total = LeafRepo.climateTotalMin
         remaining = state.hvacTimer
         while (remaining > 0) {
             delay(60_000)
