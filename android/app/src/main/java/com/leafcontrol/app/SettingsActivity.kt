@@ -317,6 +317,44 @@ class SettingsActivity : ComponentActivity() {
                         }
                     }
                 }
+                ActionRow("Автозапуск (ColorOS/OPPO)") {
+                    // No standard Android intent exists for the vendor
+                    // autostart screen; try the known ColorOS/Oppo/Realme/OnePlus
+                    // activities and fall back to the app details page.
+                    val attempts = listOf(
+                        "com.coloros.safecenter" to "com.coloros.safecenter.permission.startup.StartupAppListActivity",
+                        "com.coloros.safecenter" to "com.coloros.safecenter.startupapp.StartupAppListActivity",
+                        "com.oplus.battery" to "com.oplus.battery.BatteryActivity",
+                        "com.oneplus.security" to "com.oneplus.security.chainlaunch.view.ChainLaunchAppListActivity",
+                        "com.coloros.oppoguardelf" to "com.coloros.powermanager.fuelgaue.PowerUsageModelActivity",
+                    )
+                    var opened = false
+                    for ((pkg, cls) in attempts) {
+                        try {
+                            ctx.startActivity(
+                                Intent().setComponent(android.content.ComponentName(pkg, cls))
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                            opened = true
+                            break
+                        } catch (_: Exception) {
+                        }
+                    }
+                    if (!opened) {
+                        try {
+                            ctx.startActivity(
+                                Intent(AndroidSettings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                                    .setData(Uri.parse("package:${ctx.packageName}"))
+                            )
+                            Toast.makeText(
+                                ctx,
+                                "Открыта страница приложения — включите «Автозапуск»/«Разрешить автозапуск»",
+                                Toast.LENGTH_LONG,
+                            ).show()
+                        } catch (_: Exception) {
+                        }
+                    }
+                }
             }
 
             Group("Прошивка платы") {

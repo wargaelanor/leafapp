@@ -24,10 +24,10 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.123-TCALL"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.124-TCALL"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: two MCP2515 CAN buses + SIM800"
 #else
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.123-CMD"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.124-CMD"
 #define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: stable scroll, Wi-Fi scan"
 #endif
 
@@ -1611,7 +1611,11 @@ void handleEvPackStatus(float voltage, float current) {
   evData.packDataValid = true;
   evData.packVoltageValid = true;
   if (voltage == lastPubbedV && current == lastPubbedA) return;
-  if (packPubLastMs != 0 && millis() - packPubLastMs < 5000) {
+  // Fast lane while the car is doing something (driving / charging): the
+  // MQTT subscribers see V/A move in ~real time. Idle: the old 5 s window.
+  const bool active = (evData.vehicleOn == 1) || (fabsf(current) > 1.0f);
+  const unsigned long window = active ? 1000UL : 5000UL;
+  if (packPubLastMs != 0 && millis() - packPubLastMs < window) {
     packPubPending = true;  // window full: publish the LATEST value when it opens
     return;
   }
@@ -1627,8 +1631,11 @@ void handleEvPackStatus(float voltage, float current) {
 // sent (with the freshest cached reading) once the window expires.
 void managePendingPublishes() {
   unsigned long now = millis();
+  // Same dynamic window as handleEvPackStatus: 1 s while active, 5 s idle
+  const unsigned long packWindow =
+      (evData.vehicleOn == 1 || fabsf(evData.packCurrent) > 1.0f) ? 1000UL : 5000UL;
   if (packPubPending && evData.packDataValid &&
-      now - packPubLastMs >= 5000) {
+      now - packPubLastMs >= packWindow) {
     packPubPending = false;
     packPubLastMs = now;
     mqttUpdatePackStatus(evData.packVoltage, evData.packCurrent);
