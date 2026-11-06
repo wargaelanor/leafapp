@@ -70,6 +70,7 @@ class LeafMonitorService : Service() {
     private var mqttClient: MqttWssClient? = null
     private var recorder = Recorder()
     private var prevCharging = false
+    private var prevPlugged = false
     private var lowNotified = false
     private var offlineNotified = false
     private var startedForeground = false
@@ -426,6 +427,22 @@ class LeafMonitorService : Service() {
                 }
             }
             prevCharging = s.charging
+            // Connector events: the plug can be in the socket while no charge
+            // runs (timed wait, or the session already finished). "Зарядка
+            // началась" only covers the active session, so a plug-in without
+            // a session was silent while the car picture also stayed plain.
+            val plugged = s.charging || s.charger == "done" || s.charger == "wait"
+            if (plugged != prevPlugged) {
+                if (plugged && !s.charging && Settings.notifyChargeStart) {
+                    val why = if (s.charger == "done") {
+                        "зарядка завершена, пистолет в гнезде"
+                    } else {
+                        "ожидание старта зарядки"
+                    }
+                    Notifications.event(this, "Пистолет подключён", why + socText(s))
+                }
+            }
+            prevPlugged = plugged
             if (s.soc in 0.0..Settings.lowSocThreshold.toDouble() && !s.charging) {
                 if (!lowNotified && Settings.notifyLowSoc) {
                     lowNotified = true

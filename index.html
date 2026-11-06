@@ -1137,7 +1137,11 @@ function renderCarStage(){
     ? (S.fage >= 0 && S.fage < 60)
     : (lastUpdate > 0 && Date.now() - lastUpdate < 60000);
   stage.classList.toggle('lights',   fresh && S.lights === 1);
-  stage.classList.toggle('charging', fresh && !!S.charging);
+  // The cable layer shows whenever the connector is plugged: an active
+  // charge, a finished one (charger=done) or a scheduled wait. "charging"
+  // alone hid the plug once the session ended but the cable stayed in.
+  const plugged = S.charging || S.charger === 'done' || S.charger === 'wait';
+  stage.classList.toggle('charging', fresh && plugged);
   stage.classList.toggle('moving',   fresh && S.on === 1 && !S.charging);
 }
 function renderNow(){

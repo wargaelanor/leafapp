@@ -433,7 +433,12 @@ private fun CarStage(state: LeafState) {
                 modifier = Modifier.fillMaxSize(),
             )
         }
-        if (state.charging) {
+        // The cable is drawn whenever the connector is plugged: an active
+        // charge, a finished one (charger=done) or a scheduled wait (wait).
+        // "charging" alone hid the plug when the session ended but the cable
+        // stayed in the socket.
+        val plugged = state.charging || state.charger == "done" || state.charger == "wait"
+        if (plugged && state.lastUpdateMs > 0) {
             Image(
                 painterResource(R.drawable.car_cable),
                 contentDescription = null,
