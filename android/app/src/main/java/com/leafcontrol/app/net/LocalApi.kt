@@ -314,7 +314,7 @@ object LocalApi {
                 ConfigResult(JSONObject(body), r.code)
             }
         } catch (e: Exception) {
-            ConfigResult(null, null, e.javaClass.simpleName)
+            ConfigResult(null, null, e.javaClass.simpleName + ": " + (e.message ?: ""))
         }
     }
 

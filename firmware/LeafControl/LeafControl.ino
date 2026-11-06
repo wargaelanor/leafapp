@@ -24,10 +24,10 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.122-TCALL"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.123-TCALL"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: two MCP2515 CAN buses + SIM800"
 #else
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.122-CMD"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.123-CMD"
 #define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: stable scroll, Wi-Fi scan"
 #endif
 
@@ -1369,7 +1369,7 @@ void handleApiConfigGet() {
   out += ",\"hass_discovery\":"; out += getHassDiscoveryEnabled() ? "true" : "false";
   out += ",\"mqtt_vehicle_id\":\""; out += getMqttVehicleId();
   out += "\",\"vehicle_id\":\""; out += getVehicleId();
-  out += ",\"mqtt_connected\":"; out += mqttIsConnected() ? "1" : "0";
+  out += "\",\"mqtt_connected\":"; out += mqttIsConnected() ? "1" : "0";
   out += ",\"wifi_ssid\":\""; out += getWifiSSID();
   out += "\",\"wifi_password_set\":"; out += strlen(getWifiPassword()) > 0 ? "true" : "false";
   out += ",\"wifi_ssid2\":\""; out += getWifiSSID2();
@@ -1396,6 +1396,22 @@ void handleApiConfigGet() {
   out += ",\"ovms_password_set\":"; out += strlen(getOvmsPassword()) > 0 ? "true" : "false";
   out += ",\"ovms_module_password_set\":"; out += strlen(getOvmsModulePassword()) > 0 ? "true" : "false";
   out += "}";
+  // Self-check: this JSON is built by hand, and a single lost quote (as in
+  // .122: missing \" before mqtt_connected) breaks every client parser while
+  // the endpoint still returns 200. An odd quote count means malformed —
+  // answer with a small valid object instead of poisoning the app.
+  {
+    int quotes = 0;
+    for (size_t i = 0; i < out.length(); i++) {
+      if (out[i] == '"') quotes++;
+    }
+    if (quotes % 2 != 0) {
+      Serial.printf("### /api/config JSON malformed (%d quotes) - sending fallback ###\n", quotes);
+      out = "{\"fw\":\"";
+      out += LEAF_FIRMWARE_VERSION;
+      out += "\",\"error\":\"config_json_malformed\"}";
+    }
+  }
   server.send(200, "application/json", out);
 }
 
