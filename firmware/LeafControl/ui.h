@@ -357,7 +357,6 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, bool ovmsConnected,
   server.sendContent(String(getModemPwrKey()));
   server.sendContent(F(
     "'>\n"
-    "<div class='hint'>UART модема: T-2CAN — GPIO35/38/37. T-Call — встроенный SIM800 26/27/33, CAN на 13/34/18/19/14/25. GPIO35 на T-Call занят делителем АКБ. Wi-Fi имеет приоритет для MQTT.</div>\n"
     "<button type='submit' class='btn btn-save'>Сохранить и перезагрузить</button>\n"
     "</div></details>\n"
     "<details class='section' data-section='power'><summary>Экономия энергии</summary><div class='section-body'>\n"
@@ -382,6 +381,15 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, bool ovmsConnected,
     "<input type='number' id='wake_slow_min' name='wake_slow_min' min='1' max='1440' value='"
   ));
   server.sendContent(String(getWakeSlowMinutes()));
+  server.sendContent(F(
+    "'>\n"
+    "</div></details>\n"
+    "<details class='section' data-section='charge'><summary>Ограничение зарядки</summary><div class='section-body'>\n"
+    "<div class='hint'>Плата сама остановит зарядку, когда заряд батареи достигнет этого процента (0 = выключено). Работает без телефона: плата следит за SOC во время зарядки и подменяет кадр 0x1DB на EV-CAN.</div>\n"
+    "<label for='charge_limit_pct'>Остановить зарядку при, % (0 или 70–95)</label>\n"
+    "<input type='number' min='0' max='95' id='charge_limit_pct' name='charge_limit_pct' value='"
+  ));
+  server.sendContent(String(getChargeLimitPct()));
   server.sendContent(F(
     "'>\n"
     "</div></details>\n"

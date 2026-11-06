@@ -12,7 +12,8 @@ enum class ConfigStatus {
     ERROR_HOSTNAME_HYPHEN,
     ERROR_HOSTNAME_CHARS,
     ERROR_PORT_RANGE,
-    ERROR_INVALID
+    ERROR_INVALID,
+    ERROR_NVS_WRITE
 };
 
 void initConfiguration();

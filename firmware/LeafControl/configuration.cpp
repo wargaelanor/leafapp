@@ -28,7 +28,12 @@ public:
             return ConfigStatus::ERROR_LENGTH;
         }
         value.copyFrom(val);
-        if (nvsReady) preferences.putString(key, value.c_str());
+        if (nvsReady) {
+            if (preferences.putString(key, value.c_str()) == 0) {
+                Serial.printf("Config: NVS write FAILED for '%s' (partition full?)\n", key);
+                return ConfigStatus::ERROR_NVS_WRITE;
+            }
+        }
         return ConfigStatus::OK;
     }
     
@@ -56,12 +61,20 @@ public:
     
     ConfigStatus set(int val) {
         value = val;
-        if (nvsReady) preferences.putInt(key, value);
+        if (nvsReady) {
+            if (preferences.putInt(key, value) == 0) {
+                // A silent NVS failure looks exactly like "the setting did not
+                // survive the reboot": the RAM copy answers reads until the
+                // next restart. Say it out loud instead.
+                Serial.printf("Config: NVS write FAILED for '%s' (partition full?)\n", key);
+                return ConfigStatus::ERROR_NVS_WRITE;
+            }
+        }
         return ConfigStatus::OK;
     }
-    
-    int get() const { 
-        return value; 
+
+    int get() const {
+        return value;
     }
 };
 
@@ -84,7 +97,12 @@ public:
     
     ConfigStatus set(bool val) {
         value = val;
-        if (nvsReady) preferences.putBool(key, value);
+        if (nvsReady) {
+            if (preferences.putBool(key, value) == 0) {
+                Serial.printf("Config: NVS write FAILED for '%s' (partition full?)\n", key);
+                return ConfigStatus::ERROR_NVS_WRITE;
+            }
+        }
         return ConfigStatus::OK;
     }
     
@@ -150,7 +168,10 @@ static ConfigString<24> conf_call_num5("call_num5", "");
 static ConfigBool       conf_wifi_recap("wifi_recap", false);
 // Auto charge stop: stop the charge via the 0x1DB MITM once SOC reaches this
 // percentage. 0 = disabled. Allowed values: 0 or 70..95 (steps of 5).
-static ConfigInt        conf_charge_limit("charge_limit_pct", 0);
+// NVS keys are limited to 15 characters: "charge_limit_pct" (16) silently
+// failed to write, so the setting never survived a reboot. The NVS key is
+// "charge_limit"; the JSON field stays "charge_limit_pct" for clients.
+static ConfigInt        conf_charge_limit("charge_limit", 0);
 
 void initConfiguration() {
     nvsReady = preferences.begin("config", false);

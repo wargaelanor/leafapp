@@ -50,6 +50,7 @@ void executeCommand(char* cmd) {
         Serial.printf("  sleep_after_h: %d\n", getSleepAfterHours());
          Serial.printf("  wake_fast_min: %d\n", getWakeFastMinutes());
          Serial.printf("  wake_slow_min: %d\n", getWakeSlowMinutes());
+         Serial.printf("  charge_limit_pct: %d\n", getChargeLimitPct());
          Serial.printf("  modem_enable: %s\n", getModemEnable() ? "true" : "false");
          Serial.printf("  modem_type: %d\n", getModemType());
          Serial.printf("  modem_pwrkey: %d\n", getModemPwrKey());
@@ -84,6 +85,7 @@ void executeCommand(char* cmd) {
             else if (strcmp(key, "sleep_enable") == 0) Serial.println(getSleepEnabled() ? "true" : "false");
             else if (strcmp(key, "sleep_after_h") == 0) Serial.println(getSleepAfterHours());
             else if (strcmp(key, "wake_fast_min") == 0) Serial.println(getWakeFastMinutes());
+            else if (strcmp(key, "charge_limit_pct") == 0) Serial.println(getChargeLimitPct());
              else if (strcmp(key, "wake_slow_min") == 0) Serial.println(getWakeSlowMinutes());
              else if (strcmp(key, "modem800_apn") == 0) Serial.println(getModem800Apn());
              else if (strcmp(key, "modem800_user") == 0) Serial.println(getModem800User());
@@ -177,6 +179,11 @@ void executeCommand(char* cmd) {
                 int v = atoi(val);
                 if (v >= 1 && v <= 1440) status = setWakeSlowMinutes(v);
                 else { Serial.println("Error: Value must be 1-1440 minutes."); return; }
+            }
+            else if (strcmp(key, "charge_limit_pct") == 0) {
+                int v = atoi(val);
+                if (v == 0 || (v >= 70 && v <= 95)) status = setChargeLimitPct(v);
+                else { Serial.println("Error: Value must be 0 or 70-95."); return; }
             }
             else if (strcmp(key, "modem800_apn") == 0) status = setModem800Apn(val);
             else if (strcmp(key, "modem800_user") == 0) status = setModem800User(val);

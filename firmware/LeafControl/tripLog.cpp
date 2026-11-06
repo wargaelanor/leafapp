@@ -406,6 +406,14 @@ void tripLogSetTariff(double dayPrice, double nightPrice, uint8_t fromHour, uint
   if (toHour > 23) toHour = 7;
   if (dayPrice < 0) dayPrice = 0;
   if (nightPrice < 0) nightPrice = 0;
+  // Skip the NVS write when nothing changed. The PWA pushes its tariff to the
+  // board on every page open; four NVS keys per open eventually exhaust the
+  // partition's free pages and every later config write starts failing
+  // silently (settings stopped surviving reboots exactly like that).
+  if (dayPrice == (double)tariffDay && nightPrice == (double)tariffNight &&
+      fromHour == nightFrom && toHour == nightTo) {
+    return;
+  }
   nightFrom = fromHour;
   nightTo = toHour;
   tariffDay = (float)dayPrice;

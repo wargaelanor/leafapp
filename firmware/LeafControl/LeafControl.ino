@@ -24,10 +24,10 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.127-TCALL"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.128-TCALL"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: two MCP2515 CAN buses + SIM800"
 #else
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.127-CMD"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.128-CMD"
 #define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: stable scroll, Wi-Fi scan"
 #endif
 
@@ -1234,6 +1234,16 @@ void handleSettingsSave() {
     setModemCallNumber(i, number.c_str());
   }
 
+  // Charge limit from the web form (0 = off, else 70..95)
+  if (server.hasArg("charge_limit_pct")) {
+    int lim = server.arg("charge_limit_pct").toInt();
+    if (lim != 0 && (lim < 70 || lim > 95)) {
+      Serial.printf("Settings: charge_limit_pct %d rejected (0 or 70..95)\n", lim);
+    } else {
+      setChargeLimitPct(lim);
+    }
+  }
+
   String m800Apn = server.arg("modem800_apn");
   m800Apn.trim();
   setModem800Apn(m800Apn.c_str());
@@ -1420,6 +1430,9 @@ void handleApiConfigGet() {
   out += ",\"night_to\":"; out += String((int)tripLogNightTo());
   out += ",\"ui_lite\":"; out += getUiLite() ? "true" : "false";
   out += ",\"modem_enable\":"; out += getModemEnable() ? "true" : "false";
+  out += ",\"modem800_apn\":\""; out += getModem800Apn();
+  out += "\",\"modem800_user\":\""; out += getModem800User();
+  out += "\",\"modem800_pass_set\":"; out += strlen(getModem800Pass()) > 0 ? "true" : "false";
   out += ",\"ovms_server\":\""; out += getOvmsServer();
   out += "\",\"ovms_port\":"; out += String(getOvmsPort());
   out += ",\"ovms_tls\":"; out += getOvmsTls() ? "true" : "false";
@@ -1513,6 +1526,14 @@ void handleApiConfigSave() {
   }
 
   if (jsonBool(body, "modem_enable", b)) setModemEnable(b);
+  if (jsonStr(body, "modem800_apn", s)) { s.trim(); setModem800Apn(s.c_str()); }
+  if (jsonStr(body, "modem800_user", s)) { s.trim(); if (s.length() > 0) setModem800User(s.c_str()); }
+  if (jsonStr(body, "modem800_pass", s) && s.length() > 0) setModem800Pass(s.c_str());
+  if (jsonStr(body, "ovms_server", s)) { s.trim(); setOvmsServer(s.c_str()); }
+  if (jsonInt(body, "ovms_port", n) && n >= 1 && n <= 65535) setOvmsPort((int)n);
+  if (jsonStr(body, "ovms_password", s) && s.length() > 0) setOvmsPassword(s.c_str());
+  if (jsonStr(body, "ovms_module_password", s) && s.length() > 0) setOvmsModulePassword(s.c_str());
+  if (jsonBool(body, "ovms_tls", b)) setOvmsTls(b);
 
   if (!noReboot) {
     rebootPendingAt = millis() + 2000;

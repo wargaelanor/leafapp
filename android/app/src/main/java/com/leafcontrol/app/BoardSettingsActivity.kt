@@ -82,6 +82,11 @@ class BoardSettingsActivity : ComponentActivity() {
 private class BoardConfigDraft(c: JSONObject) {
     var wifiSsid by mutableStateOf(c.optString("wifi_ssid"))
     var wifiPassword by mutableStateOf("")
+    var wifiSsid2 by mutableStateOf(c.optString("wifi_ssid2"))
+    var wifiPassword2 by mutableStateOf("")
+    var wifiSsid3 by mutableStateOf(c.optString("wifi_ssid3"))
+    var wifiPassword3 by mutableStateOf("")
+    var hostName by mutableStateOf(c.optString("host_name", "leaf"))
     var apSsid by mutableStateOf(c.optString("ap_ssid"))
     var apPassword by mutableStateOf("")
     var mqttServer by mutableStateOf(c.optString("mqtt_server"))
@@ -90,6 +95,16 @@ private class BoardConfigDraft(c: JSONObject) {
     var mqttPassword by mutableStateOf("")
     var mqttVid by mutableStateOf(c.optString("mqtt_vehicle_id"))
     var mqttTls by mutableStateOf(c.optBoolean("mqtt_tls"))
+    var hass by mutableStateOf(c.optBoolean("hass_discovery"))
+    var ovmsServer by mutableStateOf(c.optString("ovms_server"))
+    var ovmsPort by mutableStateOf(c.optInt("ovms_port", 6870).toString())
+    var ovmsTls by mutableStateOf(c.optBoolean("ovms_tls"))
+    var ovmsPassword by mutableStateOf("")
+    var ovmsModulePassword by mutableStateOf("")
+    var modemEnabled by mutableStateOf(c.optBoolean("modem_enable"))
+    var modemApn by mutableStateOf(c.optString("modem800_apn"))
+    var modemUser by mutableStateOf(c.optString("modem800_user"))
+    var modemPassword by mutableStateOf("")
     var remoteMode by mutableStateOf(c.optInt("remote_mode", 1))
     var locking by mutableStateOf(c.optBoolean("locking_enabled"))
     var sleepEnabled by mutableStateOf(c.optBoolean("sleep_enable"))
@@ -111,6 +126,11 @@ private class BoardConfigDraft(c: JSONObject) {
         val o = JSONObject()
         o.put("wifi_ssid", wifiSsid.trim())
         if (wifiPassword.isNotEmpty()) o.put("wifi_password", wifiPassword)
+        o.put("wifi_ssid2", wifiSsid2.trim())
+        if (wifiPassword2.isNotEmpty()) o.put("wifi_password2", wifiPassword2)
+        o.put("wifi_ssid3", wifiSsid3.trim())
+        if (wifiPassword3.isNotEmpty()) o.put("wifi_password3", wifiPassword3)
+        o.put("host_name", hostName.trim().ifEmpty { "leaf" })
         o.put("ap_ssid", apSsid.trim())
         if (apPassword.isNotEmpty()) o.put("ap_password", apPassword)
         o.put("mqtt_server", mqttServer.trim())
@@ -119,6 +139,16 @@ private class BoardConfigDraft(c: JSONObject) {
         if (mqttPassword.isNotEmpty()) o.put("mqtt_password", mqttPassword)
         o.put("mqtt_vehicle_id", mqttVid.trim())
         o.put("mqtt_tls", mqttTls)
+        o.put("hass_discovery", hass)
+        o.put("ovms_server", ovmsServer.trim())
+        o.put("ovms_port", ovmsPort.toIntOrNull() ?: 6870)
+        o.put("ovms_tls", ovmsTls)
+        if (ovmsPassword.isNotEmpty()) o.put("ovms_password", ovmsPassword)
+        if (ovmsModulePassword.isNotEmpty()) o.put("ovms_module_password", ovmsModulePassword)
+        o.put("modem_enable", modemEnabled)
+        o.put("modem800_apn", modemApn.trim())
+        o.put("modem800_user", modemUser.trim())
+        if (modemPassword.isNotEmpty()) o.put("modem800_pass", modemPassword)
         o.put("remote_mode", remoteMode)
         o.put("locking_enabled", locking)
         o.put("sleep_enable", sleepEnabled)
@@ -219,6 +249,11 @@ private fun BoardSettingsScreen() {
                         "Пароль" + if (c.wifiPassSet) " (задан — пусто = не менять)" else "",
                         c.wifiPassword,
                     ) { c.wifiPassword = it }
+                    LabeledField("Сеть 2 (пусто = не используется)", c.wifiSsid2) { c.wifiSsid2 = it }
+                    PasswordField("Пароль сети 2 (пусто = не менять)", c.wifiPassword2) { c.wifiPassword2 = it }
+                    LabeledField("Сеть 3 (пусто = не используется)", c.wifiSsid3) { c.wifiSsid3 = it }
+                    PasswordField("Пароль сети 3 (пусто = не менять)", c.wifiPassword3) { c.wifiPassword3 = it }
+                    LabeledField("Имя платы (mDNS, без .local)", c.hostName) { c.hostName = it }
                 }
 
                 SectionCard("Точка доступа платы") {
@@ -248,6 +283,22 @@ private fun BoardSettingsScreen() {
                     ) { c.mqttPassword = it }
                     LabeledField("Vehicle ID (топики)", c.mqttVid) { c.mqttVid = it }
                     SwitchRow("TLS (wss/8883)", c.mqttTls) { c.mqttTls = it }
+                    SwitchRow("Home Assistant discovery", c.hass) { c.hass = it }
+                }
+
+                SectionCard("OVMS Server V2") {
+                    LabeledField("Сервер", c.ovmsServer) { c.ovmsServer = it }
+                    LabeledField("Порт", c.ovmsPort, KeyboardType.Number) { c.ovmsPort = it }
+                    SwitchRow("TLS", c.ovmsTls) { c.ovmsTls = it }
+                    PasswordField("Пароль (пусто = не менять)", c.ovmsPassword) { c.ovmsPassword = it }
+                    PasswordField("Пароль модуля (пусто = не менять)", c.ovmsModulePassword) { c.ovmsModulePassword = it }
+                }
+
+                SectionCard("Модем (SIM800)") {
+                    SwitchRow("Включить модем", c.modemEnabled) { c.modemEnabled = it }
+                    LabeledField("APN", c.modemApn) { c.modemApn = it }
+                    LabeledField("Пользователь APN", c.modemUser) { c.modemUser = it }
+                    PasswordField("Пароль APN (пусто = не менять)", c.modemPassword) { c.modemPassword = it }
                 }
 
                 SectionCard("Зарядка") {
