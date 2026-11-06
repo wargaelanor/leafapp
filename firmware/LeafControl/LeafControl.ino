@@ -24,10 +24,10 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.119-TCALL"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.120-TCALL"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: two MCP2515 CAN buses + SIM800"
 #else
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.119-CMD"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.120-CMD"
 #define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: stable scroll, Wi-Fi scan"
 #endif
 
@@ -2087,6 +2087,16 @@ void setup() {
 
   setupMQTT();
   setupOvmsV2();
+  // Hold every MCP2515 CS line HIGH before the first SPI transaction.
+  // setupEvCAN() runs first and the other modules' CS pins are still floating
+  // inputs at that point: a floating CS lets a not-yet-initialised controller
+  // drive the shared MISO and corrupt the active chip's reads (EV-CAN passed
+  // or failed randomly between boots for exactly this reason).
+#if defined(BOARD_CAR_CAN_MCP2515) && BOARD_CAR_CAN_MCP2515
+  pinMode(BOARD_CAR_MCP_CS, OUTPUT);     digitalWrite(BOARD_CAR_MCP_CS, HIGH);
+  pinMode(BOARD_EVCAN_SPI_CS, OUTPUT);   digitalWrite(BOARD_EVCAN_SPI_CS, HIGH);
+  pinMode(BOARD_AUXCAN_SPI_CS, OUTPUT);  digitalWrite(BOARD_AUXCAN_SPI_CS, HIGH);
+#endif
   // EV-CAN first: its MISO probe briefly reconfigures GPIO35, so the CAR-CAN
   // driver must be installed afterwards.
   setupEvCAN();
@@ -2181,20 +2191,28 @@ for (size_t i = 0; i < WEBAPP_ASSET_COUNT; i++) {
           return;
         }
         if (captivePortalActive && server.method() == HTTP_GET) {
-          // Redirect only captive-portal probes (or a foreign Host), and always
-          // to the AP's literal IP. Redirecting every unknown GET to the same
-          // host loops forever and turns asset 404s into HTML, which is why the
-          // page failed to load when connected straight to the board's AP.
+          // Captive-portal detection probes get a bare 204. Redirecting them to
+          // the UI used to make Android open its CaptivePortalLogin window,
+          // which has a system swipe-to-refresh that page JS cannot disable
+          // (and its pull-down reloaded the setup page). With a 204 Android
+          // marks the network as "no portal" and the user opens the setup page
+          // in a normal browser instead, where the PTR block works.
           const String& uri = server.uri();
           bool probe = uri == "/generate_204" || uri == "/gen_204" ||
                        uri == "/hotspot-detect.html" || uri == "/library/test/success.html" ||
                        uri == "/ncsi.txt" || uri == "/connecttest.txt" ||
                        uri == "/canonical.html" || uri == "/success.txt";
+          if (probe) {
+            server.send(204, "text/plain", "");
+            return;
+          }
           String host = server.hostHeader();
           bool foreignHost = host.length() > 0 &&
                              host != WiFi.softAPIP().toString() &&
                              host != "leaf.local";
-          if (probe || foreignHost) {
+          if (foreignHost) {
+            // A browser typed a real domain: bring it to the UI (the page's own
+            // PTR block applies there, unlike the system portal window)
             server.sendHeader("Location", String("http://") + WiFi.softAPIP().toString() + "/", true);
             server.send(302, "text/plain", "");
             return;
