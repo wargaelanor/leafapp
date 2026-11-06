@@ -206,7 +206,11 @@ class LeafMonitorService : Service() {
                         syncedAt = System.currentTimeMillis()
                         syncHistory()
                     }
-                    delay(20_000)
+                    // Live while the car is active (ready / charging / climate
+                    // running): 4 s keeps V/A/SOC moving in near real time.
+                    // Parked and asleep: back off to the old 20 s cadence.
+                    val pollMs = if (s.on == 1 || s.charging || s.hvac) 4_000L else 20_000L
+                    delay(pollMs)
                     continue
                 }
 
@@ -254,6 +258,10 @@ class LeafMonitorService : Service() {
                     syncedAt = System.currentTimeMillis()
                     syncHistory()
                 }
+                // 4 s while the car is active, 20 s when parked (see runAuto)
+                val pollMs = if (s.on == 1 || s.charging || s.hvac) 4_000L else 20_000L
+                delay(pollMs)
+                continue
             } else {
                 val now = System.currentTimeMillis()
                 if (now - lastScanMs > 120_000L) {
