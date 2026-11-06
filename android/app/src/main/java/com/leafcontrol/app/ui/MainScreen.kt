@@ -717,6 +717,21 @@ private fun DistanceScreen(state: LeafState, onCommand: (String, Double, Int) ->
         }
     }
     val climateRunning = state.fresh() && state.hvac && remaining > 0
+    // The countdown lives on the climate button itself now: the ring depletes
+    // counter-clockwise from the full duration, the label shows the minutes
+    // left (or ∞ when the board runs climate without a timer).
+    val climateInfinite = state.fresh() && state.hvac && state.hvacTimer == 0
+    val ringFraction = when {
+        climateRunning -> (remaining.toFloat() / maxOf(total, 1)).coerceIn(0f, 1f)
+        climateInfinite -> 1f
+        else -> 0f
+    }
+    val ringLabel = when {
+        climateRunning -> "$remaining мин"
+        climateInfinite -> "∞"
+        else -> null
+    }
+    val ringWarn = climateRunning && remaining <= 5
     Column(
         Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -776,41 +791,10 @@ private fun DistanceScreen(state: LeafState, onCommand: (String, Double, Int) ->
                             )
                         }
                     }
-                    if (climateRunning) {
-                        Spacer(Modifier.height(10.dp))
-                        ClimateCountdown(remaining, total)
-                    }
                 }
             }
         SectionTitle("КОМАНДЫ")
-        CommandPad(state, setpoint, minutes, onCommand)
-    }
-}
-
-@Composable
-private fun ClimateCountdown(remaining: Int, total: Int) {
-    val fraction = (remaining.toFloat() / maxOf(total, 1)).coerceIn(0f, 1f)
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(4.dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-        ) {
-            Box(
-                Modifier
-                    .fillMaxWidth(fraction)
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(MaterialTheme.colorScheme.primary)
-            )
-        }
-        Text(
-            "Климат выключится через $remaining мин",
-            fontSize = 11.sp,
-            color = MaterialTheme.colorScheme.primary,
-        )
+        CommandPad(state, setpoint, minutes, onCommand, ringFraction, ringLabel, ringWarn)
     }
 }
 
@@ -820,12 +804,11 @@ private fun CommandPad(
     setpoint: Float,
     minutes: Int,
     onCommand: (String, Double, Int) -> Unit,
+    climateRingFraction: Float = 0f,
+    climateRingLabel: String? = null,
+    climateRingWarn: Boolean = false,
 ) {
-    val timerProgress = if (state.hvac && state.hvacTimer > 0) {
-        (state.hvacTimer / 15f).coerceIn(0f, 1f)
-    } else {
-        0f
-    }
+    val timerProgress = climateRingFraction
     Box(Modifier.fillMaxWidth().height(465.dp)) {
         Row(
             Modifier
@@ -848,6 +831,11 @@ private fun CommandPad(
                 .align(Alignment.TopCenter)
                 .offset(y = 100.dp),
             idleProgress = timerProgress,
+            idleRingColor = if (climateRingWarn) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.primary
+            },
         ) { _, _ ->
             Surface(
                 shape = CircleShape,
@@ -874,6 +862,18 @@ private fun CommandPad(
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
+                    if (climateRingLabel != null) {
+                        Text(
+                            climateRingLabel,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = if (climateRingWarn) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.primary
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -1575,6 +1575,7 @@ private fun HoldAction(
     modifier: Modifier = Modifier,
     ring: Boolean = true,
     idleProgress: Float = 0f,
+    idleRingColor: Color = Color.Unspecified,
     content: @Composable (Float, Boolean) -> Unit,
 ) {
     val interaction = remember { MutableInteractionSource() }
@@ -1613,6 +1614,14 @@ private fun HoldAction(
         label = "holdScale",
     )
     val shownProgress = if (pressed) progress else idleProgress
+    // While holding, the ring is the hold progress in the theme primary; when
+    // idle it shows the climate timer, optionally in a warning color when the
+    // run is almost over.
+    val shownColor = if (pressed || idleRingColor == Color.Unspecified) {
+        ringColor
+    } else {
+        idleRingColor
+    }
     Box(
         modifier
             .graphicsLayer {
@@ -1624,7 +1633,7 @@ private fun HoldAction(
                 if (ring && shownProgress > 0f) {
                     val stroke = 3.dp.toPx()
                     drawArc(
-                        color = ringColor,
+                        color = shownColor,
                         startAngle = -90f,
                         sweepAngle = 360f * shownProgress.coerceIn(0f, 1f),
                         useCenter = false,
