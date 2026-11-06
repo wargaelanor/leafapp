@@ -710,7 +710,7 @@ private fun DistanceScreen(state: LeafState, onCommand: (String, Double, Int) ->
     // absolute end moment, so the arc depletes evenly across the whole
     // countdown instead of stepping once per minute.
     var ringFrac by remember { mutableFloatStateOf(0f) }
-    var endMs by remember { mutableLongStateOf(0L) }
+    var endMs by remember { mutableStateOf(0L) }
     LaunchedEffect(state.hvac, state.hvacTimer) {
         if (!state.hvac) {
             remaining = 0
