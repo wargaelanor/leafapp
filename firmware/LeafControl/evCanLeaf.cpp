@@ -24,7 +24,7 @@
 
 // 4 MHz is plenty for CAN traffic and survives long dupont wires better than
 // the 10 MHz used on the internal T-2CAN bus.
-static MCP2515 evCan(EVCAN_SPI_CS, 4000000, &SPI);
+static MCP2515* evCan = nullptr;
 static bool evCanOk = false;
 uint32_t canFramesA = 0;
 
@@ -208,9 +208,10 @@ static void storeTiming(uint8_t idx) {
 // Configure the controller for one candidate. Returns false when the
 // MCP2515 rejects the request or the write did not reach the CNF registers.
 static bool applyTiming(uint8_t idx) {
+  if (!evCan) return false;
   const EvCanTiming& t = kTimings[idx];
-  if (evCan.setBitrate(t.speed, t.clock) != MCP2515::ERROR_OK) return false;
-  if (evCan.setListenOnlyMode() != MCP2515::ERROR_OK) return false;
+  if (evCan->setBitrate(t.speed, t.clock) != MCP2515::ERROR_OK) return false;
+  if (evCan->setListenOnlyMode() != MCP2515::ERROR_OK) return false;
   uint8_t cnf1 = mcpReadRegister(0x2A);
   uint8_t cnf2 = mcpReadRegister(0x29);
   uint8_t cnf3 = mcpReadRegister(0x28);
@@ -219,9 +220,9 @@ static bool applyTiming(uint8_t idx) {
 }
 
 static void refreshErrorCounters() {
-  lastRxError = evCan.errorCountRX();
-  lastTxError = evCan.errorCountTX();
-  lastErrorFlags = evCan.getErrorFlags();
+  lastRxError = evCan->errorCountRX();
+  lastTxError = evCan->errorCountTX();
+  lastErrorFlags = evCan->getErrorFlags();
 }
 
 void evCanRequestScan() {
@@ -237,7 +238,7 @@ void evCanRequestScan() {
     EVCAN_RST_SET(HIGH);
     delay(10);
     SPI.begin(EVCAN_SPI_SCLK, EVCAN_SPI_MISO, EVCAN_SPI_MOSI, EVCAN_SPI_CS);
-    evCan.reset();
+    evCan->reset();
     uint8_t canstat = mcpReadRegister(0x0E);
     chipLooksValid = ((canstat & 0xE0) == 0x80);
   }
@@ -357,7 +358,13 @@ void setupEvCAN() {
 
   SPI.begin(EVCAN_SPI_SCLK, EVCAN_SPI_MISO, EVCAN_SPI_MOSI, EVCAN_SPI_CS);
 
-  MCP2515::ERROR rst = evCan.reset();
+  if (!evCan) evCan = new MCP2515(EVCAN_SPI_CS, 4000000, &SPI);
+  if (!evCan) {
+    Serial.println("EV-CAN: cannot allocate MCP2515 driver");
+    return;
+  }
+
+  MCP2515::ERROR rst = evCan->reset();
   // Read CANSTAT even when reset() reports an error: this separates "SPI is
   // completely dead" (0x00/0xFF) from "chip answers but reset was unhappy".
   canstat = mcpReadRegister(0x0E);
@@ -392,9 +399,9 @@ void manageEvCAN() {
   if (!evCanOk) return;
   // checkReceive() returns bool: comparing it against ERROR_OK (0) would be
   // always false and silently discard every frame. Keep the plain bool test.
-  while (evCan.checkReceive()) {
+  while (evCan->checkReceive()) {
     struct can_frame frame;
-    if (evCan.readMessage(&frame) != MCP2515::ERROR_OK) break;
+    if (evCan->readMessage(&frame) != MCP2515::ERROR_OK) break;
     canFramesA++;
     lastEvFrameMs = millis();
     evFrameSeen = true;
@@ -404,8 +411,8 @@ void manageEvCAN() {
   }
 
   // RX0OVR/RX1OVR latch until cleared; a sticky flag looks like a live fault.
-  uint8_t eflg = evCan.getErrorFlags();
-  if (eflg & 0xC0) evCan.clearRXnOVRFlags();
+  uint8_t eflg = evCan->getErrorFlags();
+  if (eflg & 0xC0) evCan->clearRXnOVRFlags();
 
   uint32_t now = millis();
   if (now - lastErrRefreshMs >= 2000) {

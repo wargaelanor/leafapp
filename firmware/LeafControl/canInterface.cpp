@@ -25,7 +25,12 @@ uint32_t canFramesB = 0;
 // T-Call: CAR-CAN is not TWAI anymore, it uses MCP2515 #1 on the same SPI bus
 // as the EV-CAN controller. Each chip has its own CS line; the library toggles
 // CS inside every SPI transaction, so the bus is safe to share.
-static MCP2515 carCan(BOARD_CAR_MCP_CS, 4000000, &SPI);
+//
+// The controller is created in setupCAN(), after Serial.begin(). A global
+// MCP2515 constructor would drive its CS line before the Arduino core is
+// initialised; with an unpowered module on the bus that was enough to keep the
+// board from printing anything at all.
+static MCP2515* carCan = nullptr;
 static bool carCanOk = false;
 static CAN_CLOCK carCanClock = MCP_16MHZ;
 static const char* carCanClockName = "16MHz";
@@ -46,9 +51,10 @@ static uint8_t carMcpReadStat() {
 }
 
 static bool carCanApplyClock(CAN_CLOCK clock, const char* name) {
-  if (carCan.reset() != MCP2515::ERROR_OK) return false;
-  if (carCan.setBitrate(CAN_500KBPS, clock) != MCP2515::ERROR_OK) return false;
-  if (carCan.setNormalMode() != MCP2515::ERROR_OK) return false;
+  if (!carCan) return false;
+  if (carCan->reset() != MCP2515::ERROR_OK) return false;
+  if (carCan->setBitrate(CAN_500KBPS, clock) != MCP2515::ERROR_OK) return false;
+  if (carCan->setNormalMode() != MCP2515::ERROR_OK) return false;
   carCanClock = clock;
   carCanClockName = name;
   return true;
@@ -163,7 +169,7 @@ static bool sendCANInternal(uint32_t id, const uint8_t* data, uint8_t len, bool 
   frame.can_id = id;
   frame.can_dlc = len;
   memcpy(frame.data, data, len);
-  bool ok = carCan.sendMessage(&frame) == MCP2515::ERROR_OK;
+  bool ok = carCan->sendMessage(&frame) == MCP2515::ERROR_OK;
   canLoggerAppend('B', ok ? '>' : '!', id, data, len);
   if (canLogFrames) {
     Serial.printf("%s 0x%03lX len=%u\n", ok ? ">" : "!",
@@ -215,6 +221,13 @@ void setupCAN() {
 #if defined(BOARD_CAR_CAN_MCP2515) && (BOARD_CAR_CAN_MCP2515)
   // EV-CAN initialised the shared SPI bus first (setupEvCAN runs before this).
   // Re-assert every CS line, including the reserved third controller.
+  if (!carCan) {
+    carCan = new MCP2515(BOARD_CAR_MCP_CS, 4000000, &SPI);
+  }
+  if (!carCan) {
+    Serial.println("CAR-CAN: cannot allocate MCP2515 driver");
+    return;
+  }
   pinMode(BOARD_CAR_MCP_CS, OUTPUT);
   digitalWrite(BOARD_CAR_MCP_CS, HIGH);
   pinMode(BOARD_EVCAN_SPI_CS, OUTPUT);
@@ -228,7 +241,7 @@ void setupCAN() {
   delay(5);
   // A warm reboot leaves the controller in normal mode; reset first so CANSTAT
   // can be used reliably as a presence check (config mode reads 0x8X).
-  carCan.reset();
+  carCan->reset();
   uint8_t canstat = carMcpReadStat();
   if ((canstat & 0xE0) != 0x80) {
     carCanOk = false;
@@ -284,9 +297,9 @@ void readAndHandleCANMessage() {
   if (!carCanOk) return;
   int drained = 0;
   // Drain both MCP2515 receive buffers every loop pass (bounded).
-  while (drained < 32 && carCan.checkReceive()) {
+  while (drained < 32 && carCan->checkReceive()) {
     struct can_frame frame;
-    if (carCan.readMessage(&frame) != MCP2515::ERROR_OK) break;
+    if (carCan->readMessage(&frame) != MCP2515::ERROR_OK) break;
     uint8_t len = frame.can_dlc > 8 ? 8 : frame.can_dlc;
     uint32_t id = frame.can_id & 0x1FFFFFFF;
     handleReceivedMessage(id, frame.data, len);
@@ -323,7 +336,7 @@ void canMaintainBus() {
   uint32_t now = millis();
   if (now - lastCheckMs < 1000UL) return;
   lastCheckMs = now;
-  uint8_t flags = carCan.getErrorFlags();
+  uint8_t flags = carCan->getErrorFlags();
   if (flags & (MCP2515::EFLG_TXBO | MCP2515::EFLG_TXEP | MCP2515::EFLG_RXEP)) {
     Serial.printf("CAR-CAN: MCP2515 error flags 0x%02X, re-initialising\n", flags);
     if (!carCanApplyClock(carCanClock, carCanClockName)) {
@@ -331,7 +344,7 @@ void canMaintainBus() {
       Serial.println("CAR-CAN: MCP2515 re-init failed");
     }
   } else if (flags & (MCP2515::EFLG_RX0OVR | MCP2515::EFLG_RX1OVR)) {
-    carCan.clearRXnOVRFlags();
+    carCan->clearRXnOVRFlags();
   }
 #else
   twai_status_info_t status;
@@ -359,9 +372,9 @@ void canDrainFor(uint32_t ms) {
   if (!carCanOk) return;
   uint32_t start = millis();
   do {
-    while (carCan.checkReceive()) {
+    while (carCan->checkReceive()) {
       struct can_frame frame;
-      if (carCan.readMessage(&frame) != MCP2515::ERROR_OK) break;
+      if (carCan->readMessage(&frame) != MCP2515::ERROR_OK) break;
       uint8_t len = frame.can_dlc > 8 ? 8 : frame.can_dlc;
       uint32_t id = frame.can_id & 0x1FFFFFFF;
       handleReceivedMessage(id, frame.data, len);
@@ -387,7 +400,7 @@ void canDrainFor(uint32_t ms) {
 uint8_t canBusState() {
 #if defined(BOARD_CAR_CAN_MCP2515) && (BOARD_CAR_CAN_MCP2515)
   if (!carCanOk) return 0xFF;
-  uint8_t flags = carCan.getErrorFlags();
+  uint8_t flags = carCan->getErrorFlags();
   if (flags & MCP2515::EFLG_TXBO) return 2;             // like TWAI_STATE_BUS_OFF
   if (flags & (MCP2515::EFLG_TXEP | MCP2515::EFLG_RXEP)) return 1;
   return 0;                                             // running
@@ -400,7 +413,7 @@ uint8_t canBusState() {
 
 uint8_t canBusTxErrors() {
 #if defined(BOARD_CAR_CAN_MCP2515) && (BOARD_CAR_CAN_MCP2515)
-  return carCanOk ? carCan.errorCountTX() : 0xFF;
+  return carCanOk ? carCan->errorCountTX() : 0xFF;
 #else
   twai_status_info_t status;
   if (twai_get_status_info(&status) != ESP_OK) return 0xFF;
@@ -410,7 +423,7 @@ uint8_t canBusTxErrors() {
 
 uint8_t canBusRxErrors() {
 #if defined(BOARD_CAR_CAN_MCP2515) && (BOARD_CAR_CAN_MCP2515)
-  return carCanOk ? carCan.errorCountRX() : 0xFF;
+  return carCanOk ? carCan->errorCountRX() : 0xFF;
 #else
   twai_status_info_t status;
   if (twai_get_status_info(&status) != ESP_OK) return 0xFF;
