@@ -11,7 +11,8 @@ enum class ConfigStatus {
     ERROR_HOSTNAME_LENGTH,
     ERROR_HOSTNAME_HYPHEN,
     ERROR_HOSTNAME_CHARS,
-    ERROR_PORT_RANGE
+    ERROR_PORT_RANGE,
+    ERROR_INVALID
 };
 
 void initConfiguration();
@@ -103,6 +104,11 @@ ConfigStatus setSleepEnabled(bool value);
 // ended with the saved network unreachable (see manageWiFi).
 bool getWifiRecoveryHint();
 ConfigStatus setWifiRecoveryHint(bool value);
+
+// Auto charge stop at a SOC threshold (0 = off, else 70..95). Enforced on the
+// board via the 0x1DB MITM, so it works without the phone.
+int getChargeLimitPct();
+ConfigStatus setChargeLimitPct(int value);
 
 int getSleepAfterHours();
 ConfigStatus setSleepAfterHours(int value);

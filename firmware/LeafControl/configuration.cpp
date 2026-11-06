@@ -148,6 +148,9 @@ static ConfigString<24> conf_call_num5("call_num5", "");
 // network was unreachable). The board then raises the setup AP right at
 // boot instead of waiting through the timeout again after every reboot.
 static ConfigBool       conf_wifi_recap("wifi_recap", false);
+// Auto charge stop: stop the charge via the 0x1DB MITM once SOC reaches this
+// percentage. 0 = disabled. Allowed values: 0 or 70..95 (steps of 5).
+static ConfigInt        conf_charge_limit("charge_limit_pct", 0);
 
 void initConfiguration() {
     nvsReady = preferences.begin("config", false);
@@ -201,6 +204,7 @@ void initConfiguration() {
     conf_call_num4.load();
     conf_call_num5.load();
     conf_wifi_recap.load();
+    conf_charge_limit.load();
 }
 
 void factoryReset() {
@@ -392,6 +396,14 @@ ConfigStatus setModem7670Gps(bool value) { return conf_modem7670_gps.set(value);
 bool getModemCallEnabled() { return conf_call_enable.get(); }
 bool getWifiRecoveryHint() { return conf_wifi_recap.get(); }
 ConfigStatus setWifiRecoveryHint(bool value) { return conf_wifi_recap.set(value); }
+
+int getChargeLimitPct() { return conf_charge_limit.get(); }
+ConfigStatus setChargeLimitPct(int value) {
+    if (value != 0 && (value < 70 || value > 95)) {
+        return ConfigStatus::ERROR_INVALID;
+    }
+    return conf_charge_limit.set(value);
+}
 ConfigStatus setModemCallEnabled(bool value) { return conf_call_enable.set(value); }
 
 static ConfigString<24>* callNumberConfig(uint8_t index) {

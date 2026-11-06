@@ -758,7 +758,7 @@ private fun DistanceScreen(state: LeafState, onCommand: (String, Double, Int) ->
         climateInfinite -> "∞"
         else -> null
     }
-    val ringWarn = climateRunning && remaining <= 5
+    val ringWarn = climateRunning && ringFrac <= 0.2f
     Column(
         Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),

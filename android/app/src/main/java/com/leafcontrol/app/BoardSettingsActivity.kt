@@ -100,6 +100,7 @@ private class BoardConfigDraft(c: JSONObject) {
     var tariffNight by mutableStateOf(trimNum(c.optDouble("tariff_night", 0.0)))
     var nightFrom by mutableStateOf(c.optInt("night_from", 0).toString())
     var nightTo by mutableStateOf(c.optInt("night_to", 7).toString())
+    var chargeLimit by mutableStateOf(c.optInt("charge_limit_pct", 0))
     val wifiPassSet = c.optBoolean("wifi_password_set")
     val apPassSet = c.optBoolean("ap_password_set")
     val mqttPassSet = c.optBoolean("mqtt_password_set")
@@ -128,6 +129,7 @@ private class BoardConfigDraft(c: JSONObject) {
         o.put("tariff_night", tariffNight.replace(',', '.').toDoubleOrNull() ?: 0.0)
         o.put("night_from", nightFrom.toIntOrNull() ?: 0)
         o.put("night_to", nightTo.toIntOrNull() ?: 7)
+        o.put("charge_limit_pct", chargeLimit)
         return o
     }
 
@@ -246,6 +248,21 @@ private fun BoardSettingsScreen() {
                     ) { c.mqttPassword = it }
                     LabeledField("Vehicle ID (топики)", c.mqttVid) { c.mqttVid = it }
                     SwitchRow("TLS (wss/8883)", c.mqttTls) { c.mqttTls = it }
+                }
+
+                SectionCard("Зарядка") {
+                    // Auto stop via the board's 0x1DB MITM: works even without
+                    // the phone nearby. 0 = disabled.
+                    Text("Остановить зарядку при заряде, %", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(0, 70, 75, 80, 85, 90, 95).forEach { v ->
+                            FilterChip(
+                                selected = c.chargeLimit == v,
+                                onClick = { c.chargeLimit = v },
+                                label = { Text(if (v == 0) "Выкл" else "$v") },
+                            )
+                        }
+                    }
                 }
 
                 SectionCard("Замки и сон") {

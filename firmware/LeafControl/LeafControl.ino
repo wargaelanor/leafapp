@@ -24,10 +24,10 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.126-TCALL"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.127-TCALL"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: two MCP2515 CAN buses + SIM800"
 #else
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.126-CMD"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.08.127-CMD"
 #define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: stable scroll, Wi-Fi scan"
 #endif
 
@@ -221,6 +221,33 @@ void noteCarActivity() {
   // as user/car activity or the periodic wake would cancel the sleep schedule.
   if (timerRefreshActive) return;
   rtcState.idleSec = 0;
+}
+
+// --- Auto charge stop at a SOC threshold ------------------------------------
+// Runs on the board so the limit works without the phone: while the charge
+// is active and a valid SOC arrives, arm the 0x1DB MITM stop once.
+static bool chargeLimitFired = false;
+static bool chargeWasActive = false;
+
+static void manageChargeLimit() {
+  int limit = getChargeLimitPct();
+  if (limit <= 0) return;
+  bool chargingNow = isChargingNow;
+  // New session: re-arm the check when the charge (re)starts.
+  if (chargingNow && !chargeWasActive) chargeLimitFired = false;
+  chargeWasActive = chargingNow;
+  if (!chargingNow || chargeLimitFired) return;
+  // Live SOC sources: BMS via the CAR-CAN gateway preferred; during a charge
+  // the gateway can sleep, so fall back to the EV-CAN dashboard value (0x59E).
+  float soc = currentSOC;
+  if (soc < 0.0f && evData.instrumentSOC >= 0.0f) soc = evData.instrumentSOC;
+  if (soc < 0.0f) return;
+  if (soc >= (float)limit) {
+    chargeLimitFired = true;
+    Serial.printf("### Charge limit %d%% reached (SOC %.1f) - stopping charge ###\n",
+                  limit, soc);
+    evCanArmChargeStop();
+  }
 }
 
 void noteUserActivity() {
@@ -598,6 +625,7 @@ void handleApiStatus() {
     "\"trips\":%u,\"charges\":%u,\"driving\":%d,"
     "\"night_from\":%u,\"night_to\":%u,\"tariff_day\":%.2f,\"tariff_night\":%.2f,"
     "\"sleep_on\":%d,\"sleep_after_h\":%d,\"wake_fast_min\":%d,\"idle_s\":%lu,"
+    "\"charge_limit\":%d,"
     "\"gps\":{\"lat\":%.5f,\"lon\":%.5f,\"age\":%lu}}",
     LEAF_FIRMWARE_VERSION, LEAF_FIRMWARE_DESCRIPTION, BOARD_NAME,
     currentSOC, cabinTemp, (isChargingNow || tripLogIsCharging()) ? 1 : 0, chargerStateStr(currentChargerState),
@@ -640,6 +668,7 @@ void handleApiStatus() {
     tripLogTariffDay(), tripLogTariffNight(),
     getSleepEnabled() ? 1 : 0, getSleepAfterHours(), getWakeFastMinutes(),
     (unsigned long)rtcState.idleSec,
+    getChargeLimitPct(),
     gpsValid ? gLat : 0.0, gpsValid ? gLon : 0.0,
     (unsigned long)(gpsValid ? gAge / 1000UL : 0UL));
   server.sendHeader("Cache-Control", "no-store");
@@ -1384,6 +1413,7 @@ void handleApiConfigGet() {
   out += ",\"sleep_after_h\":"; out += String(getSleepAfterHours());
   out += ",\"wake_fast_min\":"; out += String(getWakeFastMinutes());
   out += ",\"wake_slow_min\":"; out += String(getWakeSlowMinutes());
+  out += ",\"charge_limit_pct\":"; out += String(getChargeLimitPct());
   out += ",\"tariff_day\":"; out += String(tripLogTariffDay(), 2);
   out += ",\"tariff_night\":"; out += String(tripLogTariffNight(), 2);
   out += ",\"night_from\":"; out += String((int)tripLogNightFrom());
@@ -1464,6 +1494,13 @@ void handleApiConfigSave() {
   if (jsonInt(body, "sleep_after_h", n) && n >= 1 && n <= 168) setSleepAfterHours((int)n);
   if (jsonInt(body, "wake_fast_min", n) && n >= 1 && n <= 1440) setWakeFastMinutes((int)n);
   if (jsonInt(body, "wake_slow_min", n) && n >= 1 && n <= 1440) setWakeSlowMinutes((int)n);
+  if (jsonInt(body, "charge_limit_pct", n)) {
+    if (n != 0 && (n < 70 || n > 95)) {
+      Serial.printf("Config: charge_limit_pct %ld rejected (0 or 70..95)\n", n);
+    } else {
+      setChargeLimitPct((int)n);
+    }
+  }
 
   if (jsonHas(body, "tariff_day") || jsonHas(body, "night_from")) {
     float day = (float)tripLogTariffDay(), night = (float)tripLogTariffNight();
@@ -1922,14 +1959,17 @@ void handleMqttChargeOn() {
 
 void handleChargeOff() {
   Serial.println("### Charge OFF! ###");
-  // No confirmed ZE1 stop-charge payload is available. Keep this route
-  // explicit instead of reporting a misleading busy response.
-  sendCommandNotEnabledHttp();
+  // ZE1 stop-charge = the 0x1DB MITM on EV-CAN (OVMS approach), now
+  // implemented in evCanLeaf.cpp. The board must see the car's LBC frames
+  // for the replacement to be built, which is the case while charging.
+  evCanArmChargeStop();
+  server.sendHeader("Location", "/");
+  server.send(303);
 }
 
 void handleMqttChargeOff() {
   Serial.println("### Charge OFF! (MQTT) ###");
-  if (!startSeqOrBusy(CanSequence::CHARGE_OFF)) { sendBusyMqtt(); return; }
+  evCanArmChargeStop();
 }
 
 void handleLights() {
@@ -1996,7 +2036,10 @@ uint8_t handleOvmsV2Command(uint16_t command, const char* args) {
       if (!enable) cancelHvacTimer();
       return 0;
     }
-    case 12: // Stop charge needs the upstream MITM installation, unavailable on OBD
+    case 12: // Stop charge: the 0x1DB MITM on EV-CAN (needs live LBC frames,
+             // which is exactly the situation while charging)
+      evCanArmChargeStop();
+      return 0;
     default:
       return 2;
   }
@@ -2555,6 +2598,7 @@ void loop() {
   manageWiFi();
   processSerialInput();
   managePendingPublishes();
+  manageChargeLimit();
 
   // --- Power save: deep sleep after idle period ---
   // Never sleep while charging or running remote climate

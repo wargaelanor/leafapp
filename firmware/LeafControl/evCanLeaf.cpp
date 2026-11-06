@@ -108,6 +108,90 @@ static uint8_t  rawPack1dbLen = 0;
 static uint8_t  rawTemp5c0[8];
 static uint8_t  rawTemp5c0Len = 0;
 
+// --- Charge stop MITM (OVMS approach) ---------------------------------------
+// ZE1 has no 0x56E payload for stopping the charge: OVMS instead intercepts
+// the LBC frame 0x1DB on EV-CAN and re-transmits a modified copy:
+//   d[1] = (d[1] & 0xE0) | 0x02   Charging Mode Stop Request
+//   d[6] = (d[6] + 1) % 4         PRUN counter
+//   d[7] = leafcrc8(d[0..6])      CRC-8, poly 0x85, MSB-first, init 0
+// (CRC verified against live frames: 02 20 B5 2A .. -> 0x44,
+//  02 20 B9 AA .. -> 0x02.) Port A normally stays listen-only; while armed
+// the MCP2515 is switched to normal mode for ~9 forwarded frames (~0.9 s at
+// the 100 ms 0x1DB cadence) and returns to listen-only afterwards.
+static uint8_t  mitmRemaining = 0;
+static uint32_t mitmArmedAtMs = 0;
+static bool     mitmNormalMode = false;
+static uint32_t mitmSentTotal = 0;
+
+static uint8_t leafCrc8(const uint8_t* d, uint8_t len) {
+  uint8_t crc = 0;
+  for (uint8_t i = 0; i < len; i++) {
+    crc ^= d[i];
+    for (uint8_t bit = 0; bit < 8; bit++) {
+      if (crc & 0x80) crc = (uint8_t)((crc << 1) ^ 0x85);
+      else crc = (uint8_t)(crc << 1);
+    }
+  }
+  return crc;
+}
+
+static void evCanMitmRestoreListenOnly() {
+  if (!mitmNormalMode) return;
+  if (evCan && evCan->setListenOnlyMode() == MCP2515::ERROR_OK) {
+    mitmNormalMode = false;
+  }
+}
+
+void evCanArmChargeStop() {
+  if (!evCanOk) {
+    Serial.println("EV-CAN: charge-stop MITM unavailable (chip not ready)");
+    return;
+  }
+  mitmRemaining = 9;
+  mitmArmedAtMs = millis();
+  Serial.println("EV-CAN: charge-stop MITM armed (modified 0x1DB)");
+}
+
+bool evCanMitmActive() {
+  return mitmRemaining > 0 || mitmNormalMode;
+}
+
+static void evCanMitmMaybeForward(const uint8_t* data, uint8_t len) {
+  if (mitmRemaining == 0) return;
+  if (millis() - mitmArmedAtMs > 1500) {
+    // Nothing usable arrived within the arming window: give up cleanly.
+    mitmRemaining = 0;
+    evCanMitmRestoreListenOnly();
+    return;
+  }
+  if (len < 8) return;  // a full frame is needed for the PRUN+CRC patch
+  uint8_t out[8];
+  memcpy(out, data, 8);
+  out[1] = (out[1] & 0xE0) | 0x02;
+  out[6] = (uint8_t)((out[6] + 1) % 4);
+  out[7] = leafCrc8(out, 7);
+  if (!mitmNormalMode) {
+    if (evCan->setNormalMode() == MCP2515::ERROR_OK) {
+      mitmNormalMode = true;
+    } else {
+      return;  // cannot transmit without normal mode; retry on the next frame
+    }
+  }
+  struct can_frame outFrame = {};
+  outFrame.can_id = 0x1DB;
+  outFrame.can_dlc = 8;
+  memcpy(outFrame.data, out, 8);
+  if (evCan->sendMessage(&outFrame) == MCP2515::ERROR_OK) {
+    mitmRemaining--;
+    mitmSentTotal++;
+    if (mitmRemaining == 0) {
+      Serial.printf("EV-CAN: charge-stop MITM done (%lu sent total)\n",
+                    (unsigned long)mitmSentTotal);
+      evCanMitmRestoreListenOnly();
+    }
+  }
+}
+
 static void handleEvFrame(uint32_t id, uint8_t len, const uint8_t* data) {
   if (id == 0x5BC && len >= 5) {
     // LB_Remain_Capacity_GIDS: start bit 7, len 10, motorola -> byte0<<2 | byte1>>6
@@ -131,6 +215,9 @@ static void handleEvFrame(uint32_t id, uint8_t len, const uint8_t* data) {
     // OVMS convention: battery output/discharge is positive, charge/regen negative.
     float current = curRaw * -0.5f;
     handleEvPackStatus(voltage, current);
+    // Charge-stop MITM: while armed, forward a modified copy of every LBC
+    // frame (see evCanArmChargeStop).
+    evCanMitmMaybeForward(data, len);
   } else if (id == 0x54C && len >= 7) {
     // OutsideAmbientTemperature: byte6, 0.5C/bit, offset -40 (OVMS xnl)
     float ambient = data[6] * 0.5f - 40.0f;

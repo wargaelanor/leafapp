@@ -30,6 +30,10 @@ uint32_t evCanLastFrameAgeSec();  // 0xFFFFFFFF = no frame yet
 uint8_t evCanRawPack(uint8_t* out);   // 0x1DB voltage/current
 uint8_t evCanRawTemp(uint8_t* out);   // 0x5C0 battery temperature
 uint32_t evCanHardResetCount();       // MCP2515 reset pulses after empty sweeps
+// Charge stop via the OVMS MITM trick: re-transmit modified 0x1DB frames
+// (Port A briefly leaves listen-only mode for ~9 forwarded frames).
+void evCanArmChargeStop();
+bool evCanMitmActive();
 
 // Callbacks (implemented in LeafControl.ino)
 void handleEvSOH(int sohPercent);

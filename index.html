@@ -904,6 +904,16 @@ body.demo .demo-banner{display:block}
         <div style="flex:1"><label for="bcfg-nfrom">Ночь с, час</label><input id="bcfg-nfrom" inputmode="numeric"></div>
         <div style="flex:1"><label for="bcfg-nto">до, час</label><input id="bcfg-nto" inputmode="numeric"></div>
       </div>
+      <label style="margin-top:6px">Остановить зарядку при заряде, % (на плате, работает без телефона)</label>
+      <div class="dur-btns" style="justify-content:flex-start" id="bcfg-limit">
+        <button type="button" data-lim="0">Выкл</button>
+        <button type="button" data-lim="70">70</button>
+        <button type="button" data-lim="75">75</button>
+        <button type="button" data-lim="80">80</button>
+        <button type="button" data-lim="85">85</button>
+        <button type="button" data-lim="90">90</button>
+        <button type="button" data-lim="95">95</button>
+      </div>
       <label style="display:flex;align-items:center;gap:8px;margin-top:14px;text-transform:none">
         <input type="checkbox" id="bcfg-locking" style="width:auto"> Разрешить lock/unlock
       </label>
@@ -1298,7 +1308,8 @@ function renderNow(){
     ? Math.min(1, hvacLeft / hvacTotal)
     : (S.hvac ? 1 : 0);   // infinite / no timer yet → full ring
   $('climate-ring').style.strokeDashoffset = (RING_C * (1 - hvacFrac)).toFixed(1);
-  $('rb-climate').classList.toggle('warn', S.hvac && hvacLeft > 0 && hvacLeft <= 5);
+  // Red as soon as the last 20% of the countdown is left
+  $('rb-climate').classList.toggle('warn', S.hvac && hvacLeft > 0 && hvacFrac <= 0.2);
   $('rb-climate-label').innerHTML = S.hvac
     ? ('Выкл климат<br><b>' + (hvacLeft > 0 ? hvacLeft + ' мин' : '∞') + '</b>')
     : 'Климат';
@@ -1644,10 +1655,6 @@ function demoStart(){
 
 function cmd(type, quiet){
   if(DEMO) return demoCommand(type, quiet);
-  if(['chargeoff'].includes(type)){
-    if(!quiet) toast('Команда недоступна');
-    return Promise.resolve(false);
-  }
   if(!navigator.onLine && mode==='mqtt') toast('Нет сети');
   if(mode==='local'){
     if(S.seq){ if(!quiet) toast('Дождитесь завершения текущей команды'); return Promise.resolve(false); }
@@ -2976,9 +2983,14 @@ function saveSettings(){
 // Parity with the Android app: read/write the board config without leaving
 // the PWA. Only meaningful when the page is served from the board (onBoard).
 let bcfgMode = 1;
+let bcfgLimit = 0;
 [0,1,2].forEach(i => $('bcfg-rt'+i).addEventListener('click', () => {
   bcfgMode = i;
   [0,1,2].forEach(j => $('bcfg-rt'+j).classList.toggle('on', j === i));
+}));
+document.querySelectorAll('#bcfg-limit button').forEach(b => b.addEventListener('click', () => {
+  bcfgLimit = parseInt(b.dataset.lim, 10) || 0;
+  document.querySelectorAll('#bcfg-limit button').forEach(x => x.classList.toggle('on', x === b));
 }));
 
 function openBoardCfg(){
@@ -3018,6 +3030,10 @@ async function loadBoardCfg(){
     $('bcfg-wslow').value = c.wake_slow_min || 15;
     bcfgMode = c.remote_mode || 0;
     [0,1,2].forEach(i => $('bcfg-rt'+i).classList.toggle('on', c.remote_mode === i));
+    bcfgLimit = c.charge_limit_pct || 0;
+    document.querySelectorAll('#bcfg-limit button').forEach(x => {
+      x.classList.toggle('on', (parseInt(x.dataset.lim, 10) || 0) === bcfgLimit);
+    });
   }catch(e){
     $('bcfg-note').textContent = 'Плата не ответила. Проверьте связь и повторите открытие.';
   }
@@ -3039,6 +3055,7 @@ async function saveBoardCfg(){
     night_to: num('bcfg-nto', 7),
     locking_enabled: $('bcfg-locking').checked,
     sleep_enable: $('bcfg-sleep').checked,
+    charge_limit_pct: bcfgLimit,
     wake_fast_min: num('bcfg-wfast', 5),
     wake_slow_min: num('bcfg-wslow', 15),
   };
