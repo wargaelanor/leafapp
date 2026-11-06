@@ -225,6 +225,8 @@ html[data-theme="dark"] .dur-btns button.on{color:#08121a}
 .modal .btns button{flex:1;padding:12px;border:none;border-radius:6px;font-size:14px;font-family:inherit;cursor:pointer}
 .modal .btns .save{background:var(--accent);color:#fff}
 .modal .btns .cancel{background:var(--chip);color:var(--text)}
+.fw-bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden;margin-top:14px}
+.fw-bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s}
 .about-sheet{padding-top:18px!important}
 .about-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:16px}
 .about-head h2{margin:0 0 4px}
@@ -695,7 +697,7 @@ body.demo .demo-banner{display:block}
         <span id="more-settings-label">Настройки подключения</span>
         <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
       </div>
-      <div class="more-item" id="more-ota" style="display:none" onclick="location.href='/ota'">
+      <div class="more-item" id="more-ota" style="display:none" onclick="openFw()">
         <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg></div>
         Обновление прошивки
         <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
@@ -857,6 +859,94 @@ body.demo .demo-banner{display:block}
       </div>
       <pre class="diag-modem" id="diag-modem"></pre>
       <div class="dev-error" id="diag-note"></div>
+    </div>
+  </div>
+
+  <!-- Настройки платы (нативная панель поверх /api/config) -->
+  <div class="modal" id="boardcfg-modal" role="dialog" aria-modal="true" onclick="closeBoardCfg(event)">
+    <div class="sheet">
+      <div class="about-head">
+        <div>
+          <h2>Настройки платы</h2>
+          <p id="bcfg-head">—</p>
+        </div>
+        <button class="about-close" type="button" aria-label="Закрыть" onclick="closeBoardCfg()">×</button>
+      </div>
+      <label for="bcfg-ssid">Wi-Fi сеть (SSID)</label>
+      <input id="bcfg-ssid" autocomplete="off" spellcheck="false">
+      <label for="bcfg-wifipass">Пароль Wi-Fi <span id="bcfg-wifipass-hint">(пусто = не менять)</span></label>
+      <input id="bcfg-wifipass" type="password" autocomplete="new-password">
+      <label for="bcfg-ap">Точка доступа платы (пусто = выключена)</label>
+      <input id="bcfg-ap" autocomplete="off" spellcheck="false">
+      <label for="bcfg-appass">Пароль точки (8+ символов, пусто = не менять)</label>
+      <input id="bcfg-appass" type="password" autocomplete="new-password">
+      <label>Удалённый доступ</label>
+      <div class="dur-btns" style="justify-content:flex-start">
+        <button type="button" id="bcfg-rt0">Выключен</button>
+        <button type="button" id="bcfg-rt1">MQTT</button>
+        <button type="button" id="bcfg-rt2">OVMS V2</button>
+      </div>
+      <label for="bcfg-mserver">MQTT сервер</label>
+      <input id="bcfg-mserver" autocomplete="off" spellcheck="false">
+      <label for="bcfg-mport">Порт</label>
+      <input id="bcfg-mport" inputmode="numeric">
+      <label for="bcfg-muser">Пользователь</label>
+      <input id="bcfg-muser" autocomplete="off" spellcheck="false">
+      <label for="bcfg-mpass">Пароль MQTT <span id="bcfg-mpass-hint">(пусто = не менять)</span></label>
+      <input id="bcfg-mpass" type="password" autocomplete="new-password">
+      <label for="bcfg-vid">Vehicle ID (топики MQTT)</label>
+      <input id="bcfg-vid" autocomplete="off" spellcheck="false">
+      <label for="bcfg-tar-d">Тариф день, ₽/кВт·ч</label>
+      <input id="bcfg-tar-d" inputmode="decimal">
+      <label for="bcfg-tar-n">Тариф ночь, ₽/кВт·ч</label>
+      <input id="bcfg-tar-n" inputmode="decimal">
+      <div style="display:flex;gap:10px">
+        <div style="flex:1"><label for="bcfg-nfrom">Ночь с, час</label><input id="bcfg-nfrom" inputmode="numeric"></div>
+        <div style="flex:1"><label for="bcfg-nto">до, час</label><input id="bcfg-nto" inputmode="numeric"></div>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:14px;text-transform:none">
+        <input type="checkbox" id="bcfg-locking" style="width:auto"> Разрешить lock/unlock
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;text-transform:none">
+        <input type="checkbox" id="bcfg-sleep" style="width:auto"> Deep sleep при простое
+      </label>
+      <div style="display:flex;gap:10px">
+        <div style="flex:1"><label for="bcfg-wfast">Пробуждение частое, мин</label><input id="bcfg-wfast" inputmode="numeric"></div>
+        <div style="flex:1"><label for="bcfg-wslow">редкое, мин</label><input id="bcfg-wslow" inputmode="numeric"></div>
+      </div>
+      <div class="dev-error" id="bcfg-note"></div>
+      <div class="btns">
+        <button class="cancel" type="button" onclick="closeBoardCfg()">Отмена</button>
+        <button class="save" type="button" onclick="saveBoardCfg()">Сохранить</button>
+      </div>
+      <p class="hint" style="margin-top:14px">Профили Wi-Fi 2/3, OVMS и модем —
+        на <a href="/settings" style="color:var(--accent)">полной странице платы</a>.</p>
+    </div>
+  </div>
+
+  <!-- Обновление прошивки платы из PWA -->
+  <div class="modal" id="fw-modal" role="dialog" aria-modal="true" onclick="closeFw(event)">
+    <div class="sheet">
+      <div class="about-head">
+        <div>
+          <h2>Обновление прошивки платы</h2>
+          <p id="fw-head">—</p>
+        </div>
+        <button class="about-close" type="button" aria-label="Закрыть" onclick="closeFw()">×</button>
+      </div>
+      <div class="diag-actions">
+        <button class="pill-btn" type="button" onclick="fwCheck()">Проверить обновление</button>
+        <button class="pill-btn" type="button" id="fw-flash-btn" style="display:none" onclick="fwFlash()">Скачать и прошить плату</button>
+        <label class="pill-btn" style="display:inline-flex;align-items:center;cursor:pointer">
+          Выбрать файл .bin
+          <input type="file" id="fw-file" accept=".bin" style="display:none" onchange="fwFilePicked(this)">
+        </label>
+      </div>
+      <div class="fw-bar" id="ota-progress" style="display:none"><i id="fw-bar-fill"></i></div>
+      <div class="dev-error" id="fw-note"></div>
+      <p class="hint" style="margin-top:14px">Классическая страница заливки —
+        <a href="/ota" style="color:var(--accent)">/ota</a>. Во время загрузки не отключайте
+        питание платы; телеметрия на время заливки приостанавливается.</p>
     </div>
   </div>
 
@@ -2269,7 +2359,9 @@ async function clearCharges(){
 
 // ---------- settings modal ----------
 function openSettings(){
-  if(onBoard){ location.href='/settings'; return; }
+  // The native board panel replaces the detour to the board's own /settings
+  // page for the everyday fields (Wi-Fi, MQTT, tariff, sleep).
+  if(onBoard){ openBoardCfg(); return; }
   cfg=loadCfg()||{host:'m5.wqtt.ru',port:15871,user:'',pass:'',vid:'leaf'};
   $('cfg-host').value=cfg.host||''; $('cfg-port').value=cfg.port||15871;
   $('cfg-user').value=cfg.user||''; $('cfg-pass').value=cfg.pass||'';
@@ -2878,6 +2970,204 @@ function saveSettings(){
   if(mode==='mqtt'){ try{client.end(true);}catch(e){} }
   mqttConnect();
   toast('Сохранено');
+}
+
+// ---------- board settings panel (native, over /api/config) ----------
+// Parity with the Android app: read/write the board config without leaving
+// the PWA. Only meaningful when the page is served from the board (onBoard).
+let bcfgMode = 1;
+[0,1,2].forEach(i => $('bcfg-rt'+i).addEventListener('click', () => {
+  bcfgMode = i;
+  [0,1,2].forEach(j => $('bcfg-rt'+j).classList.toggle('on', j === i));
+}));
+
+function openBoardCfg(){
+  $('boardcfg-modal').classList.add('show');
+  loadBoardCfg();
+}
+function closeBoardCfg(e){
+  if(e && e.target !== e.currentTarget) return;
+  $('boardcfg-modal').classList.remove('show');
+}
+async function loadBoardCfg(){
+  $('bcfg-note').textContent = '';
+  try{
+    const r = await fetch('/api/config', {cache:'no-store', signal:fetchTimeout(6000)});
+    if(!r.ok) throw 0;
+    const c = await r.json();
+    if(c.error){ $('bcfg-note').textContent = 'Плата вернула ошибку конфигурации ('+c.error+').'; return; }
+    $('bcfg-head').textContent = (c.board || 'Плата') + ' · ' + (c.fw || '—');
+    $('bcfg-ssid').value = c.wifi_ssid || '';
+    $('bcfg-wifipass').value = '';
+    $('bcfg-wifipass-hint').textContent = c.wifi_password_set ? '(задан — пусто = не менять)' : '(не задан)';
+    $('bcfg-ap').value = c.ap_ssid || '';
+    $('bcfg-appass').value = '';
+    $('bcfg-mserver').value = c.mqtt_server || '';
+    $('bcfg-mport').value = c.mqtt_port || 8883;
+    $('bcfg-muser').value = c.mqtt_user || '';
+    $('bcfg-mpass').value = '';
+    $('bcfg-mpass-hint').textContent = c.mqtt_password_set ? '(задан — пусто = не менять)' : '(не задан)';
+    $('bcfg-vid').value = c.mqtt_vehicle_id || '';
+    $('bcfg-tar-d').value = c.tariff_day || 0;
+    $('bcfg-tar-n').value = c.tariff_night || 0;
+    $('bcfg-nfrom').value = c.night_from || 0;
+    $('bcfg-nto').value = c.night_to || 7;
+    $('bcfg-locking').checked = !!c.locking_enabled;
+    $('bcfg-sleep').checked = !!c.sleep_enable;
+    $('bcfg-wfast').value = c.wake_fast_min || 5;
+    $('bcfg-wslow').value = c.wake_slow_min || 15;
+    bcfgMode = c.remote_mode || 0;
+    [0,1,2].forEach(i => $('bcfg-rt'+i).classList.toggle('on', c.remote_mode === i));
+  }catch(e){
+    $('bcfg-note').textContent = 'Плата не ответила. Проверьте связь и повторите открытие.';
+  }
+}
+async function saveBoardCfg(){
+  const num = (id, def) => { const v = parseInt($(id).value, 10); return isNaN(v) ? def : v; };
+  const flt = (id, def) => { const v = parseFloat(($(id).value+'').replace(',', '.')); return isNaN(v) ? def : v; };
+  const o = {
+    wifi_ssid: $('bcfg-ssid').value.trim(),
+    ap_ssid: $('bcfg-ap').value.trim(),
+    remote_mode: bcfgMode,
+    mqtt_server: $('bcfg-mserver').value.trim(),
+    mqtt_port: num('bcfg-mport', 8883),
+    mqtt_user: $('bcfg-muser').value.trim(),
+    mqtt_vehicle_id: $('bcfg-vid').value.trim(),
+    tariff_day: flt('bcfg-tar-d', 0),
+    tariff_night: flt('bcfg-tar-n', 0),
+    night_from: num('bcfg-nfrom', 0),
+    night_to: num('bcfg-nto', 7),
+    locking_enabled: $('bcfg-locking').checked,
+    sleep_enable: $('bcfg-sleep').checked,
+    wake_fast_min: num('bcfg-wfast', 5),
+    wake_slow_min: num('bcfg-wslow', 15),
+  };
+  if($('bcfg-wifipass').value) o.wifi_password = $('bcfg-wifipass').value;
+  if($('bcfg-appass').value) o.ap_password = $('bcfg-appass').value;
+  if($('bcfg-mpass').value) o.mqtt_password = $('bcfg-mpass').value;
+  $('bcfg-note').textContent = 'Сохранение…';
+  try{
+    const r = await fetch('/api/config', {
+      method:'POST', cache:'no-store',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(o), signal: fetchTimeout(8000),
+    });
+    if(!r.ok) throw 0;
+    $('bcfg-note').textContent = 'Сохранено. Плата перезагружается…';
+    toast('Плата перезагружается');
+    setTimeout(() => { closeBoardCfg(); pollLocal(); }, 1500);
+  }catch(e){
+    $('bcfg-note').textContent = 'Плата не ответила — настройки не сохранены';
+  }
+}
+
+// ---------- firmware update from the PWA ----------
+// Check the GitHub releases, download the image for the detected board and
+// stream it into /ota_update — the same flow the Android app has. Works only
+// when served from the board (same origin); from public hosting the browser
+// blocks http requests to the board.
+let fwAsset = null;
+function openFw(){
+  $('fw-modal').classList.add('show');
+  $('fw-head').textContent = (S.board || 'Плата') + ' · ' + (S.fw || '—');
+}
+function closeFw(e){
+  if(e && e.target !== e.currentTarget) return;
+  $('fw-modal').classList.remove('show');
+}
+async function fwCheck(){
+  $('fw-note').textContent = 'Проверяем GitHub…';
+  fwAsset = null;
+  $('fw-flash-btn').style.display = 'none';
+  try{
+    const r = await fetch('https://api.github.com/repos/wargaelanor/leafapp/releases?per_page=30',
+      {cache:'no-store', signal:fetchTimeout(15000)});
+    if(!r.ok) throw 0;
+    const releases = await r.json();
+    const kind = (S.fw.indexOf('TCALL') >= 0 || (S.board||'').indexOf('T-Call') >= 0) ? 'TCALL' : 'CMD';
+    const suffix = '-' + kind + '.bin';
+    outer:
+    for(const rl of releases){
+      if(rl.draft || rl.prerelease) continue;
+      for(const a of (rl.assets || [])){
+        if(a.name && a.name.startsWith('LeafControl-FW-') && a.name.endsWith(suffix)){
+          fwAsset = {
+            name: a.name,
+            url: a.browser_download_url,
+            size: a.size,
+            version: a.name.slice('LeafControl-FW-'.length).replace(suffix, ''),
+          };
+          break outer;
+        }
+      }
+    }
+    if(!fwAsset){ $('fw-note').textContent = 'Прошивка для этой платы в релизах не найдена.'; return; }
+    $('fw-note').textContent = 'Доступно: ' + fwAsset.version + ' · ' +
+      Math.round(fwAsset.size / 1024) + ' КБ. Установлено: ' + (S.fw || '—');
+    $('fw-flash-btn').style.display = 'inline-flex';
+  }catch(e){
+    $('fw-note').textContent = 'GitHub недоступен — проверьте интернет у платы/телефона.';
+  }
+}
+async function fwFlash(){
+  if(!fwAsset) return;
+  fwProgress(0);
+  $('fw-note').textContent = 'Скачивание ' + fwAsset.version + '…';
+  try{
+    const r = await fetch(fwAsset.url, {cache:'no-store'});
+    if(!r.ok) throw 0;
+    const blob = await r.blob();
+    await otaUploadBlob(blob, fwAsset.name);
+  }catch(e){
+    fwProgress(0);
+    $('fw-note').textContent = 'Не удалось скачать прошивку.';
+  }
+}
+function fwFilePicked(inp){
+  const f = inp.files && inp.files[0];
+  if(!f) return;
+  otaUploadBlob(f, f.name).catch(()=>{});
+}
+function fwProgress(p){
+  $('ota-progress').style.display = p == null ? 'none' : 'block';
+  $('fw-bar-fill').style.width = p + '%';
+  if(p != null) $('fw-note').textContent = 'Загрузка в плату: ' + p + '% — не отключайте питание';
+}
+function otaUploadBlob(blob, name){
+  return new Promise((resolve, reject) => {
+    const fd = new FormData();
+    fd.append('firmware', blob, name);
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/ota_update');
+    xhr.upload.onprogress = e => { if(e.lengthComputable) fwProgress(Math.round(e.loaded * 100 / e.total)); };
+    xhr.onload = () => {
+      if(xhr.status >= 200 && xhr.status < 300){ fwDone(); resolve(); }
+      else { $('fw-note').textContent = 'Плата отклонила прошивку (HTTP ' + xhr.status + ')'; fwProgress(0); reject(); }
+    };
+    xhr.onerror = () => { $('fw-note').textContent = 'Ошибка сети при загрузке.'; fwProgress(0); reject(); };
+    xhr.send(fd);
+  });
+}
+function fwDone(){
+  fwProgress(100);
+  $('fw-note').textContent = 'Загружено. Плата перезагружается…';
+  toast('Прошивка загружена');
+  let tries = 0;
+  const timer = setInterval(async () => {
+    tries++;
+    try{
+      const r = await fetch('/api/status', {cache:'no-store', signal:fetchTimeout(3000)});
+      if(r.ok){
+        const j = await r.json();
+        if(j && j.fw){
+          clearInterval(timer);
+          $('fw-note').textContent = 'Готово: ' + j.fw;
+          $('fw-head').textContent = (j.board || '') + ' · ' + j.fw;
+        }
+      }
+    }catch(e){ /* still rebooting */ }
+    if(tries > 40) clearInterval(timer);
+  }, 3000);
 }
 
 // ---------- boot ----------
