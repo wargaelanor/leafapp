@@ -1344,6 +1344,34 @@ window.addEventListener('online',updateBadge);
 window.addEventListener('offline',updateBadge);
 if(navigator.connection && navigator.connection.addEventListener)
   navigator.connection.addEventListener('change',updateBadge);
+// Belt-and-suspenders vs pull-to-refresh: CSS overscroll-behavior is ignored
+// by Chrome for gestures that start on a scroller with no overflow (short
+// screens), so a downward overdrag at the top still triggers a reload.
+// Explicitly cancel the swipe once it looks like a PTR pull.
+(function(){
+  let startY=null,startX=null;
+  const hadMove=()=>startY!==null;
+  document.addEventListener('touchstart',e=>{
+    if(e.touches.length>1){startY=null;return;}
+    startX=e.touches[0].clientX; startY=e.touches[0].clientY;
+  },{passive:true});
+  document.addEventListener('touchmove',e=>{
+    if(!hadMove()||e.touches.length>1) return;
+    const dy=e.touches[0].clientY-startY;
+    const dx=e.touches[0].clientX-startX;
+    if(dy<=10||Math.abs(dx)>Math.abs(dy)) return;   // up-swipe/horizontal: normal
+    // find the scrollable container under the finger
+    let sc=null;
+    for(let n=e.target;n&&n!==document.documentElement;n=n.parentElement){
+      if(n.nodeType===1){
+        const s=getComputedStyle(n);
+        if((s.overflowY==='auto'||s.overflowY==='scroll')&&n.scrollHeight>n.clientHeight){sc=n;break;}
+      }
+    }
+    if(!sc||sc.scrollTop<=0) e.preventDefault();    // pull at top → block PTR
+  },{passive:false});
+  document.addEventListener('touchend',()=>{startY=null;startX=null},{passive:true});
+})();
 function mqttConnect(){
   cfg = loadCfg();
   if(!cfg){ mode='local'; return; }
