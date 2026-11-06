@@ -705,8 +705,11 @@ private fun DistanceScreen(state: LeafState, onCommand: (String, Double, Int) ->
     }
     var minutes by remember { mutableIntStateOf(Settings.climateMinutes) }
     var remaining by remember { mutableIntStateOf(0) }
-    var total by remember { mutableIntStateOf(0) }
-    var wasRunning by remember { mutableStateOf(false) }
+    // total/wasRunning must survive pager navigation: off-screen pages are
+    // disposed, and re-deriving total from the CURRENT remaining made the
+    // ring jump back to full whenever the user returned to this screen.
+    var total by rememberSaveable { mutableIntStateOf(0) }
+    var wasRunning by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(state.hvac, state.hvacTimer) {
         if (!state.hvac) {
             remaining = 0
@@ -714,7 +717,7 @@ private fun DistanceScreen(state: LeafState, onCommand: (String, Double, Int) ->
             wasRunning = false
             return@LaunchedEffect
         }
-        if (!wasRunning) {
+        if (!wasRunning || total <= 0) {
             total = maxOf(state.hvacTimer, 1)
             wasRunning = true
         }

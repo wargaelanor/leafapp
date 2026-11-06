@@ -434,6 +434,11 @@ class LeafMonitorService : Service() {
     }
 
     private fun onState(s: LeafState) {
+        // Publish every poll into the UI state. Without this the screens
+        // only ever saw data after a manual "Обновить" (setLocal was called
+        // solely from refreshHistory): the garage climate button ignored the
+        // board, the countdown reset on navigation and V/A looked frozen.
+        LeafRepo.setLocal(s)
         handleState(s)
         recorder.sample(s, System.currentTimeMillis())
     }
