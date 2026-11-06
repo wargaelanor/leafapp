@@ -291,6 +291,29 @@ object LocalApi {
         }
     }
 
+    /**
+     * Same as getConfig but tells WHY it failed, so the UI can say "old
+     * firmware" instead of a misleading "board did not answer":
+     * code 404 = the board runs a firmware without the config API
+     * (needs FW-2026.11.08.122+), null = network error.
+     */
+    data class ConfigResult(val json: JSONObject?, val httpCode: Int?)
+
+    suspend fun getConfigResult(context: Context): ConfigResult = withContext(Dispatchers.IO) {
+        ensureLocalHost(context)
+        dropBoardApHostWhenOffAp(context)
+        try {
+            val req = Request.Builder().url(url("/api/config")).get().build()
+            client(context, Settings.localHost).newCall(req).execute().use { r ->
+                val body = r.body?.string()
+                if (!r.isSuccessful || body == null) return@withContext ConfigResult(null, r.code)
+                ConfigResult(JSONObject(body), r.code)
+            }
+        } catch (_: Exception) {
+            ConfigResult(null, null)
+        }
+    }
+
     /** Applies a partial settings JSON: POST /api/config. */
     suspend fun saveConfig(context: Context, json: JSONObject): JSONObject? =
         withContext(Dispatchers.IO) {

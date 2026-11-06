@@ -188,7 +188,21 @@ private fun BoardUpdateScreen() {
 
                     phase = "Заливка в плату — не отключайте питание…"
                     progress = 0
-                    val flashed = LocalApi.otaUpdate(ctx, file) { p -> progress = p }
+                    var flashed = LocalApi.otaUpdate(ctx, file) { p -> progress = p }
+                    if (!flashed) {
+                        // The saved host may be stale: find the board on this
+                        // Wi-Fi and retry once before giving up.
+                        val board = withContext(Dispatchers.IO) {
+                            com.leafcontrol.app.BoardDiscovery.scanSubnet(ctx, 350)
+                        }
+                        if (board != null) {
+                            Settings.localHost = board.host
+                            Settings.localPort = board.port
+                            phase = "Повторная заливка (${board.host})…"
+                            progress = 0
+                            flashed = LocalApi.otaUpdate(ctx, file) { p -> progress = p }
+                        }
+                    }
                     if (!flashed) {
                         busy = false
                         phase = ""

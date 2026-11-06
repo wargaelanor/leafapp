@@ -49,7 +49,9 @@ import androidx.core.view.WindowInsetsControllerCompat
 import com.leafcontrol.app.data.Settings
 import com.leafcontrol.app.net.LocalApi
 import com.leafcontrol.app.ui.LeafTheme
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 /**
@@ -139,7 +141,7 @@ private class BoardConfigDraft(c: JSONObject) {
 private fun BoardSettingsScreen() {
     val ctx = LocalContext.current
     var config by remember { mutableStateOf<BoardConfigDraft?>(null) }
-    var loadError by remember { mutableStateOf(false) }
+    var loadError by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("") }
     var reload by remember { mutableIntStateOf(0) }
@@ -147,13 +149,36 @@ private fun BoardSettingsScreen() {
 
     LaunchedEffect(reload) {
         busy = true
-        loadError = false
-        val c = LocalApi.getConfig(ctx)
+        loadError = null
+        var r = LocalApi.getConfigResult(ctx)
+        if (r.json == null && r.httpCode == null) {
+            // Network error: the saved host may be stale (e.g. 192.168.4.1 from
+            // the board's own AP, or an mDNS name this network can't resolve).
+            // Find the board on this Wi-Fi and retry once — same self-healing
+            // the command path already has.
+            val board = withContext(Dispatchers.IO) {
+                com.leafcontrol.app.BoardDiscovery.scanSubnet(ctx, 350)
+            }
+            if (board != null) {
+                Settings.localHost = board.host
+                Settings.localPort = board.port
+                r = LocalApi.getConfigResult(ctx)
+            }
+        }
         busy = false
-        if (c == null) {
-            loadError = true
-        } else {
-            config = BoardConfigDraft(c)
+        when {
+            r.json != null -> config = BoardConfigDraft(r.json)
+            r.httpCode == 404 -> loadError =
+                "Плата отвечает, но на ней нет API настроек: нужна прошивка " +
+                    "FW-2026.11.08.122 или новее. Обновите её: Ещё → Плата → " +
+                    "«Обновление прошивки платы»."
+            r.httpCode != null -> loadError =
+                "Плата ответила ошибкой HTTP ${r.httpCode}. Откройте web-интерфейс " +
+                    "и проверьте страницу платы."
+            else -> loadError =
+                "Плата не отвечает по адресу ${Settings.localHost}:${Settings.localPort}. " +
+                    "Убедитесь, что телефон в одной сети с платой (или подключён к её " +
+                    "точке LeafControl-Setup), и повторите."
         }
     }
 
@@ -167,12 +192,11 @@ private fun BoardSettingsScreen() {
     ) {
         Text("Настройки платы", fontSize = 22.sp, color = MaterialTheme.colorScheme.onBackground)
         when {
-            busy && config == null && !loadError ->
+            busy && config == null && loadError == null ->
                 Text("Чтение конфигурации платы…", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            loadError && config == null -> {
+            loadError != null && config == null -> {
                 Text(
-                    "Плата не отвечает. Убедитесь, что телефон в одной сети с платой " +
-                        "(или подключён к её точке LeafControl-Setup), и повторите.",
+                    loadError ?: "",
                     color = MaterialTheme.colorScheme.error,
                 )
                 OutlinedButton(onClick = { reload++ }) { Text("Повторить") }
