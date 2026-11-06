@@ -297,7 +297,11 @@ object LocalApi {
      * code 404 = the board runs a firmware without the config API
      * (needs FW-2026.11.08.122+), null = network error.
      */
-    data class ConfigResult(val json: JSONObject?, val httpCode: Int?)
+    data class ConfigResult(
+        val json: JSONObject?,
+        val httpCode: Int?,
+        val errorKind: String? = null,   // exception class name for diagnostics
+    )
 
     suspend fun getConfigResult(context: Context): ConfigResult = withContext(Dispatchers.IO) {
         ensureLocalHost(context)
@@ -309,8 +313,8 @@ object LocalApi {
                 if (!r.isSuccessful || body == null) return@withContext ConfigResult(null, r.code)
                 ConfigResult(JSONObject(body), r.code)
             }
-        } catch (_: Exception) {
-            ConfigResult(null, null)
+        } catch (e: Exception) {
+            ConfigResult(null, null, e.javaClass.simpleName)
         }
     }
 

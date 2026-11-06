@@ -176,8 +176,9 @@ private fun BoardSettingsScreen() {
                 "Плата ответила ошибкой HTTP ${r.httpCode}. Откройте web-интерфейс " +
                     "и проверьте страницу платы."
             else -> loadError =
-                "Плата не отвечает по адресу ${Settings.localHost}:${Settings.localPort}. " +
-                    "Убедитесь, что телефон в одной сети с платой (или подключён к её " +
+                "Плата не отвечает по адресу ${Settings.localHost}:${Settings.localPort}" +
+                    (r.errorKind?.let { " ($it)" } ?: "") +
+                    ". Убедитесь, что телефон в одной сети с платой (или подключён к её " +
                     "точке LeafControl-Setup), и повторите."
         }
     }
