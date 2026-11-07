@@ -9,6 +9,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,6 +23,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -303,15 +306,34 @@ private fun BoardSettingsScreen() {
 
                 SectionCard("Зарядка") {
                     // Auto stop via the board's 0x1DB MITM: works even without
-                    // the phone nearby. 0 = disabled.
-                    Text("Остановить зарядку при заряде, %", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf(0, 70, 75, 80, 85, 90, 95).forEach { v ->
-                            FilterChip(
-                                selected = c.chargeLimit == v,
-                                onClick = { c.chargeLimit = v },
-                                label = { Text(if (v == 0) "Выкл" else "$v") },
-                            )
+                    // the phone nearby. 0 = disabled. A dropdown instead of a
+                    // chip row: seven chips never fit on one line.
+                    var limitMenu by remember { mutableStateOf(false) }
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Остановить зарядку при заряде",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Box {
+                            OutlinedButton(onClick = { limitMenu = true }) {
+                                Text(if (c.chargeLimit == 0) "Выкл" else "${c.chargeLimit} %")
+                            }
+                            DropdownMenu(expanded = limitMenu, onDismissRequest = { limitMenu = false }) {
+                                listOf(0, 70, 75, 80, 85, 90, 95).forEach { v ->
+                                    DropdownMenuItem(
+                                        text = { Text(if (v == 0) "Выкл" else "$v %") },
+                                        onClick = {
+                                            c.chargeLimit = v
+                                            limitMenu = false
+                                        },
+                                    )
+                                }
+                            }
                         }
                     }
                 }
