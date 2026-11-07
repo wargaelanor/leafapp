@@ -24,10 +24,10 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.09.129-TCALL"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.09.130-TCALL"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: two MCP2515 CAN buses + SIM800"
 #else
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.09.129-CMD"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.09.130-CMD"
 #define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: stable scroll, Wi-Fi scan"
 #endif
 
@@ -232,7 +232,10 @@ static bool chargeWasActive = false;
 static void manageChargeLimit() {
   int limit = getChargeLimitPct();
   if (limit <= 0) return;
-  bool chargingNow = isChargingNow;
+  // Combined detection, same as the status JSON: isChargingNow comes from
+  // the CAR-CAN charger frame, which sleeps through most of a charge - the
+  // EV-current session in tripLog is the one that actually sees it.
+  bool chargingNow = isChargingNow || tripLogIsCharging();
   // New session: re-arm the check when the charge (re)starts.
   if (chargingNow && !chargeWasActive) chargeLimitFired = false;
   chargeWasActive = chargingNow;
@@ -1980,9 +1983,15 @@ void handleMqttChargeOn() {
 
 void handleChargeOff() {
   Serial.println("### Charge OFF! ###");
-  // ZE1 stop-charge = the 0x1DB MITM on EV-CAN (OVMS approach), now
-  // implemented in evCanLeaf.cpp. The board must see the car's LBC frames
-  // for the replacement to be built, which is the case while charging.
+  // ZE1 stop-charge = the 0x1DB MITM on EV-CAN (OVMS approach). The board
+  // must see the car's LBC frames for the replacement to be built, which is
+  // the case while charging. Without EV-CAN the command cannot work at all -
+  // say so instead of a misleading "accepted".
+  if (!evCanIsUp()) {
+    server.send(503, "application/json",
+                "{\"ok\":false,\"error\":\"ev_can_not_ready\"}");
+    return;
+  }
   evCanArmChargeStop();
   server.sendHeader("Location", "/");
   server.send(303);
@@ -1990,6 +1999,10 @@ void handleChargeOff() {
 
 void handleMqttChargeOff() {
   Serial.println("### Charge OFF! (MQTT) ###");
+  if (!evCanIsUp()) {
+    mqttPublishStatus("EV-CAN not ready - cannot stop the charge");
+    return;
+  }
   evCanArmChargeStop();
 }
 
@@ -2582,6 +2595,20 @@ void loop() {
     manageVinQuery(millis());
     manageVinObdProbe(millis());
     tripLogTick();
+    // Mirror EV-detected charge sessions into MQTT: the v/c/charging metric
+    // used to be published only from the CAR-CAN charger frame, so MQTT
+    // clients stayed on "no" through whole charges when the gateway slept.
+    // When the CAR-CAN flag is active it drives the publishing itself (with
+    // the detailed states); only fill the gap when it is silent.
+    static bool lastEvSessionCharging = false;
+    bool evSessionNow = tripLogIsCharging();
+    if (evSessionNow != lastEvSessionCharging) {
+      lastEvSessionCharging = evSessionNow;
+      if (!isChargingNow) {
+        mqttUpdateCharging(evSessionNow,
+                           evSessionNow ? ChargerState::CHARGING : ChargerState::IDLE);
+      }
+    }
     CanSeqResult seqRes = manageCANSequence(millis());
     if (seqRes == CanSeqResult::WAKE_SUCCESS) {
         Serial.println("### Car is awake! ###");

@@ -263,6 +263,20 @@ object LocalApi {
         }
     }
 
+    /** HTTP code of a local command (303 = accepted), null = network error. */
+    suspend fun commandCode(context: Context, path: String): Int? = withContext(Dispatchers.IO) {
+        ensureLocalHost(context)
+        try {
+            val req = Request.Builder()
+                .url(url(path))
+                .post("".toRequestBody("text/plain".toMediaType()))
+                .build()
+            client(context, Settings.localHost).newCall(req).execute().use { it.code }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     suspend fun command(context: Context, path: String): Boolean = withContext(Dispatchers.IO) {
         ensureLocalHost(context)
         try {

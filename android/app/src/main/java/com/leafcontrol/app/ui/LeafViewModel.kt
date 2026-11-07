@@ -87,8 +87,15 @@ class LeafViewModel(app: Application) : AndroidViewModel(app) {
         val local = state.value.transport == "local" && state.value.connected
         if (Settings.mode != "mqtt" && local) {
             viewModelScope.launch {
-                val ok = LeafRepo.commandLocal(app, path)
-                message.value = if (ok) "Команда отправлена" else "Плата не ответила"
+                val code = com.leafcontrol.app.net.LocalApi.commandCode(app, path)
+                val ok = code != null && (code in 200..299 || code == 303)
+                message.value = when {
+                    ok -> "Команда отправлена"
+                    code == 503 -> "EV-CAN не готова — машина спит? Команда невозможна"
+                    code == 400 -> "Команда отклонена платой (неверные параметры)"
+                    code == null -> "Плата не ответила"
+                    else -> "Плата ответила ошибкой HTTP $code"
+                }
                 if (ok) LeafRepo.refreshHistory(app)
             }
         } else {
