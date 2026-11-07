@@ -1201,8 +1201,10 @@ function renderNow(){
   }
   $('g-charge-state').textContent = chargeState;
   const cb = $('g-charge-btn');
-  cb.disabled = S.charging;
-  if(S.charging){ cb.textContent = 'Идёт зарядка'; cb.classList.add('charging'); }
+  // Charging is a togglable state now: the button starts OR stops the charge.
+  // It used to be disabled while charging, which made a stop impossible.
+  cb.disabled = false;
+  if(S.charging){ cb.textContent = 'Стоп зарядки'; cb.classList.add('charging'); }
   else { cb.classList.remove('charging');
     cb.textContent = S.charger==='done' ? 'Зарядка окончена' : 'Начать зарядку'; }
 
@@ -1637,7 +1639,9 @@ function remoteStatusDone(text){
 }
 
 // ---------- garage quick actions ----------
-function toggleCharge(){ if(!S.charging) cmd('charge'); }
+// Toggle: start when idle, stop when charging. Both paths go through the
+// same hold-to-confirm + local/MQTT command flow.
+function toggleCharge(){ cmd(S.charging ? 'chargeoff' : 'charge'); }
 // No optimistic state flips: the truth comes from the next poll (local)
 // or from the retained metric (MQTT). Optimistic values used to lie
 // after a 403 (locking disabled) or when the board was busy.

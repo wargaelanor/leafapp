@@ -34,8 +34,9 @@ uint32_t evCanHardResetCount();       // MCP2515 reset pulses after empty sweeps
 // (Port A briefly leaves listen-only mode for ~9 forwarded frames).
 void evCanArmChargeStop();
 bool evCanMitmActive();
-// Charge current limit from 0x1DC: >0 while a charger is connected, 0 while
-// driving, -1 when no 0x1DC frame has been seen yet.
+uint32_t evCanMitmSentCount();   // total modified 0x1DB frames sent
+uint8_t evCanMitmArmedCount();   // remaining frames to send in current burst
+bool evCanMitmInNormalMode();    // MCP2515 currently in normal (TX) mode
 float evCanChargeLimitAmps();
 
 // Callbacks (implemented in LeafControl.ino)

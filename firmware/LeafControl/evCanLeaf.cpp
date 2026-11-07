@@ -152,13 +152,28 @@ void evCanArmChargeStop() {
     Serial.println("EV-CAN: charge-stop MITM unavailable (chip not ready)");
     return;
   }
-  mitmRemaining = 9;
+  // 25 replacements ≈ 2.5 s at the 100 ms 0x1DB cadence. OVMS uses 10 (~1 s),
+  // but the VCM may need to see the stop bit for longer on some cars - and
+  // the retry logic in manageChargeLimit() re-arms if the charge continues.
+  mitmRemaining = 25;
   mitmArmedAtMs = millis();
-  Serial.println("EV-CAN: charge-stop MITM armed (modified 0x1DB)");
+  Serial.println("EV-CAN: charge-stop MITM armed (modified 0x1DB, 25 frames)");
 }
 
 bool evCanMitmActive() {
   return mitmRemaining > 0 || mitmNormalMode;
+}
+
+uint32_t evCanMitmSentCount() {
+  return mitmSentTotal;
+}
+
+uint8_t evCanMitmArmedCount() {
+  return mitmRemaining;
+}
+
+bool evCanMitmInNormalMode() {
+  return mitmNormalMode;
 }
 
 float evCanChargeLimitAmps() {
@@ -167,7 +182,7 @@ float evCanChargeLimitAmps() {
 
 static void evCanMitmMaybeForward(const uint8_t* data, uint8_t len) {
   if (mitmRemaining == 0) return;
-  if (millis() - mitmArmedAtMs > 1500) {
+  if (millis() - mitmArmedAtMs > 3000) {
     // Nothing usable arrived within the arming window: give up cleanly.
     mitmRemaining = 0;
     evCanMitmRestoreListenOnly();

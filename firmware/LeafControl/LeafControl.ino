@@ -24,10 +24,10 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.09.130-TCALL"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.09.131-TCALL"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: two MCP2515 CAN buses + SIM800"
 #else
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.09.130-CMD"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.09.131-CMD"
 #define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: stable scroll, Wi-Fi scan"
 #endif
 
@@ -228,6 +228,8 @@ void noteCarActivity() {
 // is active and a valid SOC arrives, arm the 0x1DB MITM stop once.
 static bool chargeLimitFired = false;
 static bool chargeWasActive = false;
+static uint8_t chargeLimitRetries = 0;
+static unsigned long chargeLimitRetryAtMs = 0;
 
 static void manageChargeLimit() {
   int limit = getChargeLimitPct();
@@ -237,9 +239,29 @@ static void manageChargeLimit() {
   // EV-current session in tripLog is the one that actually sees it.
   bool chargingNow = isChargingNow || tripLogIsCharging();
   // New session: re-arm the check when the charge (re)starts.
-  if (chargingNow && !chargeWasActive) chargeLimitFired = false;
+  if (chargingNow && !chargeWasActive) {
+    chargeLimitFired = false;
+    chargeLimitRetries = 0;
+    chargeLimitRetryAtMs = 0;
+  }
   chargeWasActive = chargingNow;
-  if (!chargingNow || chargeLimitFired) return;
+  if (!chargingNow) return;
+
+  // Retry logic: if the limit already fired but the charge is still going,
+  // re-arm the MITM every 5 s (up to 3 retries). The first burst might not
+  // have been enough for the VCM to act on.
+  if (chargeLimitFired) {
+    if (chargeLimitRetries < 3 && !evCanMitmActive() &&
+        chargeLimitRetryAtMs != 0 && millis() - chargeLimitRetryAtMs > 5000) {
+      chargeLimitRetries++;
+      Serial.printf("### Charge limit retry %d/3 - re-arming MITM ###\n",
+                    chargeLimitRetries);
+      evCanArmChargeStop();
+      chargeLimitRetryAtMs = millis();
+    }
+    return;
+  }
+
   // Live SOC sources: BMS via the CAR-CAN gateway preferred; during a charge
   // the gateway can sleep, so fall back to the EV-CAN dashboard value (0x59E).
   float soc = currentSOC;
@@ -247,6 +269,7 @@ static void manageChargeLimit() {
   if (soc < 0.0f) return;
   if (soc >= (float)limit) {
     chargeLimitFired = true;
+    chargeLimitRetryAtMs = millis();
     Serial.printf("### Charge limit %d%% reached (SOC %.1f) - stopping charge ###\n",
                   limit, soc);
     evCanArmChargeStop();
@@ -628,7 +651,8 @@ void handleApiStatus() {
     "\"trips\":%u,\"charges\":%u,\"driving\":%d,"
     "\"night_from\":%u,\"night_to\":%u,\"tariff_day\":%.2f,\"tariff_night\":%.2f,"
     "\"sleep_on\":%d,\"sleep_after_h\":%d,\"wake_fast_min\":%d,\"idle_s\":%lu,"
-    "\"charge_limit\":%d,"
+    "\"charge_limit\":%d,\"mitm_sent\":%lu,\"mitm_armed\":%u,"
+    "\"chg_fired\":%d,\"chg_active\":%d,\"chg_ev\":%d,"
     "\"gps\":{\"lat\":%.5f,\"lon\":%.5f,\"age\":%lu}}",
     LEAF_FIRMWARE_VERSION, LEAF_FIRMWARE_DESCRIPTION, BOARD_NAME,
     currentSOC, cabinTemp, (isChargingNow || tripLogIsCharging()) ? 1 : 0, chargerStateStr(currentChargerState),
@@ -672,6 +696,10 @@ void handleApiStatus() {
     getSleepEnabled() ? 1 : 0, getSleepAfterHours(), getWakeFastMinutes(),
     (unsigned long)rtcState.idleSec,
     getChargeLimitPct(),
+    (unsigned long)evCanMitmSentCount(), (unsigned)evCanMitmArmedCount(),
+    chargeLimitFired ? 1 : 0,
+    (isChargingNow || tripLogIsCharging()) ? 1 : 0,
+    tripLogIsCharging() ? 1 : 0,
     gpsValid ? gLat : 0.0, gpsValid ? gLon : 0.0,
     (unsigned long)(gpsValid ? gAge / 1000UL : 0UL));
   server.sendHeader("Cache-Control", "no-store");
