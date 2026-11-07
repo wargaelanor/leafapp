@@ -11,6 +11,7 @@
 #include <time.h>
 #include <Preferences.h>
 #include "vehicleTypes.h"
+#include "evCanLeaf.h"
 
 // Board-side history: the phone can be closed, the board keeps counting. One
 // JSON line per finished trip / charge session in the FAT partition.
@@ -253,13 +254,16 @@ void tripLogTick() {
   float i = evData.packCurrent;
   bool dataOk = evData.packDataValid && evData.packVoltageValid;
   bool odoMoving = (odo > 0 && lastOdo > 0 && odo > lastOdo + 0.02f);
-  // The CAR-CAN can be asleep during the first part of a charge, so the board
-  // would otherwise start the session only when the gateway wakes at ~90%.
-  // EV-CAN current is enough to see the charge from the beginning. Require a
-  // sustained current and no odometer movement: regen while driving briefly
-  // looks identical and used to create phantom 5-second "charges".
+  // The CAR-CAN can be asleep during a charge, and the vehicleOn flag is
+  // useless here: this car reports "on" (8) while charging too, which used
+  // to block the detector for the whole session. The honest plugged-in
+  // signal lives on EV-CAN itself: 0x1DC's charge current limit is > 0
+  // exactly while a charger is connected and 0 while driving, so regen
+  // phantom charges stay impossible even with a frozen odometer.
+  float chargeLim = evCanChargeLimitAmps();
+  bool pluggedIn = (chargeLim > 0.0f);
   bool evChargeRaw = dataOk && v > 100.0f && i < -0.5f &&
-                     evData.vehicleOn != 1 && !odoMoving;
+                     pluggedIn && !odoMoving;
   static uint8_t evSeen = 0;
   static uint8_t evStop = 0;
   if (evChargeRaw) {

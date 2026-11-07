@@ -34,6 +34,9 @@ uint32_t evCanHardResetCount();       // MCP2515 reset pulses after empty sweeps
 // (Port A briefly leaves listen-only mode for ~9 forwarded frames).
 void evCanArmChargeStop();
 bool evCanMitmActive();
+// Charge current limit from 0x1DC: >0 while a charger is connected, 0 while
+// driving, -1 when no 0x1DC frame has been seen yet.
+float evCanChargeLimitAmps();
 
 // Callbacks (implemented in LeafControl.ino)
 void handleEvSOH(int sohPercent);

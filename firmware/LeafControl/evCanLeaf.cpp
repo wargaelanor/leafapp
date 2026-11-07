@@ -123,6 +123,11 @@ static uint32_t mitmArmedAtMs = 0;
 static bool     mitmNormalMode = false;
 static uint32_t mitmSentTotal = 0;
 
+// Charge limit from EV-CAN 0x1DC (>0 while a charger is connected, 0 while
+// driving). Used by the charge detector instead of the vehicleOn flag.
+static float evChargeLimitA = 0.0f;
+static bool evChargeLimitSeen = false;
+
 static uint8_t leafCrc8(const uint8_t* d, uint8_t len) {
   uint8_t crc = 0;
   for (uint8_t i = 0; i < len; i++) {
@@ -154,6 +159,10 @@ void evCanArmChargeStop() {
 
 bool evCanMitmActive() {
   return mitmRemaining > 0 || mitmNormalMode;
+}
+
+float evCanChargeLimitAmps() {
+  return evChargeLimitSeen ? evChargeLimitA : -1.0f;  // -1 = no 0x1DC yet
 }
 
 static void evCanMitmMaybeForward(const uint8_t* data, uint8_t len) {
@@ -222,6 +231,14 @@ static void handleEvFrame(uint32_t id, uint8_t len, const uint8_t* data) {
     // OutsideAmbientTemperature: byte6, 0.5C/bit, offset -40 (OVMS xnl)
     float ambient = data[6] * 0.5f - 40.0f;
     if (data[6] != 0xFF) handleEvAmbient(ambient);
+  } else if (id == 0x1DC && len >= 4) {
+    // LB charge/discharge limits (OVMS xnl). The CHARGE limit (d[2..3],
+    // /10 A) is > 0 exactly while a charger is connected/negotiating and 0
+    // while driving - the honest "plugged in" signal on EV-CAN, immune to
+    // the vehicleOn flag (which stays 1 during a charge on this car).
+    uint16_t limRaw = (uint16_t)(((data[2] & 0x0F) << 6) | (data[3] >> 2));
+    evChargeLimitA = limRaw / 10.0f;
+    evChargeLimitSeen = true;
   } else if (id == 0x5C0 && len >= 3) {
     rawTemp5c0Len = len > 8 ? 8 : len;
     memcpy(rawTemp5c0, data, rawTemp5c0Len);
