@@ -226,8 +226,8 @@ bool udsFrameRouter(uint32_t id, const uint8_t* data, uint8_t len) {
     const UdsEntry& e = kQueries[sInFlight];
     if (id != e.reqId + 3) return false;
 
-    // NRC: 7F 22 <code> — ECU refuses this DID, back off hard.
-    if (data[0] == 0x7F) {
+    // NRC single frame: [len] 7F 22 <code> — ECU refuses this DID.
+    if (data[0] <= 0x08 && len >= 4 && data[1] == 0x7F) {
         UdsRuntime& rt = kRt[sInFlight];
         rt.failStreak++;
         rt.dueMs = millis() + (rt.failStreak >= 2 ? 1800000UL : 120000UL);
