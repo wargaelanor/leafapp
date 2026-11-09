@@ -1,4 +1,6 @@
 #include "tripLog.h"
+
+extern void serverApiOnRecord(const char* kind, const char* line);
 #include "boardConfig.h"
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
 #include <SPIFFS.h>
@@ -217,6 +219,9 @@ static void finishTrip(const char* reason) {
            (int)(tripSocStart >= 0 ? tripSocStart : -1),
            (int)(tripSocEnd >= 0 ? tripSocEnd : -1), reason);
   appendRecord(TRIPS_PATH, TRIPS_LIMIT, line);
+  // На сервер отправляем независимо от файловой системы: запись создаётся
+  // в памяти и уходит в очередь serverApi, даже если SPIFFS недоступен.
+  serverApiOnRecord("trip", line);
   Serial.printf("[log] trip %.2f km, %.2f kWh\n", km, tripKwh);
 }
 
@@ -238,6 +243,7 @@ static void finishCharge(const char* reason) {
            (int)(chgSocStart >= 0 ? chgSocStart : -1),
            (int)(chgSocEnd >= 0 ? chgSocEnd : -1), reason);
   appendRecord(CHARGES_PATH, CHARGES_LIMIT, line);
+  serverApiOnRecord("charge", line);
   Serial.printf("[log] charge %.2f kWh\n", chgKwh);
 }
 

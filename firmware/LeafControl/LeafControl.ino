@@ -16,6 +16,7 @@
 #include "ui.h"
 #include "webapp_html.h"
 #include "mqttInterface.h"
+#include "serverApi.h"
 #include "ovmsV2Client.h"
 #include "modemManager.h"
 #include "canLogger.h"
@@ -25,10 +26,10 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.09.136-TCALL"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.09.137-TCALL"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: two MCP2515 CAN buses + SIM800"
 #else
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.09.136-CMD"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.09.137-CMD"
 #define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: stable scroll, Wi-Fi scan"
 #endif
 
@@ -484,7 +485,7 @@ void handleRootEntry() {
   if (getUiLite()) handleLite(); else handleRoot();
 }
 
-// /ui?mode=lite|full — remembers the choice in NVS so it survives a reboot.
+// /ui?mode=lite|full вЂ” remembers the choice in NVS so it survives a reboot.
 void handleUiSwitch() {
   bool lite = server.arg("mode") != "full";
   setUiLite(lite);
@@ -1076,17 +1077,17 @@ void handleOtaPage() {
   server.send(200, "text/html",
     "<html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1'></head><body style='font-family:Arial;text-align:center;margin-top:30px'>"
     "<h1>Firmware Update</h1>"
-    "<p>Установлено: <strong>" LEAF_FIRMWARE_VERSION "</strong><br>SIM800: CAN-телеметрия, дистанционные команды и климат по разрешённому звонку</p>"
-    "<p>Загрузите .bin, собранный через Arduino CLI/IDE<br>(File > Export Compiled Binary)</p>"
+    "<p>РЈСЃС‚Р°РЅРѕРІР»РµРЅРѕ: <strong>" LEAF_FIRMWARE_VERSION "</strong><br>SIM800: CAN-С‚РµР»РµРјРµС‚СЂРёСЏ, РґРёСЃС‚Р°РЅС†РёРѕРЅРЅС‹Рµ РєРѕРјР°РЅРґС‹ Рё РєР»РёРјР°С‚ РїРѕ СЂР°Р·СЂРµС€С‘РЅРЅРѕРјСѓ Р·РІРѕРЅРєСѓ</p>"
+    "<p>Р—Р°РіСЂСѓР·РёС‚Рµ .bin, СЃРѕР±СЂР°РЅРЅС‹Р№ С‡РµСЂРµР· Arduino CLI/IDE<br>(File > Export Compiled Binary)</p>"
     "<form method='POST' action='/ota_update' enctype='multipart/form-data' style='margin:20px auto;max-width:320px'>"
     "<input type='file' name='firmware' accept='.bin' required style='width:100%;margin-bottom:15px'>"
     "<input type='submit' value='Update' style='padding:12px 40px;font-size:16px;background:#0077ac;color:#fff;border:none;border-radius:6px;cursor:pointer'>"
     "</form>"
-    "<p id='st' style='color:#666'>Ожидание файла…</p>"
-    "<script>document.forms[0].onsubmit=function(){document.getElementById('st').textContent='Прошивка, не выключайте плату…';}</script>"
-    "<p style='color:#666;font-size:13px;max-width:340px;margin:14px auto'>Если основная страница открывается медленно, "
-    "есть упрощённая: <a href='/lite'>/lite</a> — несколько килобайт, только цифры и четыре команды.</p>"
-    "<a href='/'>Назад</a></body></html>");
+    "<p id='st' style='color:#666'>РћР¶РёРґР°РЅРёРµ С„Р°Р№Р»Р°вЂ¦</p>"
+    "<script>document.forms[0].onsubmit=function(){document.getElementById('st').textContent='РџСЂРѕС€РёРІРєР°, РЅРµ РІС‹РєР»СЋС‡Р°Р№С‚Рµ РїР»Р°С‚СѓвЂ¦';}</script>"
+    "<p style='color:#666;font-size:13px;max-width:340px;margin:14px auto'>Р•СЃР»Рё РѕСЃРЅРѕРІРЅР°СЏ СЃС‚СЂР°РЅРёС†Р° РѕС‚РєСЂС‹РІР°РµС‚СЃСЏ РјРµРґР»РµРЅРЅРѕ, "
+    "РµСЃС‚СЊ СѓРїСЂРѕС‰С‘РЅРЅР°СЏ: <a href='/lite'>/lite</a> вЂ” РЅРµСЃРєРѕР»СЊРєРѕ РєРёР»РѕР±Р°Р№С‚, С‚РѕР»СЊРєРѕ С†РёС„СЂС‹ Рё С‡РµС‚С‹СЂРµ РєРѕРјР°РЅРґС‹.</p>"
+    "<a href='/'>РќР°Р·Р°Рґ</a></body></html>");
 }
 
 void handleOtaUpload() {
@@ -1127,9 +1128,9 @@ void handleOtaUpload() {
 
 void handleOtaResult() {
   if (Update.hasError()) {
-    server.send(500, "text/plain", "Update failed — смотрите /ota или serial-лог");
+    server.send(500, "text/plain", "Update failed вЂ” СЃРјРѕС‚СЂРёС‚Рµ /ota РёР»Рё serial-Р»РѕРі");
   } else {
-    server.send(200, "text/plain", "OK, перезагрузка…");
+    server.send(200, "text/plain", "OK, РїРµСЂРµР·Р°РіСЂСѓР·РєР°вЂ¦");
     rebootPendingAt = millis() + 1500;
     rebootPendingReason = 2;
   }
@@ -1493,7 +1494,7 @@ void handleApiConfigGet() {
   out += "}";
   // Self-check: this JSON is built by hand, and a single lost quote (as in
   // .122: missing \" before mqtt_connected) breaks every client parser while
-  // the endpoint still returns 200. An odd quote count means malformed —
+  // the endpoint still returns 200. An odd quote count means malformed вЂ”
   // answer with a small valid object instead of poisoning the app.
   {
     int quotes = 0;
@@ -1744,7 +1745,7 @@ void handleEvPackStatus(float voltage, float current) {
   packPubPending = false;
   lastPubbedV = voltage;
   lastPubbedA = current;
-  // force: while active the 1 s cadence is a heartbeat — identical values
+  // force: while active the 1 s cadence is a heartbeat вЂ” identical values
   // are still published so the live view visibly ticks.
   mqttUpdatePackStatus(voltage, current, active);
 }
@@ -2314,7 +2315,7 @@ void manageWiFi() {
     previousAttemptTime = currentTime;
     Serial.println("\nWi-Fi connected!");
     wifiRadioRestarts = 0;
-    // The saved network is reachable again — the next reboot must not raise
+    // The saved network is reachable again вЂ” the next reboot must not raise
     // the setup AP on the stale recovery hint.
     if (getWifiRecoveryHint()) setWifiRecoveryHint(false);
     if (!timeSyncStarted) {
@@ -2344,6 +2345,40 @@ void wifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
   if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
     lastWifiDisconnectReason = (int)info.wifi_sta_disconnected.reason;
     Serial.printf("  STA disconnected, reason=%d\n", (int)info.wifi_sta_disconnected.reason);
+  }
+}
+
+// --- РљРѕРјР°РЅРґС‹ СЃ СЃРµСЂРІРµСЂР° LeafControl ---------------------------------------
+// РЎРµСЂРІРµСЂ РїСЂРёСЃС‹Р»Р°РµС‚ РёРјСЏ РєРѕРјР°РЅРґС‹ Рё Р°СЂРіСѓРјРµРЅС‚С‹; РёСЃРїРѕР»РЅСЏРµРј С‚Рµ Р¶Рµ РїРѕСЃР»РµРґРѕРІР°С‚РµР»СЊРЅРѕСЃС‚Рё,
+// С‡С‚Рѕ Рё Р»РѕРєР°Р»СЊРЅС‹Рµ РєРЅРѕРїРєРё РІРµР±-РёРЅС‚РµСЂС„РµР№СЃР°.
+static void handleServerCommand(const char* name, const char* argsJson) {
+  if (!strcmp(name, "clim_on")) {
+    int minutes = 20;
+    const char* p = strstr(argsJson, "\"minutes\":");
+    if (p) minutes = atoi(p + 10);
+    if (minutes < 1 || minutes > 60) minutes = 20;
+    armHvacTimer((uint16_t)minutes);
+    startSequence(CanSequence::HVAC_ON, millis());
+    Serial.printf("[srv] РєР»РёРјР°С‚ ON РЅР° %d РјРёРЅ\n", minutes);
+  } else if (!strcmp(name, "clim_off")) {
+    cancelHvacTimer();
+    startSequence(CanSequence::HVAC_OFF, millis());
+  } else if (!strcmp(name, "lock")) {
+    startSequence(CanSequence::LOCK_DOORS, millis());
+  } else if (!strcmp(name, "unlock")) {
+    startSequence(CanSequence::UNLOCK_DOORS, millis());
+  } else if (!strcmp(name, "lights")) {
+    startSequence(CanSequence::LIGHTS, millis());
+  } else if (!strcmp(name, "horn")) {
+    startSequence(CanSequence::HORN_LIGHTS, millis());
+  } else if (!strcmp(name, "refresh")) {
+    startSequence(CanSequence::REFRESH, millis());
+  } else if (!strcmp(name, "charge_start")) {
+    startSequence(CanSequence::CHARGE_ON, millis());
+  } else if (!strcmp(name, "charge_stop")) {
+    startSequence(CanSequence::CHARGE_OFF, millis());
+  } else {
+    Serial.printf("[srv] РЅРµРёР·РІРµСЃС‚РЅР°СЏ РєРѕРјР°РЅРґР°: %s\n", name);
   }
 }
 
@@ -2453,15 +2488,14 @@ void setup() {
   else {
     // Never run with the radio fully off: with both SSIDs empty the settings
     // page would be unreachable (serial CLI only). Fall back to a config AP.
-    Serial.println("WiFi disabled — starting fallback AP \"LeafControl-Setup\"");
+    Serial.println("WiFi disabled вЂ” starting fallback AP \"LeafControl-Setup\"");
     WiFi.mode(WIFI_AP);
     WiFi.softAP("LeafControl-Setup");
     WiFi.setSleep(false);
     wifiEnabled = true;
   }
 
-  setupMQTT();
-  setupOvmsV2();
+  // MQTT и OVMS Server V2 удалены: единственный внешний канал — свой сервер.
   // Hold every MCP2515 CS line HIGH before the first SPI transaction.
   // setupEvCAN() runs first and the other modules' CS pins are still floating
   // inputs at that point: a floating CS lets a not-yet-initialised controller
@@ -2605,6 +2639,8 @@ for (size_t i = 0; i < WEBAPP_ASSET_COUNT; i++) {
           Serial.printf("Captive portal DNS active at %s\n", WiFi.softAPIP().toString().c_str());
       }
   }
+  serverApiSetCommandHandler(handleServerCommand);
+  serverApiBegin();
   loopHeartbeatMs = millis();
   setupComplete = true;
 }
@@ -2635,10 +2671,7 @@ void loop() {
   // Without an uplink the MQTT/TLS connect attempts just block the loop for
   // seconds each time, which makes the page crawl when the board is reached
   // through its own access point.
-  if (activeSequence == CanSequence::NONE && !otaInProgress && WiFi.status() == WL_CONNECTED) {
-    manageMQTT();
-    manageOvmsV2();
-  }
+  // MQTT/OVMS больше нет: связь с сервером обслуживает serverApiTick() ниже.
   modemTick();
   if (wifiEnabled && WiFi.status() == WL_CONNECTED) {
     if (!arduinoOtaBegun) setupArduinoOTA();
@@ -2702,6 +2735,8 @@ void loop() {
     manageHvacSessionKeepalive(millis(), hvacTimerEndsMs != 0);
   }
   manageWiFi();
+  // Связь с собственным сервером: состояние, очередь команд, история.
+  if (!otaInProgress && WiFi.status() == WL_CONNECTED) serverApiTick();
   processSerialInput();
   managePendingPublishes();
   manageChargeLimit();
