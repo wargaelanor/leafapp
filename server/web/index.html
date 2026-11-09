@@ -8,6 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>LeafControl</title>
 <link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon-192.png" sizes="192x192">
 <link rel="apple-touch-icon" href="/icon-180.png">
 <style>
 :root{
@@ -362,7 +363,12 @@ async function loadDevices() {
     sel.appendChild(o);
   }
   const saved = localStorage.getItem('leafDev');
-  cur = devices.find(x => String(x.id) === saved) || devices[0];
+  cur = devices.find(x => String(x.id) === saved);
+  if (!cur) {
+    // по умолчанию — устройство на связи, иначе самое свежее
+    cur = devices.slice().sort((a, b) =>
+      ((b.online ? 1 : 0) - (a.online ? 1 : 0)) || ((b.last_seen || 0) - (a.last_seen || 0)))[0];
+  }
   sel.value = cur.id;
   sel.onchange = () => { cur = devices.find(x => String(x.id) === sel.value); localStorage.setItem('leafDev', cur.id); refresh(); };
   await refresh();
@@ -502,7 +508,7 @@ async function loadAdmin() {
   ).join('') || '<tr><td colspan="4" class="hint">заявок нет</td></tr>';
   const all = await api('/api/admin/devices?status=all');
   $('allDevBody').innerHTML = (all.devices || []).map(d =>
-    `<tr><td>${d.login}</td><td><span class="badge ${d.status === 'pending' ? 'pend' : ''}">${d.status}</span></td><td>${d.online ? 'на связи' : 'нет'}</td></tr>`
+    `<tr><td>${d.login}<div class="hint">${d.serial || ''}</div></td><td><span class="badge ${d.status === 'pending' ? 'pend' : ''}">${d.status}</span></td><td>${d.online ? 'на связи' : (d.last_seen ? 'был ' + fmtTime(d.last_seen) : 'нет')}</td></tr>`
   ).join('');
   const ev = await api('/api/admin/events');
   $('eventsBody').innerHTML = (ev.events || []).slice(0, 30).map(e =>
