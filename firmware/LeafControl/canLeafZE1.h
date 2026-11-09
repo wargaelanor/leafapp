@@ -127,6 +127,9 @@ bool startSequence(CanSequence seq, unsigned long currentTimeMs);
 CanSeqResult manageCANSequence(unsigned long currentTimeMs);
 void manageVinQuery(unsigned long currentTimeMs);
 void manageBmsDiagnostics(unsigned long currentTimeMs);
+// True while an ISO-TP diagnostic transfer (BMS group or VIN) is in flight;
+// the Tier-1 UDS poller waits for the same single-lane channel.
+bool diagChannelBusy();
 
 // Read-only VIN probe over OBD-II mode 09 PID 02 (0x7DF request, 0x7E8 reply).
 // Only allowed while explicitly requested, so the default TX whitelist stays

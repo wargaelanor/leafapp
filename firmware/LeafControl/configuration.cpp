@@ -143,6 +143,12 @@ static ConfigString<64> conf_ovms_password("ovms_password", "");
 static ConfigString<64> conf_ovms_module_password("ovms_module_pw", "");
 static ConfigBool       conf_ovms_tls("ovms_tls", true);
 static ConfigBool       conf_sleep_enabled("sleep_enable", false);
+// Tier-1 UDS polling (gear / 12V / plug / speed / counters). The window logic
+// keeps it inside "the car is awake" periods, so this is safe to leave on.
+static ConfigBool       conf_uds_enable("uds_enable", true);
+// Some cars have no TPMS sensors: without this flag the 0x743 pressure DIDs
+// are never asked for, so the poller does not collect guaranteed timeouts.
+static ConfigBool       conf_uds_tpms("uds_tpms", false);
 static ConfigInt        conf_sleep_after_h("sleep_after_h", 24);
 static ConfigInt        conf_wake_fast_min("wake_fast_min", 5);
 static ConfigInt        conf_wake_slow_min("wake_slow_min", 15);
@@ -205,6 +211,8 @@ void initConfiguration() {
     conf_ovms_module_password.load();
     conf_ovms_tls.load();
     conf_sleep_enabled.load();
+    conf_uds_enable.load();
+    conf_uds_tpms.load();
     conf_sleep_after_h.load();
     conf_wake_fast_min.load();
     conf_wake_slow_min.load();
@@ -350,6 +358,10 @@ ConfigStatus setOvmsTls(bool value) { return conf_ovms_tls.set(value); }
 
 bool getSleepEnabled() { return conf_sleep_enabled.get(); }
 ConfigStatus setSleepEnabled(bool value) { return conf_sleep_enabled.set(value); }
+bool getUdsEnabled() { return conf_uds_enable.get(); }
+ConfigStatus setUdsEnabled(bool value) { return conf_uds_enable.set(value); }
+bool getUdsTpmsEnabled() { return conf_uds_tpms.get(); }
+ConfigStatus setUdsTpmsEnabled(bool value) { return conf_uds_tpms.set(value); }
 
 int getSleepAfterHours() {
     int v = conf_sleep_after_h.get();

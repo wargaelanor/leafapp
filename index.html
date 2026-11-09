@@ -641,6 +641,18 @@ body.demo .demo-banner{display:block}
           <div><div class="vst">Машина</div><div class="vsv" id="s-on">—</div></div>
         </div>
         <div class="vs-cell">
+          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 3v12M6 21v-2M18 3v18M12 9h0M6 9h6M12 3v6"/><circle cx="18" cy="3" r="1.6"/><circle cx="6" cy="21" r="1.6"/></svg></div>
+          <div><div class="vst">Передача</div><div class="vsv" id="s-gear">—</div></div>
+        </div>
+        <div class="vs-cell">
+          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
+          <div><div class="vst">12 В</div><div class="vsv" id="s-v12">—</div></div>
+        </div>
+        <div class="vs-cell">
+          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 2v6M15 2v6M7 8h10v5a5 5 0 01-10 0V8zM12 18v4"/></svg></div>
+          <div><div class="vst">Разъём</div><div class="vsv" id="s-plug">—</div></div>
+        </div>
+        <div class="vs-cell">
           <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M7 12h10M12 7v10"/></svg></div>
           <div><div class="vst">Общий пробег</div><div class="vsv" id="s-odo">—</div></div>
         </div>
@@ -1265,6 +1277,15 @@ function renderNow(){
   $('s-charge').textContent = S.charging?'Подключено':(S.charger?chargerRu():'—');
   $('s-hvac').textContent = S.hvac ? (S.heat?'Обогрев':(S.cool?'Охлаждение':'Вкл')) : 'Выкл';
   $('s-on').textContent = S.on===1?'Вкл':(S.on===0?'Выкл':'—');
+  // Tier-1 UDS tiles (gear / 12 V net / J1772 plug). Values arrive only while
+  // the car is awake; after a long silence the tiles fall back to "—".
+  const u = S.uds;
+  const uFresh = u && (Date.now() - (u.ts || 0) < 90000);
+  $('s-gear').textContent = (uFresh && u.gear) ? u.gear : '—';
+  $('s-v12').textContent = (uFresh && u.v12 > 6 && u.v12 < 20)
+    ? u.v12.toFixed(1) + ' V' + (Math.abs(u.i12) > 0.4 ? (' ' + (u.i12 > 0 ? '+' : '') + u.i12.toFixed(1) + ' A') : '')
+    : '—';
+  $('s-plug').textContent = uFresh ? (u.plug === 2 ? 'Подключён' : (u.plug === 1 ? 'Наполовину' : (u.plug === 0 ? 'Нет' : '—'))) : '—';
   $('s-odo').textContent = S.odo>0 ? S.odo.toLocaleString('ru-RU')+' км' : '—';
   $('s-vin').textContent = S.vin || '—';
   $('f-status-sub').textContent = soc!=null ? 'Батарея '+soc.toFixed(0)+'%' : 'Батарея, климат, двери';
@@ -1315,6 +1336,8 @@ async function pollLocal(){
     S.soh=j.soh; S.gids=j.gids; S.v=j.v; S.i=j.i; S.power=j.power||0; S.packValid=!!j.pack; S.voltageValid=(j.vvalid===undefined)?S.packValid:!!j.vvalid;
     S.amb=j.amb; S.on=j.on; S.seq=!!j.seq; S.locking=!!j.locking;
     S.isoc=(j.isoc===undefined)?-1:j.isoc; S.irange=(j.irange===undefined)?-1:j.irange;
+    if(j.uds) S.uds={gear:j.uds.gear||'', v12:j.uds.v12, i12:j.uds.i12,
+                     plug:j.uds.plug, mode:j.uds.mode, spd:j.uds.spd, ts:Date.now()};
     S.btemp=(j.btemp===undefined)?-99:j.btemp; S.cdelta=(j.cdelta===undefined)?-1:j.cdelta;
     S.fage=(j.fage===undefined)?-1:j.fage;
     S.odo=j.odo||0; S.vin=j.vin||''; S.hvacTimer=j.hvac_timer||0;

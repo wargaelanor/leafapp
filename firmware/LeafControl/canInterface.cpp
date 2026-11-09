@@ -8,6 +8,7 @@
 #endif
 #include "canInterface.h"
 #include "canLogger.h"
+#include "udsLeaf.h"
 
 // Implemented in canLeafZE1.cpp. Declared here so the low-level CAN layer can
 // gate the one unproven payload (OBD-II VIN read) without including the whole
@@ -94,6 +95,11 @@ static bool txAllowed(uint32_t id, const uint8_t* data, uint8_t len, bool bypass
     {0x46, 0x0B, 0x12, 0x10}  // captured ZE1 horn + lights (RHL=3)
   };
   bool allowed = id == 0x68C && len == 1 && data && data[0] == 0x00;
+  if (!allowed && udsWhitelistHit(id, data, len)) {
+    // Tier-1 UDS ReadDataByIdentifier requests from udsLeaf.cpp: fixed
+    // 03 22 <did> frames to the ECU addresses in its table.
+    allowed = true;
+  }
   if (id == 0x56E && len == 4 && data) {
     for (const auto& payload : allowed56e) {
       if (memcmp(data, payload, sizeof(payload)) == 0) {

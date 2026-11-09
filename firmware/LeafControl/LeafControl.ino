@@ -12,6 +12,7 @@
 #include "cliParser.h"
 #include "canLeafZE1.h"
 #include "evCanLeaf.h"
+#include "udsLeaf.h"
 #include "ui.h"
 #include "webapp_html.h"
 #include "mqttInterface.h"
@@ -24,10 +25,10 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.09.131-TCALL"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.09.132-TCALL"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: two MCP2515 CAN buses + SIM800"
 #else
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.09.131-CMD"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.09.132-CMD"
 #define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: stable scroll, Wi-Fi scan"
 #endif
 
@@ -618,7 +619,7 @@ void handleApiStatus() {
   float gLat = 0, gLon = 0, gAlt = 0, gSpd = 0;
   uint32_t gAge = 0;
   bool gpsValid = modemGpsFix(&gLat, &gLon, &gAlt, &gSpd, &gAge);
-  char json[2400];
+  char json[2600];
   char h1db[26], h5bc[26], h7bb[26], h79a[26], h5c0[26], h1dba[26];
   jsonHexPayload(0x1DB, h1db, sizeof(h1db));
   jsonHexPayload(0x5BC, h5bc, sizeof(h5bc));
@@ -653,6 +654,10 @@ void handleApiStatus() {
     "\"sleep_on\":%d,\"sleep_after_h\":%d,\"wake_fast_min\":%d,\"idle_s\":%lu,"
     "\"charge_limit\":%d,\"mitm_sent\":%lu,\"mitm_armed\":%u,"
     "\"chg_fired\":%d,\"chg_active\":%d,\"chg_ev\":%d,"
+    "\"uds\":{\"gear\":\"%s\",\"v12\":%.2f,\"i12\":%.2f,\"plug\":%d,\"mode\":%d,"
+      "\"spd\":%.1f,\"obc\":%d,\"qc\":%lu,\"l1l2\":%lu,\"motor\":%.0f,\"swa\":%.0f,"
+      "\"brake\":%d,\"accel\":%d,\"eco\":%d,\"pedal\":%d,\"ac\":%d,\"rh\":%d,"
+      "\"tpms\":[%.0f,%.0f,%.0f,%.0f],\"tpmsok\":%d,\"rq\":%lu,\"rs\":%lu},"
     "\"gps\":{\"lat\":%.5f,\"lon\":%.5f,\"age\":%lu}}",
     LEAF_FIRMWARE_VERSION, LEAF_FIRMWARE_DESCRIPTION, BOARD_NAME,
     currentSOC, cabinTemp, (isChargingNow || tripLogIsCharging()) ? 1 : 0, chargerStateStr(currentChargerState),
@@ -700,6 +705,18 @@ void handleApiStatus() {
     chargeLimitFired ? 1 : 0,
     (isChargingNow || tripLogIsCharging()) ? 1 : 0,
     tripLogIsCharging() ? 1 : 0,
+    udsGearText(),
+    (double)udsData.v12, (double)udsData.i12,
+    (int)udsData.plug, (int)udsData.chargeMode,
+    (double)udsData.speed, udsData.obcW,
+    (unsigned long)udsData.qcCount, (unsigned long)udsData.l1l2Count,
+    (double)udsData.motorTempC, (double)udsData.swaDeg,
+    udsData.brakeRaw, udsData.accelPos,
+    (int)udsData.eco, (int)udsData.epedal, (int)udsData.acOn, (int)udsData.rearHeater,
+    (double)udsData.tpmsKpa[0], (double)udsData.tpmsKpa[1],
+    (double)udsData.tpmsKpa[2], (double)udsData.tpmsKpa[3],
+    (int)udsData.tpmsSeen,
+    (unsigned long)udsData.reqCount, (unsigned long)udsData.respCount,
     gpsValid ? gLat : 0.0, gpsValid ? gLon : 0.0,
     (unsigned long)(gpsValid ? gAge / 1000UL : 0UL));
   server.sendHeader("Cache-Control", "no-store");
@@ -1244,6 +1261,8 @@ void handleSettingsSave() {
   setLockingEnabled(server.hasArg("locking_enabled"));
 
   setSleepEnabled(server.hasArg("sleep_enable"));
+  setUdsEnabled(server.hasArg("uds_enable"));
+  setUdsTpmsEnabled(server.hasArg("uds_tpms"));
   int sah = server.arg("sleep_after_h").toInt();
   if (sah >= 1 && sah <= 168) setSleepAfterHours(sah);
   int wfm = server.arg("wake_fast_min").toInt();
@@ -1451,6 +1470,8 @@ void handleApiConfigGet() {
   out += ",\"host_name\":\""; out += getHostName();
   out += "\",\"locking_enabled\":"; out += getLockingEnabled() ? "true" : "false";
   out += ",\"sleep_enable\":"; out += getSleepEnabled() ? "true" : "false";
+  out += ",\"uds_enable\":"; out += getUdsEnabled() ? "true" : "false";
+  out += ",\"uds_tpms\":"; out += getUdsTpmsEnabled() ? "true" : "false";
   out += ",\"sleep_after_h\":"; out += String(getSleepAfterHours());
   out += ",\"wake_fast_min\":"; out += String(getWakeFastMinutes());
   out += ",\"wake_slow_min\":"; out += String(getWakeSlowMinutes());
@@ -1535,6 +1556,14 @@ void handleApiConfigSave() {
   if (jsonBool(body, "ui_lite", b)) setUiLite(b);
 
   if (jsonBool(body, "sleep_enable", b)) setSleepEnabled(b);
+  if (jsonBool(body, "uds_enable", b)) {
+    setUdsEnabled(b);
+    Serial.printf("[uds] Tier-1 polling %s\n", b ? "enabled" : "disabled");
+  }
+  if (jsonBool(body, "uds_tpms", b)) {
+    setUdsTpmsEnabled(b);
+    Serial.printf("[uds] TPMS DIDs %s\n", b ? "enabled" : "disabled");
+  }
   if (jsonInt(body, "sleep_after_h", n) && n >= 1 && n <= 168) setSleepAfterHours((int)n);
   if (jsonInt(body, "wake_fast_min", n) && n >= 1 && n <= 1440) setWakeFastMinutes((int)n);
   if (jsonInt(body, "wake_slow_min", n) && n >= 1 && n <= 1440) setWakeSlowMinutes((int)n);
@@ -2622,6 +2651,7 @@ void loop() {
     manageBmsDiagnostics(millis());
     manageVinQuery(millis());
     manageVinObdProbe(millis());
+    manageUdsTier1(millis());
     tripLogTick();
     // Mirror EV-detected charge sessions into MQTT: the v/c/charging metric
     // used to be published only from the CAR-CAN charger frame, so MQTT

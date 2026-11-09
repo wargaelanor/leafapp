@@ -100,6 +100,10 @@ ConfigStatus setOvmsTls(bool value);
 
 bool getSleepEnabled();
 ConfigStatus setSleepEnabled(bool value);
+bool getUdsEnabled();
+ConfigStatus setUdsEnabled(bool value);
+bool getUdsTpmsEnabled();
+ConfigStatus setUdsTpmsEnabled(bool value);
 
 // Wi-Fi recovery hint: raise the setup AP at boot when the last session
 // ended with the saved network unreachable (see manageWiFi).

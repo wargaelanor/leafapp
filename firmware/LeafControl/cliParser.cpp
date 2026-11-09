@@ -4,6 +4,7 @@
 #include "canInterface.h"
 #include "evCanLeaf.h"
 #include "vehicleTypes.h"
+#include "udsLeaf.h"
 
 // Live vehicle state, defined in LeafControl.ino (diagnostics only)
 extern float currentSOC;
@@ -47,6 +48,8 @@ void executeCommand(char* cmd) {
         Serial.printf("  mqtt_tls: %s\n", getMqttTls() ? "true" : "false");
         Serial.printf("  hass_discovery: %s\n", getHassDiscoveryEnabled() ? "true" : "false");
         Serial.printf("  sleep_enable: %s\n", getSleepEnabled() ? "true" : "false");
+        Serial.printf("  uds_enable: %s\n", getUdsEnabled() ? "true" : "false");
+        Serial.printf("  uds_tpms: %s\n", getUdsTpmsEnabled() ? "true" : "false");
         Serial.printf("  sleep_after_h: %d\n", getSleepAfterHours());
          Serial.printf("  wake_fast_min: %d\n", getWakeFastMinutes());
          Serial.printf("  wake_slow_min: %d\n", getWakeSlowMinutes());
@@ -83,6 +86,8 @@ void executeCommand(char* cmd) {
             else if (strcmp(key, "mqtt_tls") == 0) Serial.println(getMqttTls() ? "true" : "false");
             else if (strcmp(key, "hass_discovery") == 0) Serial.println(getHassDiscoveryEnabled() ? "true" : "false");
             else if (strcmp(key, "sleep_enable") == 0) Serial.println(getSleepEnabled() ? "true" : "false");
+            else if (strcmp(key, "uds_enable") == 0) Serial.println(getUdsEnabled() ? "true" : "false");
+            else if (strcmp(key, "uds_tpms") == 0) Serial.println(getUdsTpmsEnabled() ? "true" : "false");
             else if (strcmp(key, "sleep_after_h") == 0) Serial.println(getSleepAfterHours());
             else if (strcmp(key, "wake_fast_min") == 0) Serial.println(getWakeFastMinutes());
             else if (strcmp(key, "charge_limit_pct") == 0) Serial.println(getChargeLimitPct());
@@ -164,6 +169,16 @@ void executeCommand(char* cmd) {
                     Serial.println("Error: Value must be 'true', 'false', '1', or '0'.");
                     return;
                 }
+            }
+            else if (strcmp(key, "uds_enable") == 0 || strcmp(key, "uds_tpms") == 0) {
+                bool on = (strcmp(val, "true") == 0 || strcmp(val, "1") == 0);
+                bool off = (strcmp(val, "false") == 0 || strcmp(val, "0") == 0);
+                if (!on && !off) {
+                    Serial.println("Error: Value must be 'true', 'false', '1', or '0'.");
+                    return;
+                }
+                status = (strcmp(key, "uds_enable") == 0) ? setUdsEnabled(on)
+                                                          : setUdsTpmsEnabled(on);
             }
             else if (strcmp(key, "sleep_after_h") == 0) {
                 int v = atoi(val);
@@ -251,6 +266,25 @@ void executeCommand(char* cmd) {
         Serial.printf("EV-CAN errors: REC %u TEC %u EFLG 0x%02X\n",
                       (unsigned)evCanRxErrorCount(), (unsigned)evCanTxErrorCount(),
                       (unsigned)evCanErrorFlags());
+    }
+    else if (strcmp(command, "uds") == 0) {
+        Serial.println("---- Tier-1 UDS (Leaf2018-CAN) ----");
+        Serial.printf("enabled %d | tpms %d | in-flight %d\n",
+                      getUdsEnabled() ? 1 : 0, getUdsTpmsEnabled() ? 1 : 0, udsQueryBusy() ? 1 : 0);
+        Serial.printf("gear '%s' | 12V %.2f V %.2f A | plug %d | mode %d | speed %.1f km/h\n",
+                      udsGearText(), udsData.v12, udsData.i12,
+                      udsData.plug, udsData.chargeMode, udsData.speed);
+        Serial.printf("OBC %d W | QC #%lu | L1L2 #%lu | motor %.0f C | swa %.0f deg\n",
+                      udsData.obcW, (unsigned long)udsData.qcCount,
+                      (unsigned long)udsData.l1l2Count, udsData.motorTempC, udsData.swaDeg);
+        Serial.printf("brake %d | accel %d | eco %d | e-pedal %d | ac %d | rear-htr %d\n",
+                      udsData.brakeRaw, udsData.accelPos, udsData.eco, udsData.epedal,
+                      udsData.acOn, udsData.rearHeater);
+        Serial.printf("TPMS kPa: FR %.0f FL %.0f RR %.0f RL %.0f (mask 0x%02X)\n",
+                      udsData.tpmsKpa[0], udsData.tpmsKpa[1],
+                      udsData.tpmsKpa[2], udsData.tpmsKpa[3], udsData.tpmsSeen);
+        Serial.printf("req %lu | resp %lu\n",
+                      (unsigned long)udsData.reqCount, (unsigned long)udsData.respCount);
     }
     else if (strcmp(command, "evscan") == 0) {
         evCanRequestScan();

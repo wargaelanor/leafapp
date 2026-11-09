@@ -365,6 +365,16 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, bool ovmsConnected,
   if (getSleepEnabled()) server.sendContent(F(" checked"));
   server.sendContent(F(
     "> Глубокий сон при простое машины</label>\n"
+    "<label class='chk' style='margin-top:0'><input type='checkbox' name='uds_enable' value='1'"
+  ));
+  if (getUdsEnabled()) server.sendContent(F(" checked"));
+  server.sendContent(F(
+    "> UDS-опрос кузова (передача, 12 В, plugged, скорость) — только когда машина не спит</label>\n"
+    "<label class='chk' style='margin-top:0'><input type='checkbox' name='uds_tpms' value='1'"
+  ));
+  if (getUdsTpmsEnabled()) server.sendContent(F(" checked"));
+  server.sendContent(F(
+    "> Датчики давления в шинах (TPMS) установлены</label>\n"
     "<label for='sleep_after_h'>Уходить в сон после (часов простоя)</label>\n"
     "<input type='number' id='sleep_after_h' name='sleep_after_h' min='1' max='168' value='"
   ));

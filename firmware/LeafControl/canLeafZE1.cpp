@@ -1,5 +1,6 @@
 #include "canLeafZE1.h"
 #include "evCanLeaf.h"
+#include "udsLeaf.h"
 #include <Arduino.h>
 #include <cstring>
 
@@ -484,7 +485,29 @@ void handleVinResponse(const uint8_t* data, uint8_t len) {
 }
 
 // Message parser dispatch table
+void handleVinResponse(const uint8_t* data, uint8_t len);
 void handleVinObdResponse(const uint8_t* data, uint8_t len);
+
+// Shared diagnostic-channel interlock: the ISO-TP pollers (BMS groups, VIN,
+// VIN-OBD probe) and the Tier-1 UDS poller must never have a transfer in
+// flight at the same moment — the gateway serialises them anyway, and two
+// open questions corrupt each other's flow control.
+bool diagChannelBusy() {
+    if (bmsQuery != BmsQuery::NONE) return true;
+    if (vinPending) return true;
+    if (vinObdRequest || vinObdPending) return true;
+    return false;
+}
+
+// A UDS single-frame VCM answer is consumed here; anything else on 0x79A is
+// the ISO-TP VIN transfer.
+static void handleVcmResponse(const uint8_t* data, uint8_t len) {
+    if (udsFrameRouter(0x79A, data, len)) return;
+    handleVinResponse(data, len);
+}
+static void handleBcmResponse(const uint8_t* data, uint8_t len) { udsFrameRouter(0x763, data, len); }
+static void handleAbsResponse(const uint8_t* data, uint8_t len) { udsFrameRouter(0x760, data, len); }
+static void handleInvResponse(const uint8_t* data, uint8_t len) { udsFrameRouter(0x78C, data, len); }
 static const MessageParser parsers[] = {
     CAN_PARSER(raw_soc_readout, handleSOCMessage),
     CAN_PARSER(cabin_temp_readout, handleTempMessage),
@@ -502,7 +525,10 @@ static const MessageParser parsers[] = {
     // 9.6-11.4 C on this ZE1. Do not publish that unverified fallback.
     CAN_PARSER(odometer_units_readout, handleOdometerUnitsMessage),
     CAN_PARSER(odometer_readout, handleOdometerMessage),
-    { 0x79A, 1, handleVinResponse },
+    { 0x79A, 1, handleVcmResponse },
+    { 0x763, 1, handleBcmResponse },   // Tier-1 UDS: BCM (TPMS)
+    { 0x760, 1, handleAbsResponse },   // Tier-1 UDS: ABS (brake/accel/angle)
+    { 0x78C, 1, handleInvResponse },   // Tier-1 UDS: inverter (motor temp)
     { 0x7BB, 1, handleBmsResponse },
     { 0x7E8, 1, handleVinObdResponse },   // only used by the explicit VIN probe
 };
@@ -837,6 +863,7 @@ void manageVinQuery(unsigned long currentTimeMs) {
     if (vinPending && currentTimeMs - lastVinRequestMs > 5000) vinPending = false;
     if (vinDisabled || vinBuffer[0] != '\0' || canFramesB == 0 ||
         activeSequence != CanSequence::NONE) return;
+    if (udsQueryBusy()) return;
     if (vinPending && currentTimeMs - lastVinRequestMs < 5000) return;
     if (lastVinRequestMs != 0 && currentTimeMs - lastVinRequestMs < 30000) return;
     const uint8_t request[8] = {0x02, 0x21, 0x81, 0, 0, 0, 0, 0};
@@ -971,7 +998,8 @@ void manageBmsDiagnostics(unsigned long currentTimeMs) {
         }
         return;
     }
-    if (!diagnosticWindow || activeSequence != CanSequence::NONE || vinPending) return;
+    if (!diagnosticWindow || activeSequence != CanSequence::NONE || vinPending ||
+        udsQueryBusy()) return;
     if ((long)(currentTimeMs - bmsCooldownUntilMs) < 0) return;
     // Never queue two requests back to back: the gateway needs a breath
     // between ISO-TP transfers.
