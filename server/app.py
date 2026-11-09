@@ -311,7 +311,8 @@ class Api(BaseHTTPRequestHandler):
                 return self.json(200, {"ok": True, "ts": now()})
             if path.startswith("/api/"):
                 return self.api(method, path, q)
-            return self.err(404, "not found")
+            # Статика: /index.html, /manifest.webmanifest, /sw.js, /icon-*.png
+            return self.serve_static(path.lstrip("/"))
         except Exception as exc:  # noqa: BLE001
             print("ERROR", path, repr(exc), flush=True)
             self.err(500, "internal error")
