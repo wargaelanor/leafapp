@@ -1,4 +1,5 @@
 apiVersion: 1
+
 datasources:
   - name: InfluxDB-Leaf
     uid: leaf
@@ -11,4 +12,4 @@ datasources:
       organization: leaf
       defaultBucket: telemetry
     secureJsonData:
-      token: $ENV{INFLUX_TOKEN}
+      token: $INFLUX_TOKEN

@@ -1,24 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE properties SYSTEM "http://java.sun.com/dtd/properties.dtd">
 <properties>
-  <!-- Веб-интерфейс и REST API на порту 8082 (наружу: 8925) -->
+  <!-- Веб-интерфейс и REST API (внутри контейнера 8082) -->
   <entry key='web.enable'>true</entry>
 
-  <!-- Фильтр шума: точность <100 м и рывки <5 м отбрасываем -->
+  <!-- Отсекаем шум GPS: неточные и мелкие смещения -->
   <entry key='filter.enable'>true</entry>
   <entry key='filter.invalid'>true</entry>
   <entry key='filter.accuracy'>150</entry>
   <entry key='filter.minDistance'>5</entry>
 
-  <!-- Без внешнего геокодера: работает офлайн, адреса потом можно включить -->
+  <!-- Без внешнего геокодера: работает офлайн -->
   <entry key='geocoder.enable'>false</entry>
 
-  <!-- Триггеры поездок/стоянок для отчётов -->
-  <entry key='notificator.types'>web</entry>
-  <entry key='events.enable'>true</entry>
-  <entry key='events.commands'>deviceAlert, trips</entry>
-
-  <!-- Позиции принимаем по HTTP через KeenDNS (TLS терминируется роутером) -->
+  <!-- Корректные ссылки и IP за reverse proxy (Keenetic, nginx, Caddy) -->
   <entry key='server.reverseProxy'>true</entry>
-  <entry key='forwardedStrategy'>X_FORWARDED_FOR</entry>
 </properties>

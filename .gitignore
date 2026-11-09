@@ -18,3 +18,7 @@ Thumbs.db
 # python tooling
 __pycache__/
 *.pyc
+
+deploy/leafstack/.env.local
+deploy/leafstack/.env
+.env
