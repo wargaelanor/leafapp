@@ -285,6 +285,8 @@ void executeCommand(char* cmd) {
                       udsData.tpmsKpa[2], udsData.tpmsKpa[3], udsData.tpmsSeen);
         Serial.printf("req %lu | resp %lu\n",
                       (unsigned long)udsData.reqCount, (unsigned long)udsData.respCount);
+        Serial.printf("sessions live mask 0x%02X (VCM,BCM,ABS,TMI) | refused 0x%02X\n",
+                      udsSessionMask(), udsSessionRefusedMask());
     }
     else if (strcmp(command, "evscan") == 0) {
         evCanRequestScan();

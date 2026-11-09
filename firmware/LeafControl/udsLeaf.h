@@ -50,5 +50,8 @@ bool udsFrameRouter(uint32_t id, const uint8_t* data, uint8_t len);
 
 const char* udsGearText();                 // "P"/"R"/"N"/"D"/"Eco"/""
 bool udsTpmsConfigured();                  // sensors installed (config flag)
+// Bit i: ECU slot i (0 VCM, 1 BCM, 2 ABS, 3 TMI) has a live session / refused it.
+uint8_t udsSessionMask();
+uint8_t udsSessionRefusedMask();
 
 #endif
