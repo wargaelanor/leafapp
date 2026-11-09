@@ -147,6 +147,13 @@ def init_db() -> None:
                 (ADMIN_USER, hash_password(ADMIN_PASSWORD), "admin", now()),
             )
             log_event(c, None, "admin_created", {"username": ADMIN_USER})
+        elif row and ADMIN_PASSWORD:
+            # Пароль администратора задаётся окружением и является истиной:
+            # при старте контейнера он приводится к значению из LEAF_ADMIN_PASSWORD.
+            c.execute(
+                "UPDATE users SET pass_hash=?, role='admin' WHERE username=?",
+                (hash_password(ADMIN_PASSWORD), ADMIN_USER),
+            )
 
 
 def hash_password(password: str, salt: bytes | None = None) -> str:

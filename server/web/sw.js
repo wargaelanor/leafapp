@@ -1,6 +1,6 @@
-// LeafControl service worker: оболочка приложения кэшируется,
-// API всегда идёт в сеть (данные не должны устаревать).
-const CACHE = 'leaf-v1';
+// LeafControl service worker: РѕР±РѕР»РѕС‡РєР° РїСЂРёР»РѕР¶РµРЅРёСЏ РєСЌС€РёСЂСѓРµС‚СЃСЏ,
+// API РІСЃРµРіРґР° РёРґС‘С‚ РІ СЃРµС‚СЊ (РґР°РЅРЅС‹Рµ РЅРµ РґРѕР»Р¶РЅС‹ СѓСЃС‚Р°СЂРµРІР°С‚СЊ).
+const CACHE = 'leaf-v2';
 const SHELL = [
   '/',
   '/index.html',
@@ -25,7 +25,7 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.pathname.startsWith('/api/')) {
-    return; // сеть, без кэша
+    return; // СЃРµС‚СЊ, Р±РµР· РєСЌС€Р°
   }
   e.respondWith(
     fetch(e.request)
