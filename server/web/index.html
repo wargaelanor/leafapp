@@ -296,10 +296,22 @@ async function api(path, body, method) {
     opt.headers = { 'Content-Type': 'application/json' };
     opt.body = JSON.stringify(body);
   }
-  const r = await fetch(path, opt);
-  let j = null; try { j = await r.json(); } catch {}
-  if (!r.ok) throw new Error((j && j.error) || ('ошибка ' + r.status));
-  return j;
+  let lastErr = null;
+  const attempts = (body === undefined ? 3 : 2);
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const r = await fetch(path, opt);
+      let j = null; try { j = await r.json(); } catch {}
+      if (r.ok) return j;
+      // 5xx от прокси KeenDNS — повторяем, 4xx — окончательная ошибка
+      if (r.status >= 500) { lastErr = new Error('ошибка ' + r.status); }
+      else throw new Error((j && j.error) || ('ошибка ' + r.status));
+    } catch (e) {
+      lastErr = e;
+    }
+    await new Promise((res) => setTimeout(res, 400 * (i + 1)));
+  }
+  throw lastErr || new Error('сеть недоступна');
 }
 const fmtTime = (ts) => ts ? new Date(ts * 1000).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
 const dur = (s) => s ? (s >= 3600 ? Math.floor(s / 3600) + ' ч ' + Math.round(s % 3600 / 60) + ' м' : Math.round(s / 60) + ' м') : '—';
@@ -331,9 +343,9 @@ async function enter() {
   const isAdmin = me.user.role === 'admin';
   $('navAdmin').classList.toggle('hide', !isAdmin);
   $('mobAdmin').classList.toggle('hide', !isAdmin);
-  await loadDevices();
   if (timer) clearInterval(timer);
   timer = setInterval(refresh, 10000);
+  try { await loadDevices(); } catch (e) { $('linkTxt').textContent = 'нет связи с сервером'; }
 }
 
 async function loadDevices() {
