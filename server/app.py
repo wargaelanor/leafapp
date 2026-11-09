@@ -365,6 +365,8 @@ class Api(BaseHTTPRequestHandler):
             return self.get_session(q)
         if path == "/api/cmd" and method == "POST":
             return self.post_cmd()
+        if path.startswith("/api/devices/") and method == "PUT":
+            return self.rename_device(path)
         if path == "/api/sched" and method == "GET":
             return self.get_sched(q)
         if path == "/api/sched" and method == "POST":
@@ -588,6 +590,29 @@ class Api(BaseHTTPRequestHandler):
         if not d:
             return self.err(404, "device not found")
         self.json(200, row_to_device(d))
+
+    def rename_device(self, path: str):
+        u = self.require_user()
+        if not u:
+            return
+        try:
+            dev_id = int(path.rsplit("/", 1)[-1])
+        except ValueError:
+            return self.err(400, "bad id")
+        name = (self.body().get("name") or "").strip()
+        if not name:
+            return self.err(400, "name required")
+        if len(name) > 40:
+            return self.err(400, "name too long")
+        with db_lock, connect() as c:
+            row = c.execute("SELECT owner_id FROM devices WHERE id=?", (dev_id,)).fetchone()
+            if not row:
+                return self.err(404, "device not found")
+            if u["role"] != "admin" and row["owner_id"] != u["id"]:
+                return self.err(403, "forbidden")
+            c.execute("UPDATE devices SET name=? WHERE id=?", (name, dev_id))
+            log_event(c, dev_id, "device_renamed", {"name": name, "by": u["username"]})
+        self.json(200, {"ok": True, "name": name})
 
     def post_cmd(self):
         u = self.require_user()

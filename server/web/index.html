@@ -147,9 +147,14 @@ svg.chart{width:100%;height:150px;display:block}
         <div class="stack">
           <div class="card">
             <h2>Управление</h2>
-            <div class="row">
-              <button class="go" data-cmd="clim_on" data-min="20">Климат 20 мин</button>
-              <button class="stop" data-cmd="clim_off">Выключить</button>
+            <label>Климат, минут</label>
+            <div class="row" id="climRow">
+              <button class="go" data-cmd="clim_on" data-min="5">5</button>
+              <button class="go" data-cmd="clim_on" data-min="10">10</button>
+              <button class="go" data-cmd="clim_on" data-min="15">15</button>
+              <button class="go" data-cmd="clim_on" data-min="20">20</button>
+              <button class="go" data-cmd="clim_on" data-min="30">30</button>
+              <button class="stop" data-cmd="clim_off">Выкл</button>
             </div>
             <div class="row" style="margin-top:8px">
               <button class="ghost" data-cmd="lock">Закрыть</button>
@@ -247,6 +252,10 @@ svg.chart{width:100%;height:150px;display:block}
         <div class="card">
           <h2>Профиль</h2>
           <div class="hint" id="meInfo"></div>
+          <label>Название машины</label>
+          <input id="devName" placeholder="например, Leaf Андрея">
+          <button style="margin-top:10px" id="btnRename">Сохранить название</button>
+          <div class="hint" id="renameHint"></div>
           <label>Новый пароль</label><input id="pwNew" type="password" autocomplete="new-password">
           <label>Текущий пароль</label><input id="pwOld" type="password" autocomplete="current-password">
           <button style="margin-top:10px" id="btnPw">Сменить пароль</button>
@@ -255,6 +264,10 @@ svg.chart{width:100%;height:150px;display:block}
         <div class="card">
           <h2>Доступ</h2>
           <div class="hint">Один аккаунт — все машины, к которым он привязан. Плата выдаёт свой логин и пароль при первом включении, администратор одобряет устройство в разделе «Админ».</div>
+          <label>Логин устройства</label>
+          <input id="devLogin" readonly>
+          <label>Адрес сервера</label>
+          <input id="srvAddr" readonly value="https://leaf.wargaelanor.keenetic.link">
         </div>
       </div>
     </section>
@@ -352,14 +365,16 @@ function renderTilesEmpty() {
 function renderTiles(d) {
   const s = d.state || {};
   const rows = [
-    ['Заряд', s.soc != null ? num(s.soc, 0) + ' %' : '—'],
-    ['Пробег', s.odo != null ? Math.round(s.odo).toLocaleString('ru-RU') + ' км' : '—'],
-    ['В салоне', s.cabin != null ? num(s.cabin) + ' °C' : '—'],
-    ['На улице', s.amb != null ? num(s.amb) + ' °C' : '—'],
-    ['Батарея', s.batt != null ? num(s.batt) + ' °C' : '—'],
-    ['Напряжение', s.pack_v != null ? num(s.pack_v) + ' В' : '—'],
+    ['Заряд', s.soc != null && s.soc >= 0 ? num(s.soc, 0) + ' %' : '—'],
+    ['Пробег', s.odo ? Math.round(s.odo).toLocaleString('ru-RU') + ' км' : '—'],
+    ['В салоне', s.cabin != null && s.cabin > -50 ? num(s.cabin) + ' °C' : '—'],
+    ['На улице', s.amb != null && s.amb > -50 ? num(s.amb) + ' °C' : '—'],
+    ['Батарея', s.batt != null && s.batt > -50 ? num(s.batt) + ' °C' : '—'],
+    ['Напряжение', s.pack_v > 0 ? num(s.pack_v) + ' В' : '—'],
     ['Мощность', s.pack_kw != null ? num(s.pack_kw) + ' кВт' : '—'],
     ['Климат', s.hvac ? 'включён' : 'выключен'],
+    ['Зарядка', s.charging ? 'идёт' : 'нет'],
+    ['Двери', s.doors ? 'открыты' : 'закрыты'],
   ];
   $('tiles').innerHTML = rows.map(([k, v]) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
   $('linkDot').className = 'dot ' + (d.online ? 'on' : 'off');
@@ -389,7 +404,10 @@ function switchTab(t) {
   if (t === 'charges') loadSessions('charge');
   if (t === 'stats') drawCharts();
   if (t === 'admin') loadAdmin();
-  if (t === 'me') $('meInfo').textContent = 'Пользователь: ' + me.user.username + ' · роль: ' + me.user.role;
+  if (t === 'me') {
+    $('meInfo').textContent = 'Пользователь: ' + me.user.username + ' · роль: ' + me.user.role;
+    if (cur) { $('devName').value = cur.name || ''; $('devLogin').value = cur.login || ''; }
+  }
 }
 
 document.querySelectorAll('#navDesktop button, #navMobile button').forEach(b => b.onclick = () => switchTab(b.dataset.tab));
@@ -426,7 +444,9 @@ async function loadSessions(kind) {
   const r = await api('/api/sessions?device=' + cur.id + '&days=90');
   const rows = (r.sessions || []).filter(s => s.kind === kind);
   if (!rows.length) { hint(hintId, 'пока нет записей'); return; }
-  hint(hintId, '');
+  const totalKm = rows.reduce((a, s) => a + (Number(s.distance_km) || 0), 0);
+  const totalKwh = rows.reduce((a, s) => a + (Number(s.energy_kwh) || 0), 0);
+  hint(hintId, rows.length + ' записей · ' + (totalKm ? num(totalKm, 1) + ' км · ' : '') + num(totalKwh, 2) + ' кВт·ч');
   for (const s of rows) {
     const tr = document.createElement('tr');
     const when = fmtTime(s.ended_at || s.started_at);
@@ -481,6 +501,15 @@ window.approve = async (id) => { await api('/api/admin/devices/' + id + '/approv
 window.reject = async (id) => { await api('/api/admin/devices/' + id + '/reject', {}); hint('adminHint', 'устройство отклонено'); loadAdmin(); };
 
 $('btnRefreshPending').onclick = loadAdmin;
+
+$('btnRename').onclick = async () => {
+  if (!cur) return;
+  try {
+    await api('/api/devices/' + cur.id, { name: $('devName').value.trim() }, 'PUT');
+    hint('renameHint', 'название сохранено');
+    await loadDevices();
+  } catch (e) { hint('renameHint', e.message, true); }
+};
 $('btnPw').onclick = async () => {
   try { await api('/api/auth/password', { old: $('pwOld').value, new: $('pwNew').value }); hint('pwHint', 'пароль изменён'); }
   catch (e) { hint('pwHint', e.message, true); }
