@@ -305,6 +305,9 @@ class Api(BaseHTTPRequestHandler):
     def do_DELETE(self):
         self.route("DELETE")
 
+    def do_PUT(self):
+        self.route("PUT")
+
     def route(self, method: str):
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
