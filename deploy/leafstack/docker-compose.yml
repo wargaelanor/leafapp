@@ -1,0 +1,86 @@
+# LeafControl — телеметрический стек (Traccar + InfluxDB 2 + Grafana + Portainer)
+#
+# Использование:
+#   1) cp .env.example .env  и заполнить пароли/токены (генератор: openssl rand -hex 16)
+#   2) docker compose up -d
+#   TrueNAS Scale: Apps -> Discover -> Custom App -> вставить этот YAML целиком,
+#   пути ./data/... заменить на датасет (например /mnt/pool/apps/leafstack/data/...),
+#   галку "Add container as the default user" НЕ включать, env взять из .env.
+#
+# Порты на хосте (пробросить в KeenDNS как отдельные правила):
+#   8925  Traccar (веб+API+приём позиций)      -> leaf.<...>.keenetic.link
+#   3000  Grafana (дашборды)                   -> grafana.<...>.keenetic.link
+#   8086  InfluxDB API                         -> (опционально, grafana ходит внутри сети)
+#   9443  Portainer (удалённое управление)     -> portainer.<...>.keenetic.link
+#   5055  Traccar TCP-протокол (не нужен для HTTPS-интеграции)
+
+name: leafstack
+
+services:
+  traccar:
+    image: traccar/traccar:latest
+    container_name: leafstack-traccar
+    restart: unless-stopped
+    depends_on:
+      - influxdb
+    volumes:
+      - ./data/traccar:/opt/traccar/data
+      - ./traccar/conf.xml:/opt/traccar/conf/traccar.xml:ro
+    ports:
+      - "8925:8082"
+      - "5055:5055"
+    networks: [leafnet]
+
+  influxdb:
+    image: influxdb:2.7
+    container_name: leafstack-influxdb
+    restart: unless-stopped
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUX_ADMIN_USER:-leafadmin}
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUX_PASSWORD:?set INFLUX_PASSWORD in .env}
+      DOCKER_INFLUXDB_INIT_ORG: leaf
+      DOCKER_INFLUXDB_INIT_BUCKET: telemetry
+      DOCKER_INFLUXDB_INIT_RETENTION: 0
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUX_TOKEN:?set INFLUX_TOKEN in .env}
+    volumes:
+      - ./data/influx:/var/lib/influxdb2
+    ports:
+      - "8086:8086"
+    networks: [leafnet]
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: leafstack-grafana
+    restart: unless-stopped
+    depends_on:
+      - influxdb
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-leafview}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?set GRAFANA_PASSWORD in .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      INFLUX_TOKEN: ${INFLUX_TOKEN}
+    volumes:
+      - ./data/grafana:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    networks: [leafnet]
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: leafstack-portainer
+    restart: unless-stopped
+    command: -H unix:///var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data/portainer:/data
+    ports:
+      - "9443:9443"
+    networks: [leafnet]
+
+networks:
+  leafnet:
+    driver: bridge
