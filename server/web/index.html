@@ -477,28 +477,61 @@ async function loadSessions(kind) {
   }
 }
 
-function sparkline(svg, values, min, max) {
+function sparkline(svg, values, label) {
   svg.innerHTML = '';
-  if (!values.length) return;
-  const w = 300, h = 150, span = (max - min) || 1;
-  const pts = values.map((v, i) => [i * w / Math.max(1, values.length - 1), h - ((v - min) / span) * (h - 16) - 8]);
+  if (!values.length) {
+    svg.innerHTML = '<text x="6" y="18" fill="currentColor" opacity="0.45" font-size="12">нет данных</text>';
+    return;
+  }
+  const w = 300, h = 150, pad = 22;
+  let min = Math.min(...values), max = Math.max(...values);
+  if (max - min < 1) { max += 0.5; min -= 0.5; }
+  const span = max - min;
+  const pts = values.map((v, i) => [
+    pad + i * (w - pad * 2) / Math.max(1, values.length - 1),
+    h - pad - ((v - min) / span) * (h - pad * 2)
+  ]);
   const d = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+
+  const grid = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  grid.setAttribute('d', `M${pad} ${pad} H${w - pad} M${pad} ${h - pad} H${w - pad}`);
+  grid.setAttribute('stroke', 'currentColor');
+  grid.setAttribute('stroke-opacity', '0.15');
+  grid.setAttribute('fill', 'none');
+  svg.appendChild(grid);
+
   const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
   path.setAttribute('d', d);
   path.setAttribute('fill', 'none');
   path.setAttribute('stroke', 'var(--key)');
   path.setAttribute('stroke-width', '2');
+  path.setAttribute('stroke-linejoin', 'round');
   svg.appendChild(path);
+
+  const last = values[values.length - 1];
+  const text = (x, y, s, anchor) => {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    el.setAttribute('x', x); el.setAttribute('y', y);
+    el.setAttribute('font-size', '12');
+    el.setAttribute('fill', 'currentColor');
+    el.setAttribute('opacity', '0.65');
+    el.setAttribute('text-anchor', anchor || 'start');
+    el.textContent = s;
+    svg.appendChild(el);
+  };
+  text(pad, pad - 6, num(max, 1));
+  text(pad, h - pad + 14, num(min, 1));
+  text(w - pad, pad - 6, (label ? label + ': ' : '') + num(last, 1), 'end');
 }
 
 async function drawCharts() {
   if (!cur) return;
   const r = await api('/api/hist?device=' + cur.id + '&hours=24');
   const pts = r.points || [];
-  const soc = pts.filter(p => p.soc != null).map(p => Number(p.soc));
-  const bat = pts.filter(p => p.batt != null).map(p => Number(p.batt));
-  for (const id of ['chSoc', 'chSoc2']) if ($(id)) sparkline($(id), soc, Math.min(...soc, 0) || 0, Math.max(...soc, 100) || 100);
-  for (const id of ['chBat', 'chBat2']) if ($(id)) sparkline($(id), bat, Math.min(...bat, -10), Math.max(...bat, 30));
+  const soc = pts.map(p => Number(p.soc)).filter(v => isFinite(v) && v >= 0);
+  const bat = pts.map(p => Number(p.batt)).filter(v => isFinite(v) && v > -50);
+  for (const id of ['chSoc', 'chSoc2']) if ($(id)) sparkline($(id), soc, '%');
+  for (const id of ['chBat', 'chBat2']) if ($(id)) sparkline($(id), bat, '°C');
 }
 
 async function loadAdmin() {
