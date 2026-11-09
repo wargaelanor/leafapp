@@ -83,6 +83,23 @@ static uint32_t sLastFramesA = 0;
 static bool sWindowOpen = false;
 static unsigned long sWindowUntilMs = 0;
 static bool sBootDone = false;
+static bool sBurstSeen = false;
+
+// Pull every entry back into rotation and re-probe sessions: used when strong
+// bus traffic proves the gateway is fully awake again.
+static void udsBackoffClear(unsigned long currentTimeMs) {
+    for (uint8_t i = 0; i < UDS_ENTRY_COUNT; i++) {
+        kRt[i].failStreak = 0;
+        if (kRt[i].dueMs == 0 || (long)(kRt[i].dueMs - currentTimeMs) > 1500L) {
+            kRt[i].dueMs = currentTimeMs + 1500UL + (unsigned long)i * 200UL;
+        }
+    }
+    for (uint8_t i = 0; i < UDS_ECU_COUNT; i++) {
+        sSessionRefusedUntilMs[i] = 0;
+        sSessionOpenMs[i] = 0;
+    }
+    Serial.println("[uds] bus burst: backoffs cleared, sessions re-probed");
+}
 
 // ---- parsing ---------------------------------------------------------------
 
@@ -181,6 +198,16 @@ static bool udsDiagnosticWindow(unsigned long currentTimeMs) {
         bool busActive = isChargingNow || frameDelta >= 1 || evDelta >= 1;
         if (busActive) sWindowUntilMs = currentTimeMs + 20000;
         sWindowOpen = busActive || currentTimeMs < sWindowUntilMs;
+        // Strong traffic (READY pedal, driving, fast wake burst) means the
+        // gateway is fully up: whatever backoff we collected from poking a
+        // half-sleeping car is void now. Clear it once so a real session
+        // test starts immediately, not after a 30-minute park.
+        if (frameDelta >= 20 && !sBurstSeen) {
+            sBurstSeen = true;
+            udsBackoffClear(currentTimeMs);
+        } else if (frameDelta < 5) {
+            sBurstSeen = false;
+        }
         sLastFramesB = canFramesB;
         sLastFramesA = canFramesA;
         sLastActivitySampleMs = currentTimeMs;
