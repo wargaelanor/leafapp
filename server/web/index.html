@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<title>LeafControl</title>
+<style>
+:root{--bg:#eef0f4;--card:#fff;--ink:#15181d;--dim:#6b7280;--line:#e2e5ea;--go:#0a7d3c;--go2:#12a052;
+--stop:#a8321f;--key:#1f6feb;--warn:#a86a00;--shadow:0 2px 10px rgba(16,20,28,.07)}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#181c22;--ink:#e9ebee;--dim:#949caa;
+--line:#262c34;--go:#1d9b52;--go2:#25b662;--stop:#b8432f;--key:#3b86f7;--warn:#c98a12;--shadow:0 2px 14px rgba(0,0,0,.45)}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:720px;margin:0 auto;padding:14px 14px 40px}
+h1{font-size:20px;margin:8px 0 2px;font-weight:650}
+.sub{color:var(--dim);font-size:13px;margin-bottom:14px}
+.card{background:var(--card);border-radius:16px;padding:14px;margin-bottom:12px;box-shadow:var(--shadow)}
+.row{display:flex;gap:10px;align-items:center}
+.row.wrapx{flex-wrap:wrap}
+.spacer{flex:1}
+input,select{font:inherit;padding:11px 12px;border-radius:11px;border:1px solid var(--line);background:var(--bg);color:var(--ink);width:100%}
+label{font-size:13px;color:var(--dim);display:block;margin:10px 0 5px}
+button{font:inherit;font-weight:600;border:0;border-radius:12px;padding:12px 14px;background:var(--key);color:#fff;cursor:pointer}
+button:disabled{opacity:.45}
+button.go{background:var(--go)} button.stop{background:var(--stop)} button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+.tile{background:var(--card);border-radius:14px;padding:12px;box-shadow:var(--shadow)}
+.tile .k{font-size:12px;color:var(--dim)} .tile .v{font-size:22px;font-weight:650;margin-top:2px}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:4px 9px;border-radius:999px;background:var(--bg);color:var(--dim)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--dim)}
+.dot.on{background:var(--go2)} .dot.off{background:var(--stop)}
+nav{display:flex;gap:6px;overflow:auto;padding-bottom:4px;margin-bottom:12px}
+nav button{background:transparent;color:var(--dim);border:1px solid transparent;white-space:nowrap;padding:9px 12px}
+nav button.on{background:var(--card);color:var(--ink);border-color:var(--line)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line)}
+th{color:var(--dim);font-weight:500;font-size:12px}
+.hide{display:none!important}
+.hint{font-size:13px;color:var(--dim);min-height:18px}
+.err{color:var(--stop);font-size:14px}
+.badge{font-size:11px;padding:2px 7px;border-radius:999px;background:var(--bg);color:var(--dim)}
+.badge.pend{background:#f4e3c4;color:#7a4a00}
+svg.chart{width:100%;height:120px;display:block}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="row">
+    <div>
+      <h1>LeafControl</h1>
+      <div class="sub" id="sub">сервер управления</div>
+    </div>
+    <div class="spacer"></div>
+    <button class="ghost hide" id="btnLogout">Выход</button>
+  </div>
+
+  <div class="card" id="loginCard">
+    <label>Логин</label>
+    <input id="lgUser" autocomplete="username" placeholder="leaf-xxxxxx или admin">
+    <label>Пароль</label>
+    <input id="lgPass" type="password" autocomplete="current-password">
+    <div class="hint" id="lgHint"></div>
+    <button style="width:100%;margin-top:8px" id="btnLogin">Войти</button>
+  </div>
+
+  <div class="hide" id="app">
+    <div class="row wrapx" style="margin-bottom:10px">
+      <select id="devSel" style="max-width:320px"></select>
+      <span class="pill"><span class="dot" id="linkDot"></span><span id="linkTxt">—</span></span>
+    </div>
+
+    <nav>
+      <button data-tab="car" class="on">Машина</button>
+      <button data-tab="trips">Поездки</button>
+      <button data-tab="charges">Зарядки</button>
+      <button data-tab="stats">Графики</button>
+      <button data-tab="admin" id="tabAdmin" class="hide">Админ</button>
+      <button data-tab="me">Профиль</button>
+    </nav>
+
+    <section id="tab-car">
+      <div class="grid" id="tiles"></div>
+      <div class="card" style="margin-top:12px">
+        <div class="row wrapx">
+          <button class="go" data-cmd="clim_on" data-min="20">Климат 20 мин</button>
+          <button class="stop" data-cmd="clim_off">Климат выкл</button>
+          <button data-cmd="refresh" class="ghost">Получить данные</button>
+        </div>
+        <div class="row wrapx" style="margin-top:8px">
+          <button class="ghost" data-cmd="lock">Закрыть</button>
+          <button class="ghost" data-cmd="unlock">Открыть</button>
+          <button class="ghost" data-cmd="lights">Фары</button>
+          <button class="ghost" data-cmd="horn">Сигнал</button>
+        </div>
+        <div class="row wrapx" style="margin-top:8px">
+          <button class="ghost" data-cmd="charge_start">Начать заряд</button>
+          <button class="ghost" data-cmd="charge_stop">Стоп заряд</button>
+        </div>
+        <div class="hint" id="cmdHint"></div>
+      </div>
+      <div class="card">
+        <div class="row wrapx">
+          <div style="min-width:150px;flex:1">
+            <label>Прогрев к времени</label>
+            <input type="time" id="schedT" value="08:00">
+          </div>
+          <div style="min-width:110px">
+            <label>Минут</label>
+            <select id="schedM"><option>5</option><option>10</option><option>15</option><option selected>20</option><option>30</option></select>
+          </div>
+          <button class="go" id="btnSched" style="align-self:flex-end">Запланировать</button>
+        </div>
+        <div class="hint" id="schedHint"></div>
+      </div>
+    </section>
+
+    <section id="tab-trips" class="hide"><div class="card"><table><thead><tr><th>Дата</th><th>Длит.</th><th>Км</th><th>кВт·ч</th><th>SOC</th></tr></thead><tbody id="tripsBody"></tbody></table><div class="hint" id="tripsHint"></div></div></section>
+    <section id="tab-charges" class="hide"><div class="card"><table><thead><tr><th>Дата</th><th>Длит.</th><th>кВт·ч</th><th>SOC</th></tr></thead><tbody id="chargesBody"></tbody></table><div class="hint" id="chargesHint"></div></div></section>
+    <section id="tab-stats" class="hide"><div class="card"><div class="hint">SOC за 24 ч</div><svg class="chart" id="chSoc" viewBox="0 0 300 120" preserveAspectRatio="none"></svg><div class="hint">Температура батареи</div><svg class="chart" id="chBat" viewBox="0 0 300 120" preserveAspectRatio="none"></svg></div></section>
+
+    <section id="tab-admin" class="hide">
+      <div class="card">
+        <div class="row"><b>Заявки на подключение</b><div class="spacer"></div><button class="ghost" id="btnRefreshPending">Обновить</button></div>
+        <table style="margin-top:8px"><thead><tr><th>Логин</th><th>Имя</th><th>FW</th><th></th></tr></thead><tbody id="pendingBody"></tbody></table>
+        <div class="hint" id="adminHint"></div>
+      </div>
+      <div class="card">
+        <b>Все устройства</b>
+        <table style="margin-top:8px"><thead><tr><th>Логин</th><th>Статус</th><th>Связь</th></tr></thead><tbody id="allDevBody"></tbody></table>
+      </div>
+      <div class="card">
+        <b>Журнал событий</b>
+        <table style="margin-top:8px"><thead><tr><th>Время</th><th>Событие</th></tr></thead><tbody id="eventsBody"></tbody></table>
+      </div>
+    </section>
+
+    <section id="tab-me" class="hide">
+      <div class="card">
+        <div class="hint" id="meInfo"></div>
+        <label>Новый пароль</label>
+        <input id="pwNew" type="password" autocomplete="new-password">
+        <label>Текущий пароль</label>
+        <input id="pwOld" type="password" autocomplete="current-password">
+        <button style="margin-top:8px" id="btnPw">Сменить пароль</button>
+        <div class="hint" id="pwHint"></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let me = null, devices = [], cur = null, tab = 'car', timer = null;
+
+async function api(path, body, method) {
+  const opt = { credentials: 'same-origin' };
+  if (body !== undefined) { opt.method = method || 'POST'; opt.headers = { 'Content-Type': 'application/json' }; opt.body = JSON.stringify(body); }
+  const r = await fetch(path, opt);
+  let j = null; try { j = await r.json(); } catch {}
+  if (!r.ok) throw new Error((j && j.error) || ('ошибка ' + r.status));
+  return j;
+}
+const fmtTime = (ts) => ts ? new Date(ts * 1000).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
+const dur = (s) => s ? (s >= 3600 ? Math.floor(s / 3600) + ' ч ' + Math.round(s % 3600 / 60) + ' м' : Math.round(s / 60) + ' м') : '—';
+const num = (v, d = 1) => (v === null || v === undefined) ? '—' : Number(v).toFixed(d).replace('.', ',');
+
+function hint(id, text, isErr) { const e = $(id); if (!e) return; e.textContent = text || ''; e.className = isErr ? 'err' : 'hint'; }
+
+async function boot() {
+  try {
+    me = await api('/api/auth/me');
+    await enter();
+  } catch { }
+  $('btnLogin').onclick = doLogin;
+  $('lgPass').addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
+  $('btnLogout').onclick = async () => { await api('/api/auth/logout', {}); location.reload(); };
+}
+
+async function doLogin() {
+  hint('lgHint', '');
+  try {
+    await api('/api/auth/login', { username: $('lgUser').value.trim(), password: $('lgPass').value });
+    me = await api('/api/auth/me');
+    await enter();
+  } catch (e) { hint('lgHint', e.message, true); }
+}
+
+async function enter() {
+  $('loginCard').classList.add('hide');
+  $('app').classList.remove('hide');
+  $('btnLogout').classList.remove('hide');
+  $('sub').textContent = me.user.username + (me.user.role === 'admin' ? ' · администратор' : '');
+  $('tabAdmin').classList.toggle('hide', me.user.role !== 'admin');
+  await loadDevices();
+  if (timer) clearInterval(timer);
+  timer = setInterval(refresh, 10000);
+}
+
+async function loadDevices() {
+  const d = await api('/api/devices');
+  devices = d.devices || [];
+  const sel = $('devSel');
+  sel.innerHTML = '';
+  if (!devices.length) {
+    sel.innerHTML = '<option>нет устройств</option>';
+    cur = null; $('tiles').innerHTML = '<div class="tile"><div class="k">Устройство</div><div class="v">—</div></div>';
+    return;
+  }
+  for (const x of devices) {
+    const o = document.createElement('option');
+    o.value = x.id;
+    o.textContent = (x.name || x.login) + (x.status === 'active' ? '' : ' (' + x.status + ')');
+    sel.appendChild(o);
+  }
+  const saved = localStorage.getItem('leafDev');
+  cur = devices.find(x => String(x.id) === saved) || devices[0];
+  sel.value = cur.id;
+  sel.onchange = () => { cur = devices.find(x => String(x.id) === sel.value); localStorage.setItem('leafDev', cur.id); refresh(); };
+  await refresh();
+}
+
+function renderTiles(d) {
+  const s = d.state || {};
+  const t = [
+    ['Заряд', s.soc != null ? num(s.soc, 0) + ' %' : '—'],
+    ['Пробег', s.odo != null ? Math.round(s.odo).toLocaleString('ru-RU') + ' км' : '—'],
+    ['В салоне', s.cabin != null ? num(s.cabin) + ' °C' : '—'],
+    ['На улице', s.amb != null ? num(s.amb) + ' °C' : '—'],
+    ['Батарея', s.batt != null ? num(s.batt) + ' °C' : '—'],
+    ['Напряжение', s.pack_v != null ? num(s.pack_v) + ' В' : '—'],
+    ['Мощность', s.pack_kw != null ? num(s.pack_kw) + ' кВт' : '—'],
+    ['12 В', s.v12 != null ? num(s.v12) + ' В' : '—'],
+  ];
+  $('tiles').innerHTML = t.map(([k, v]) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+  const online = d.online;
+  $('linkDot').className = 'dot ' + (online ? 'on' : 'off');
+  const busAge = d.bus_age_s;
+  $('linkTxt').textContent = (online ? 'на связи' : 'нет связи') + (d.link ? ' · ' + (d.link === 'wifi' ? 'Wi-Fi' : 'модем') : '')
+    + (busAge != null ? ' · данные ' + (busAge < 90 ? busAge + ' с назад' : Math.round(busAge / 60) + ' мин назад') : '');
+}
+
+async function refresh() {
+  if (!cur) return;
+  try {
+    const d = await api('/api/state?device=' + cur.id);
+    renderTiles(d);
+    if (tab === 'stats') await drawCharts();
+  } catch (e) { }
+}
+
+document.querySelectorAll('nav button').forEach(b => b.onclick = async () => {
+  document.querySelectorAll('nav button').forEach(x => x.classList.remove('on'));
+  b.classList.add('on');
+  tab = b.dataset.tab;
+  ['car', 'trips', 'charges', 'stats', 'admin', 'me'].forEach(t => $('tab-' + t).classList.toggle('hide', t !== tab));
+  if (tab === 'trips') await loadSessions('trip');
+  if (tab === 'charges') await loadSessions('charge');
+  if (tab === 'stats') await drawCharts();
+  if (tab === 'admin') await loadAdmin();
+  if (tab === 'me') $('meInfo').textContent = 'Пользователь: ' + me.user.username + ' · роль: ' + me.user.role;
+});
+
+document.querySelectorAll('[data-cmd]').forEach(b => b.onclick = async () => {
+  if (!cur) return;
+  const name = b.dataset.cmd;
+  const args = b.dataset.min ? { minutes: Number(b.dataset.min) } : {};
+  if ((name === 'horn' || name === 'lights') && !confirm('Отправить команду на машину?')) return;
+  b.disabled = true;
+  try {
+    const r = await api('/api/cmd', { device: cur.id, cmd: name, args });
+    hint('cmdHint', r.pushed ? 'команда отправлена на плату' : 'команда в очереди, плата заберёт в течение ' + r.poll_s + ' с');
+  } catch (e) { hint('cmdHint', e.message, true); }
+  setTimeout(() => { b.disabled = false; }, 1200);
+});
+
+$('btnSched').onclick = async () => {
+  if (!cur) return;
+  const [h, m] = $('schedT').value.split(':').map(Number);
+  const at = new Date(); at.setHours(h, m, 0, 0);
+  if (at.getTime() < Date.now()) at.setDate(at.getDate() + 1);
+  try {
+    await api('/api/sched', { device: cur.id, at: Math.floor(at.getTime() / 1000), minutes: Number($('schedM').value) });
+    hint('schedHint', 'запланировано на ' + at.toLocaleString('ru-RU'));
+  } catch (e) { hint('schedHint', e.message, true); }
+};
+
+async function loadSessions(kind) {
+  const body = kind === 'trip' ? $('tripsBody') : $('chargesBody');
+  const hintId = kind === 'trip' ? 'tripsHint' : 'chargesHint';
+  body.innerHTML = '';
+  if (!cur) return;
+  const r = await api('/api/sessions?device=' + cur.id + '&days=90');
+  const rows = (r.sessions || []).filter(s => s.kind === kind);
+  if (!rows.length) { hint(hintId, 'пока нет записей'); return; }
+  hint(hintId, '');
+  for (const s of rows) {
+    const tr = document.createElement('tr');
+    const when = fmtTime(s.ended_at || s.started_at);
+    if (kind === 'trip') {
+      tr.innerHTML = `<td>${when}</td><td>${dur(s.duration_s)}</td><td>${s.distance_km != null ? num(s.distance_km) : '—'}</td><td>${s.energy_kwh != null ? num(s.energy_kwh, 2) : '—'}</td><td>${s.soc_start != null ? num(s.soc_start, 0) + '→' + num(s.soc_end, 0) : '—'}</td>`;
+    } else {
+      tr.innerHTML = `<td>${when}</td><td>${dur(s.duration_s)}</td><td>${s.energy_kwh != null ? num(s.energy_kwh, 2) : '—'}</td><td>${s.soc_start != null ? num(s.soc_start, 0) + '→' + num(s.soc_end, 0) : '—'}</td>`;
+    }
+    body.appendChild(tr);
+  }
+}
+
+function sparkline(svg, values, min, max) {
+  svg.innerHTML = '';
+  if (!values.length) return;
+  const w = 300, h = 120, span = (max - min) || 1;
+  const pts = values.map((v, i) => [i * w / Math.max(1, values.length - 1), h - ((v - min) / span) * (h - 12) - 6]);
+  const d = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+  const poly = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  poly.setAttribute('d', d);
+  poly.setAttribute('fill', 'none');
+  poly.setAttribute('stroke', 'var(--key)');
+  poly.setAttribute('stroke-width', '2');
+  svg.appendChild(poly);
+}
+
+async function drawCharts() {
+  if (!cur) return;
+  const r = await api('/api/hist?device=' + cur.id + '&hours=24');
+  const soc = (r.points || []).filter(p => p.soc != null).map(p => Number(p.soc));
+  const bat = (r.points || []).filter(p => p.batt != null).map(p => Number(p.batt));
+  sparkline($('chSoc'), soc, Math.min(...soc, 0) || 0, Math.max(...soc, 100) || 100);
+  sparkline($('chBat'), bat, Math.min(...bat, -10), Math.max(...bat, 30));
+}
+
+async function loadAdmin() {
+  const p = await api('/api/admin/devices?status=pending');
+  $('pendingBody').innerHTML = (p.devices || []).map(d =>
+    `<tr><td>${d.login}</td><td>${d.name || ''}</td><td>${d.fw || ''}</td><td><button class="go" onclick="approve(${d.id})">Одобрить</button> <button class="stop" onclick="reject(${d.id})">Отклонить</button></td></tr>`
+  ).join('') || '<tr><td colspan="4" class="hint">заявок нет</td></tr>';
+  const all = await api('/api/admin/devices?status=all');
+  $('allDevBody').innerHTML = (all.devices || []).map(d =>
+    `<tr><td>${d.login}</td><td><span class="badge ${d.status === 'pending' ? 'pend' : ''}">${d.status}</span></td><td>${d.online ? 'на связи' : 'нет'}</td></tr>`
+  ).join('');
+  const ev = await api('/api/admin/events');
+  $('eventsBody').innerHTML = (ev.events || []).slice(0, 30).map(e =>
+    `<tr><td>${fmtTime(e.ts)}</td><td>${e.kind}</td></tr>`
+  ).join('');
+}
+
+window.approve = async (id) => { await api('/api/admin/devices/' + id + '/approve', {}); hint('adminHint', 'устройство одобрено'); loadAdmin(); loadDevices(); };
+window.reject = async (id) => { await api('/api/admin/devices/' + id + '/reject', {}); hint('adminHint', 'устройство отклонено'); loadAdmin(); };
+
+$('btnRefreshPending').onclick = loadAdmin;
+$('btnPw').onclick = async () => {
+  try { await api('/api/auth/password', { old: $('pwOld').value, new: $('pwNew').value }); hint('pwHint', 'пароль изменён'); }
+  catch (e) { hint('pwHint', e.message, true); }
+};
+
+boot();
+</script>
+</body>
+</html>

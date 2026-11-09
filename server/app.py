@@ -1,0 +1,827 @@
+#!/usr/bin/env python3
+"""
+LeafControl API — единый сервер для платы, PWA и Android-приложения.
+
+Заменяет MQTT/OVMS-сервер: плата сама выходит на сервер (HTTP), телефон
+ходит только на сервер. Команды доставляются через очередь + опрос платой.
+
+Зависимостей нет: только стандартная библиотека Python 3.11+ и SQLite.
+"""
+
+import base64
+import hashlib
+import hmac
+import json
+import os
+import secrets
+import sqlite3
+import threading
+import time
+from datetime import datetime, timezone
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlparse, parse_qs
+
+DB_PATH = os.environ.get("LEAF_DB", "/data/leaf.db")
+WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
+ADMIN_USER = os.environ.get("LEAF_ADMIN_USER", "admin")
+ADMIN_PASSWORD = os.environ.get("LEAF_ADMIN_PASSWORD", "")
+POLL_S = int(os.environ.get("LEAF_POLL_S", "10"))
+SESSION_DAYS = 30
+ONLINE_WINDOW_S = 45
+
+db_lock = threading.Lock()
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username TEXT UNIQUE NOT NULL,
+  pass_hash TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'owner',
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sessions (
+  token TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS devices (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  login TEXT UNIQUE NOT NULL,
+  name TEXT,
+  serial TEXT,
+  fw TEXT,
+  owner_id INTEGER,
+  device_token TEXT UNIQUE NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at INTEGER NOT NULL,
+  last_seen INTEGER DEFAULT 0,
+  last_link TEXT,
+  last_rssi INTEGER,
+  bus_age_s INTEGER,
+  state_json TEXT,
+  state_ts INTEGER DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS samples (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  device_id INTEGER NOT NULL,
+  ts INTEGER NOT NULL,
+  payload TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS samples_dev_ts ON samples(device_id, ts);
+CREATE TABLE IF NOT EXISTS events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  device_id INTEGER,
+  kind TEXT NOT NULL,
+  payload TEXT,
+  ts INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS dev_sessions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  device_id INTEGER NOT NULL,
+  kind TEXT NOT NULL,
+  started_at INTEGER,
+  ended_at INTEGER,
+  duration_s INTEGER,
+  distance_km REAL,
+  energy_kwh REAL,
+  soc_start REAL,
+  soc_end REAL,
+  meta TEXT
+);
+CREATE INDEX IF NOT EXISTS ds_dev ON dev_sessions(device_id, ended_at);
+CREATE TABLE IF NOT EXISTS commands (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  device_id INTEGER NOT NULL,
+  user_id INTEGER,
+  name TEXT NOT NULL,
+  args TEXT,
+  status TEXT NOT NULL DEFAULT 'queued',
+  created_at INTEGER NOT NULL,
+  delivered_at INTEGER,
+  acked_at INTEGER,
+  result TEXT
+);
+CREATE INDEX IF NOT EXISTS cmd_dev ON commands(device_id, status);
+CREATE TABLE IF NOT EXISTS schedules (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  device_id INTEGER NOT NULL,
+  user_id INTEGER,
+  kind TEXT NOT NULL,
+  at_ts INTEGER NOT NULL,
+  args TEXT,
+  status TEXT NOT NULL DEFAULT 'waiting',
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS fcm_tokens (
+  token TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  platform TEXT,
+  created_at INTEGER NOT NULL
+);
+"""
+
+
+# ---------------------------------------------------------------- утилиты
+
+def now() -> int:
+    return int(time.time())
+
+
+def connect() -> sqlite3.Connection:
+    conn = sqlite3.connect(DB_PATH, timeout=15)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=8000")
+    return conn
+
+
+def init_db() -> None:
+    os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
+    with db_lock, connect() as c:
+        c.executescript(SCHEMA)
+        row = c.execute("SELECT id FROM users WHERE username=?", (ADMIN_USER,)).fetchone()
+        if not row and ADMIN_PASSWORD:
+            c.execute(
+                "INSERT INTO users(username, pass_hash, role, created_at) VALUES(?,?,?,?)",
+                (ADMIN_USER, hash_password(ADMIN_PASSWORD), "admin", now()),
+            )
+            log_event(c, None, "admin_created", {"username": ADMIN_USER})
+
+
+def hash_password(password: str, salt: bytes | None = None) -> str:
+    salt = salt or secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 200_000)
+    return f"pbkdf2$200000${salt.hex()}${digest.hex()}"
+
+
+def verify_password(password: str, stored: str) -> bool:
+    try:
+        _, iters, salt_hex, digest_hex = stored.split("$")
+        digest = hashlib.pbkdf2_hmac(
+            "sha256", password.encode(), bytes.fromhex(salt_hex), int(iters)
+        )
+        return hmac.compare_digest(digest.hex(), digest_hex)
+    except Exception:
+        return False
+
+
+def log_event(c: sqlite3.Connection, device_id, kind: str, payload: dict) -> None:
+    c.execute(
+        "INSERT INTO events(device_id, kind, payload, ts) VALUES(?,?,?,?)",
+        (device_id, kind, json.dumps(payload, ensure_ascii=False), now()),
+    )
+
+
+def row_to_device(r: sqlite3.Row) -> dict:
+    return {
+        "id": r["id"],
+        "login": r["login"],
+        "name": r["name"],
+        "serial": r["serial"],
+        "fw": r["fw"],
+        "status": r["status"],
+        "last_seen": r["last_seen"],
+        "online": (now() - (r["last_seen"] or 0)) < ONLINE_WINDOW_S,
+        "link": r["last_link"],
+        "rssi": r["last_rssi"],
+        "bus_age_s": r["bus_age_s"],
+        "state": json.loads(r["state_json"]) if r["state_json"] else None,
+        "state_ts": r["state_ts"],
+        "poll_s": POLL_S,
+    }
+
+
+# ---------------------------------------------------------------- HTTP
+
+class Api(BaseHTTPRequestHandler):
+    server_version = "LeafControl/1.0"
+
+    # ---------- infra
+
+    def log_message(self, fmt, *args):
+        print("%s %s" % (self.address_string(), fmt % args), flush=True)
+
+    def _send(self, code: int, body: bytes, ctype: str, extra: dict | None = None):
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        for k, v in (extra or {}).items():
+            self.send_header(k, v)
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+
+    def json(self, code: int, obj, extra: dict | None = None):
+        self._send(code, json.dumps(obj, ensure_ascii=False).encode(), "application/json; charset=utf-8", extra)
+
+    def err(self, code: int, message: str):
+        self.json(code, {"error": message})
+
+    def body(self) -> dict:
+        length = int(self.headers.get("Content-Length") or 0)
+        if length <= 0:
+            return {}
+        if length > 4_000_000:
+            raise ValueError("too large")
+        raw = self.rfile.read(length)
+        try:
+            return json.loads(raw.decode("utf-8"))
+        except Exception:
+            return {}
+
+    def cookies(self) -> dict:
+        out = {}
+        for part in (self.headers.get("Cookie") or "").split(";"):
+            if "=" in part:
+                k, v = part.split("=", 1)
+                out[k.strip()] = v.strip()
+        return out
+
+    # ---------- auth helpers
+
+    def user(self):
+        token = self.cookies().get("leaf_session")
+        if not token:
+            return None
+        with db_lock, connect() as c:
+            r = c.execute(
+                "SELECT u.id,u.username,u.role,s.expires_at FROM sessions s "
+                "JOIN users u ON u.id=s.user_id WHERE s.token=?",
+                (token,),
+            ).fetchone()
+            if not r:
+                return None
+            if r["expires_at"] < now():
+                c.execute("DELETE FROM sessions WHERE token=?", (token,))
+                return None
+            return {"id": r["id"], "username": r["username"], "role": r["role"]}
+
+    def device(self):
+        auth = self.headers.get("Authorization") or ""
+        if not auth.startswith("Bearer "):
+            return None
+        token = auth[7:].strip()
+        with db_lock, connect() as c:
+            return c.execute("SELECT * FROM devices WHERE device_token=?", (token,)).fetchone()
+
+    def require_user(self):
+        u = self.user()
+        if not u:
+            self.err(401, "auth required")
+        return u
+
+    def owned_device(self, u, device_ref: str):
+        with db_lock, connect() as c:
+            if device_ref.isdigit():
+                r = c.execute("SELECT * FROM devices WHERE id=?", (int(device_ref),)).fetchone()
+            else:
+                r = c.execute("SELECT * FROM devices WHERE login=?", (device_ref,)).fetchone()
+        if not r:
+            return None
+        if u["role"] != "admin" and r["owner_id"] != u["id"]:
+            return None
+        return r
+
+    # ---------- routing
+
+    def do_HEAD(self):
+        self.do_GET()
+
+    def do_GET(self):
+        self.route("GET")
+
+    def do_POST(self):
+        self.route("POST")
+
+    def do_DELETE(self):
+        self.route("DELETE")
+
+    def route(self, method: str):
+        parsed = urlparse(self.path)
+        path = parsed.path.rstrip("/") or "/"
+        q = {k: v[-1] for k, v in parse_qs(parsed.query).items()}
+        try:
+            if path == "/" or path == "/index.html":
+                return self.serve_static("index.html")
+            if path.startswith("/static/"):
+                return self.serve_static(path[len("/static/"):])
+            if path == "/api/health":
+                return self.json(200, {"ok": True, "ts": now()})
+            if path.startswith("/api/"):
+                return self.api(method, path, q)
+            return self.err(404, "not found")
+        except Exception as exc:  # noqa: BLE001
+            print("ERROR", path, repr(exc), flush=True)
+            self.err(500, "internal error")
+
+    def api(self, method: str, path: str, q: dict):
+        # ---------- auth
+        if path == "/api/auth/login" and method == "POST":
+            return self.login()
+        if path == "/api/auth/logout" and method == "POST":
+            return self.logout()
+        if path == "/api/auth/me" and method == "GET":
+            u = self.require_user()
+            if not u:
+                return
+            return self.json(200, {"user": u})
+        if path == "/api/auth/password" and method == "POST":
+            return self.change_password()
+
+        # ---------- board endpoints (no user session)
+        if path == "/api/device/enroll" and method == "POST":
+            return self.device_enroll()
+        if path == "/api/device/state" and method == "POST":
+            return self.device_state()
+        if path == "/api/device/heartbeat" and method == "POST":
+            return self.device_heartbeat()
+        if path == "/api/device/session" and method == "POST":
+            return self.device_session()
+        if path == "/api/device/cmd" and method == "GET":
+            return self.device_cmd_poll(q)
+        if path == "/api/device/ack" and method == "POST":
+            return self.device_ack()
+
+        # ---------- user endpoints
+        if path == "/api/devices" and method == "GET":
+            return self.list_devices()
+        if path == "/api/state" and method == "GET":
+            return self.get_state(q)
+        if path == "/api/hist" and method == "GET":
+            return self.get_hist(q)
+        if path == "/api/sessions" and method == "GET":
+            return self.get_sessions(q)
+        if path == "/api/session" and method == "GET":
+            return self.get_session(q)
+        if path == "/api/cmd" and method == "POST":
+            return self.post_cmd()
+        if path == "/api/sched" and method == "GET":
+            return self.get_sched(q)
+        if path == "/api/sched" and method == "POST":
+            return self.post_sched()
+        if path == "/api/sched/cancel" and method == "POST":
+            return self.cancel_sched()
+        if path == "/api/notify/token" and method == "POST":
+            return self.register_fcm()
+
+        # ---------- admin endpoints
+        if path.startswith("/api/admin/"):
+            u = self.require_user()
+            if not u:
+                return
+            if u["role"] != "admin":
+                return self.err(403, "admin only")
+            return self.admin(method, path, q)
+
+        return self.err(404, "unknown api")
+
+    # ---------- static
+
+    def serve_static(self, name: str):
+        name = name.replace("\\", "/").lstrip("/")
+        full = os.path.normpath(os.path.join(WEB_DIR, name))
+        if not full.startswith(os.path.normpath(WEB_DIR)) or not os.path.isfile(full):
+            return self.err(404, "not found")
+        ctype = {
+            ".html": "text/html; charset=utf-8",
+            ".js": "application/javascript; charset=utf-8",
+            ".css": "text/css; charset=utf-8",
+            ".png": "image/png",
+            ".svg": "image/svg+xml",
+            ".ico": "image/x-icon",
+            ".json": "application/json",
+            ".webmanifest": "application/manifest+json",
+        }.get(os.path.splitext(full)[1].lower(), "application/octet-stream")
+        with open(full, "rb") as fh:
+            data = fh.read()
+        self._send(200, data, ctype)
+
+    # ---------- auth
+
+    def login(self):
+        data = self.body()
+        username = (data.get("username") or "").strip()
+        password = data.get("password") or ""
+        with db_lock, connect() as c:
+            r = c.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
+            if not r or not verify_password(password, r["pass_hash"]):
+                log_event(c, None, "login_failed", {"username": username})
+                return self.err(401, "неверный логин или пароль")
+            token = secrets.token_urlsafe(32)
+            c.execute(
+                "INSERT INTO sessions(token,user_id,created_at,expires_at) VALUES(?,?,?,?)",
+                (token, r["id"], now(), now() + SESSION_DAYS * 86400),
+            )
+            log_event(c, None, "login_ok", {"username": username})
+        cookie = f"leaf_session={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={SESSION_DAYS*86400}"
+        self.json(200, {"ok": True, "user": {"id": r["id"], "username": r["username"], "role": r["role"]}},
+                  {"Set-Cookie": cookie})
+
+    def logout(self):
+        token = self.cookies().get("leaf_session")
+        if token:
+            with db_lock, connect() as c:
+                c.execute("DELETE FROM sessions WHERE token=?", (token,))
+        self.json(200, {"ok": True}, {"Set-Cookie": "leaf_session=; Path=/; Max-Age=0"})
+
+    def change_password(self):
+        u = self.require_user()
+        if not u:
+            return
+        data = self.body()
+        old = data.get("old") or ""
+        new = data.get("new") or ""
+        if len(new) < 8:
+            return self.err(400, "пароль короче 8 символов")
+        with db_lock, connect() as c:
+            r = c.execute("SELECT pass_hash FROM users WHERE id=?", (u["id"],)).fetchone()
+            if not verify_password(old, r["pass_hash"]):
+                return self.err(403, "старый пароль неверен")
+            c.execute("UPDATE users SET pass_hash=? WHERE id=?", (hash_password(new), u["id"]))
+            log_event(c, None, "password_changed", {"username": u["username"]})
+        self.json(200, {"ok": True})
+
+    # ---------- board
+
+    def device_enroll(self):
+        data = self.body()
+        login = (data.get("login") or "").strip().lower()
+        password = data.get("password") or ""
+        if not login or len(password) < 8:
+            return self.err(400, "нужны login и password (>=8)")
+        out = {}
+        with db_lock, connect() as c:
+            existing = c.execute("SELECT * FROM devices WHERE login=?", (login,)).fetchone()
+            if existing:
+                if not verify_password(password, c.execute(
+                        "SELECT pass_hash FROM users WHERE id=?", (existing["owner_id"],)).fetchone()["pass_hash"]):
+                    return self.err(403, "логин занят")
+                out = {"device_token": existing["device_token"], "status": existing["status"],
+                       "device_id": existing["id"]}
+            else:
+                cur = c.execute(
+                    "INSERT INTO users(username,pass_hash,role,created_at) VALUES(?,?,?,?)",
+                    (login, hash_password(password), "owner", now()),
+                )
+                owner_id = cur.lastrowid
+                token = secrets.token_hex(24)
+                cur = c.execute(
+                    "INSERT INTO devices(login,name,serial,fw,owner_id,device_token,status,created_at,last_seen)"
+                    " VALUES(?,?,?,?,?,?,?,?,?)",
+                    (login, data.get("name") or "Leaf", data.get("serial"), data.get("fw"),
+                     owner_id, token, "pending", now(), now()),
+                )
+                out = {"device_token": token, "status": "pending", "device_id": cur.lastrowid}
+                log_event(c, cur.lastrowid, "device_enrolled", {"login": login, "serial": data.get("serial")})
+        self.json(200, out)
+
+    def device_heartbeat(self):
+        dev = self.device()
+        if not dev:
+            return self.err(401, "bad device token")
+        data = self.body()
+        with db_lock, connect() as c:
+            c.execute(
+                "UPDATE devices SET last_seen=?, last_link=?, last_rssi=?, bus_age_s=? WHERE id=?",
+                (now(), data.get("link"), data.get("rssi"), data.get("bus_age_s"), dev["id"]),
+            )
+        self.json(200, {"ok": True, "poll_s": POLL_S})
+
+    def device_state(self):
+        dev = self.device()
+        if not dev:
+            return self.err(401, "bad device token")
+        data = self.body()
+        ts = int(data.pop("ts", now()))
+        with db_lock, connect() as c:
+            c.execute(
+                "UPDATE devices SET state_json=?, state_ts=?, last_seen=?, bus_age_s=? WHERE id=?",
+                (json.dumps(data, ensure_ascii=False), ts, now(), data.get("bus_age_s"), dev["id"]),
+            )
+            c.execute(
+                "INSERT INTO samples(device_id, ts, payload) VALUES(?,?,?)",
+                (dev["id"], ts, json.dumps(data, ensure_ascii=False)),
+            )
+        self.json(200, {"ok": True})
+
+    def device_session(self):
+        dev = self.device()
+        if not dev:
+            return self.err(401, "bad device token")
+        d = self.body()
+        kind = d.get("kind")
+        if kind not in ("trip", "charge"):
+            return self.err(400, "kind must be trip|charge")
+        with db_lock, connect() as c:
+            cur = c.execute(
+                "INSERT INTO dev_sessions(device_id,kind,started_at,ended_at,duration_s,distance_km,"
+                "energy_kwh,soc_start,soc_end,meta) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                (dev["id"], kind, d.get("started_at"), d.get("ended_at"), d.get("duration_s"),
+                 d.get("distance_km"), d.get("energy_kwh"), d.get("soc_start"), d.get("soc_end"),
+                 json.dumps(d, ensure_ascii=False)),
+            )
+            sid = cur.lastrowid
+            log_event(c, dev["id"], f"session_{kind}", {"id": sid, "kwh": d.get("energy_kwh")})
+        self.json(200, {"ok": True, "session_id": sid})
+
+    def device_cmd_poll(self, q: dict):
+        dev = self.device()
+        if not dev:
+            return self.err(401, "bad device token")
+        wait = min(int(q.get("wait", "0") or 0), 25)
+        deadline = time.time() + wait
+        while True:
+            with db_lock, connect() as c:
+                c.execute("UPDATE devices SET last_seen=? WHERE id=?", (now(), dev["id"]))
+                r = c.execute(
+                    "SELECT * FROM commands WHERE device_id=? AND status='queued' ORDER BY id LIMIT 1",
+                    (dev["id"],),
+                ).fetchone()
+                if r:
+                    c.execute("UPDATE commands SET status='delivered', delivered_at=? WHERE id=?",
+                              (now(), r["id"]))
+                    return self.json(200, {"id": r["id"], "name": r["name"],
+                                           "args": json.loads(r["args"]) if r["args"] else {}})
+            if time.time() >= deadline:
+                return self.json(200, {"id": None})
+            time.sleep(1)
+
+    def device_ack(self):
+        dev = self.device()
+        if not dev:
+            return self.err(401, "bad device token")
+        d = self.body()
+        with db_lock, connect() as c:
+            c.execute("UPDATE commands SET status=?, acked_at=?, result=? WHERE id=? AND device_id=?",
+                      ("done" if d.get("ok", True) else "failed", now(),
+                       json.dumps(d.get("result"), ensure_ascii=False), d.get("id"), dev["id"]))
+        self.json(200, {"ok": True})
+
+    # ---------- user data
+
+    def list_devices(self):
+        u = self.require_user()
+        if not u:
+            return
+        with db_lock, connect() as c:
+            if u["role"] == "admin":
+                rows = c.execute("SELECT * FROM devices ORDER BY id").fetchall()
+            else:
+                rows = c.execute("SELECT * FROM devices WHERE owner_id=? ORDER BY id", (u["id"],)).fetchall()
+        self.json(200, {"devices": [row_to_device(r) for r in rows], "role": u["role"]})
+
+    def get_state(self, q: dict):
+        u = self.require_user()
+        if not u:
+            return
+        d = self.owned_device(u, q.get("device", "0"))
+        if not d:
+            return self.err(404, "device not found")
+        self.json(200, row_to_device(d))
+
+    def post_cmd(self):
+        u = self.require_user()
+        if not u:
+            return
+        d = self.body()
+        dev = self.owned_device(u, str(d.get("device", "0")))
+        if not dev:
+            return self.err(404, "device not found")
+        if dev["status"] != "active" and u["role"] != "admin":
+            return self.err(403, "устройство не одобрено")
+        name = d.get("cmd")
+        if not name:
+            return self.err(400, "cmd required")
+        args = d.get("args") or {}
+        with db_lock, connect() as c:
+            cur = c.execute(
+                "INSERT INTO commands(device_id,user_id,name,args,status,created_at) VALUES(?,?,?,?,?,?)",
+                (dev["id"], u["id"], name, json.dumps(args, ensure_ascii=False), "queued", now()),
+            )
+            cid = cur.lastrowid
+            log_event(c, dev["id"], "cmd_queued", {"cmd": name, "id": cid, "by": u["username"]})
+            online = (now() - (dev["last_seen"] or 0)) < ONLINE_WINDOW_S
+        self.json(200, {"ok": True, "id": cid, "pushed": online, "poll_s": POLL_S})
+
+    def get_hist(self, q: dict):
+        u = self.require_user()
+        if not u:
+            return
+        dev = self.owned_device(u, q.get("device", "0"))
+        if not dev:
+            return self.err(404, "device not found")
+        hours = min(int(q.get("hours", "24")), 24 * 30)
+        since = now() - hours * 3600
+        limit = min(int(q.get("limit", "2000")), 5000)
+        with db_lock, connect() as c:
+            rows = c.execute(
+                "SELECT ts, payload FROM samples WHERE device_id=? AND ts>=? ORDER BY ts DESC LIMIT ?",
+                (dev["id"], since, limit),
+            ).fetchall()
+        out = []
+        for r in rows:
+            p = json.loads(r["payload"])
+            p["ts"] = r["ts"]
+            out.append(p)
+        out.reverse()
+        self.json(200, {"points": out})
+
+    def get_sessions(self, q: dict):
+        u = self.require_user()
+        if not u:
+            return
+        dev = self.owned_device(u, q.get("device", "0"))
+        if not dev:
+            return self.err(404, "device not found")
+        days = min(int(q.get("days", "30")), 365)
+        since = now() - days * 86400
+        with db_lock, connect() as c:
+            rows = c.execute(
+                "SELECT * FROM dev_sessions WHERE device_id=? AND COALESCE(ended_at,started_at)>=?"
+                " ORDER BY COALESCE(ended_at,started_at) DESC LIMIT 500",
+                (dev["id"], since),
+            ).fetchall()
+        self.json(200, {"sessions": [dict(r) for r in rows]})
+
+    def get_session(self, q: dict):
+        u = self.require_user()
+        if not u:
+            return
+        with db_lock, connect() as c:
+            r = c.execute("SELECT * FROM dev_sessions WHERE id=?", (int(q.get("id", "0")),)).fetchone()
+            if not r:
+                return self.err(404, "session not found")
+            d = c.execute("SELECT owner_id,status FROM devices WHERE id=?", (r["device_id"],)).fetchone()
+        if u["role"] != "admin" and (not d or d["owner_id"] != u["id"]):
+            return self.err(403, "forbidden")
+        self.json(200, dict(r))
+
+    # ---------- schedules
+
+    def get_sched(self, q: dict):
+        u = self.require_user()
+        if not u:
+            return
+        dev = self.owned_device(u, q.get("device", "0"))
+        if not dev:
+            return self.err(404, "device not found")
+        with db_lock, connect() as c:
+            rows = c.execute(
+                "SELECT * FROM schedules WHERE device_id=? ORDER BY at_ts DESC LIMIT 50", (dev["id"],)
+            ).fetchall()
+        self.json(200, {"schedules": [dict(r) for r in rows]})
+
+    def post_sched(self):
+        u = self.require_user()
+        if not u:
+            return
+        d = self.body()
+        dev = self.owned_device(u, str(d.get("device", "0")))
+        if not dev:
+            return self.err(404, "device not found")
+        at_ts = int(d.get("at", 0))
+        if at_ts < now():
+            return self.err(400, "время в прошлом")
+        minutes = int(d.get("minutes", 20))
+        with db_lock, connect() as c:
+            cur = c.execute(
+                "INSERT INTO schedules(device_id,user_id,kind,at_ts,args,status,created_at)"
+                " VALUES(?,?,?,?,?,?,?)",
+                (dev["id"], u["id"], "clim_on", at_ts,
+                 json.dumps({"minutes": minutes}, ensure_ascii=False), "waiting", now()),
+            )
+            sid = cur.lastrowid
+        self.json(200, {"ok": True, "id": sid})
+
+    def cancel_sched(self):
+        u = self.require_user()
+        if not u:
+            return
+        d = self.body()
+        with db_lock, connect() as c:
+            r = c.execute("SELECT * FROM schedules WHERE id=?", (int(d.get("id", 0)),)).fetchone()
+            if not r:
+                return self.err(404, "not found")
+            dev = c.execute("SELECT owner_id FROM devices WHERE id=?", (r["device_id"],)).fetchone()
+            if u["role"] != "admin" and (not dev or dev["owner_id"] != u["id"]):
+                return self.err(403, "forbidden")
+            c.execute("UPDATE schedules SET status='cancelled' WHERE id=?", (r["id"],))
+        self.json(200, {"ok": True})
+
+    # ---------- notifications
+
+    def register_fcm(self):
+        u = self.require_user()
+        if not u:
+            return
+        d = self.body()
+        token = (d.get("token") or "").strip()
+        if not token:
+            return self.err(400, "token required")
+        with db_lock, connect() as c:
+            c.execute(
+                "INSERT OR REPLACE INTO fcm_tokens(token,user_id,platform,created_at) VALUES(?,?,?,?)",
+                (token, u["id"], d.get("platform") or "android", now()),
+            )
+        self.json(200, {"ok": True})
+
+    # ---------- admin
+
+    def admin(self, method: str, path: str, q: dict):
+        if path == "/api/admin/devices" and method == "GET":
+            status = q.get("status", "pending")
+            with db_lock, connect() as c:
+                if status == "all":
+                    rows = c.execute("SELECT * FROM devices ORDER BY id DESC").fetchall()
+                else:
+                    rows = c.execute("SELECT * FROM devices WHERE status=? ORDER BY id DESC",
+                                     (status,)).fetchall()
+                users = {r["id"]: r["username"] for r in c.execute("SELECT id,username FROM users").fetchall()}
+            out = []
+            for r in rows:
+                d = row_to_device(r)
+                d["owner"] = users.get(r["owner_id"])
+                d["last_seen"] = r["last_seen"]
+                out.append(d)
+            return self.json(200, {"devices": out})
+
+        if path.startswith("/api/admin/devices/") and method == "POST":
+            parts = path.split("/")
+            dev_id = int(parts[4])
+            action = parts[5] if len(parts) > 5 else ""
+            if action not in ("approve", "reject"):
+                return self.err(400, "unknown action")
+            new_status = "active" if action == "approve" else "rejected"
+            with db_lock, connect() as c:
+                c.execute("UPDATE devices SET status=? WHERE id=?", (new_status, dev_id))
+                log_event(c, dev_id, f"device_{action}", {})
+                r = c.execute("SELECT login FROM devices WHERE id=?", (dev_id,)).fetchone()
+            return self.json(200, {"ok": True, "status": new_status, "login": r["login"] if r else None})
+
+        if path == "/api/admin/users" and method == "GET":
+            with db_lock, connect() as c:
+                rows = c.execute("SELECT id,username,role,created_at FROM users ORDER BY id").fetchall()
+            return self.json(200, {"users": [dict(r) for r in rows]})
+
+        if path == "/api/admin/events" and method == "GET":
+            with db_lock, connect() as c:
+                rows = c.execute("SELECT * FROM events ORDER BY id DESC LIMIT 200").fetchall()
+            return self.json(200, {"events": [dict(r) for r in rows]})
+
+        if path == "/api/admin/commands" and method == "GET":
+            with db_lock, connect() as c:
+                rows = c.execute("SELECT * FROM commands ORDER BY id DESC LIMIT 100").fetchall()
+            return self.json(200, {"commands": [dict(r) for r in rows]})
+
+        return self.err(404, "unknown admin api")
+
+
+# ---------------------------------------------------------------- фоновые задачи
+
+def scheduler_loop():
+    while True:
+        try:
+            with db_lock, connect() as c:
+                due = c.execute(
+                    "SELECT * FROM schedules WHERE status='waiting' AND at_ts<=?", (now(),)
+                ).fetchall()
+                for s in due:
+                    args = json.loads(s["args"]) if s["args"] else {}
+                    c.execute(
+                        "INSERT INTO commands(device_id,user_id,name,args,status,created_at)"
+                        " VALUES(?,?,?,?,?,?)",
+                        (s["device_id"], s["user_id"], "clim_on",
+                         json.dumps(args, ensure_ascii=False), "queued", now()),
+                    )
+                    c.execute("UPDATE schedules SET status='sent' WHERE id=?", (s["id"],))
+                    log_event(c, s["device_id"], "sched_triggered", {"id": s["id"], "args": args})
+        except Exception as exc:  # noqa: BLE001
+            print("scheduler error", repr(exc), flush=True)
+        time.sleep(15)
+
+
+def samples_cleanup():
+    keep_days = int(os.environ.get("LEAF_KEEP_DAYS", "365"))
+    while True:
+        try:
+            with db_lock, connect() as c:
+                c.execute("DELETE FROM samples WHERE ts < ?", (now() - keep_days * 86400,))
+        except Exception as exc:  # noqa: BLE001
+            print("cleanup error", repr(exc), flush=True)
+        time.sleep(3600)
+
+
+def main():
+    init_db()
+    threading.Thread(target=scheduler_loop, daemon=True).start()
+    threading.Thread(target=samples_cleanup, daemon=True).start()
+    port = int(os.environ.get("LEAF_PORT", "8080"))
+    srv = ThreadingHTTPServer(("0.0.0.0", port), Api)
+    print(f"LeafControl API on :{port}, db={DB_PATH}", flush=True)
+    srv.serve_forever()
+
+
+if __name__ == "__main__":
+    main()
