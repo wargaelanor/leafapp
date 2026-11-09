@@ -1,30 +1,31 @@
-# LeafStack — сервер LeafControl в одном docker compose
+# LeafStack — сервер LeafControl одним docker-compose.yml
 
-Готовый серверный стек для телеметрии электромобиля: карта и поездки, база
-измерений, дашборды и удалённое управление. Разворачивается одной командой на
-любом Linux-хосте с Docker (NAS, мини-ПК, VPS, Raspberry Pi 4/5).
+Серверный стек для телеметрии электромобиля: карта и поездки, база измерений,
+дашборды, опционально удалённое управление. Разворачивается на любом Linux-хосте
+с Docker (NAS, мини-ПК, VPS, Raspberry Pi).
+
+**Всё в одном файле.** `docker-compose.yml` не требует соседних каталогов:
+контейнер `grafana-provision` сам создаёт datasource InfluxDB и дашборд
+LeafControl.
 
 | Сервис | Порт | Для чего |
 |---|---:|---|
-| **Traccar** | 8925 | карта, поездки/стоянки, отчёты, приём координат от платы |
-| **Grafana** | 3000 | дашборд: SOC, напряжение/ток, 12 В, температуры, кВт·ч |
+| **Traccar** | 8925 | карта, поездки/стоянки, отчёты, приём координат |
+| **Grafana** | 3000 | дашборд: SOC, V/A, 12 В, температуры, кВт·ч |
 | **InfluxDB 2.7** | 8086 | хранилище телеметрии (bucket `telemetry`, org `leaf`) |
-| **Portainer** | 9443 | управление контейнерами из браузера (профиль `admin`) |
+| **Portainer** | 9443 | управление контейнерами (профиль `admin`) |
 | **Tailscale** | — | доступ из интернета без проброса портов (профиль `remote`) |
-
-Grafana уже настроена: дата-сорс на InfluxDB и дашборд «LeafControl —
-телеметрия» подключаются автоматически, руками ничего создавать не нужно.
 
 ---
 
-## 1. Запуск (5 минут)
+## 1. Запуск
 
-Нужен Docker с плагином compose v2 (`docker compose version`).
+Нужен Docker с compose v2 (`docker compose version`).
 
 ```bash
-cd leafstack
-cp .env.example .env
-# отредактируйте .env: INFLUX_PASSWORD, INFLUX_TOKEN, GRAFANA_PASSWORD
+mkdir leafstack && cd leafstack
+# положите сюда docker-compose.yml
+cp .env.example .env      # заполнить INFLUX_PASSWORD, INFLUX_TOKEN, GRAFANA_PASSWORD
 docker compose up -d
 docker compose ps
 ```
@@ -32,24 +33,25 @@ docker compose ps
 Проверка:
 
 ```bash
-curl -s http://localhost:8086/health          # {"status":"pass"}
-curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3000/login   # 200
-curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8925/        # 200
+curl -s http://localhost:8086/health                                  # {"status":"pass"}
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3000/login  # 200
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8925/       # 200
 ```
 
-Логин в Grafana — `GRAFANA_USER` / `GRAFANA_PASSWORD` из `.env`.
-Логин в InfluxDB — `INFLUX_ADMIN_USER` / `INFLUX_PASSWORD` из `.env`.
+Логин Grafana — `GRAFANA_USER` / `GRAFANA_PASSWORD` из `.env`.
+Логин InfluxDB — `INFLUX_ADMIN_USER` / `INFLUX_PASSWORD` из `.env`.
+Дашборд «LeafControl — телеметрия» лежит в папке `Leaf` и уже подключён
+к InfluxDB.
 
-Остановить / обновить:
+Обновление и остановка:
 
 ```bash
-docker compose down          # остановить (данные сохраняются в томах)
-docker compose pull && docker compose up -d   # обновить образы
+docker compose pull && docker compose up -d
+docker compose down            # данные остаются в томах
 ```
 
-Данные лежат в именованных томах `leafstack_influx-data`,
-`leafstack_grafana-data`, `leafstack_traccar-data` — они переживают
-перезапуск и обновление контейнеров.
+Данные: тома `leafstack_influx-data`, `leafstack_grafana-data`,
+`leafstack_traccar-data`, `leafstack_grafana-prov`.
 
 ---
 
@@ -57,71 +59,52 @@ docker compose pull && docker compose up -d   # обновить образы
 
 ### Вариант A — Tailscale (рекомендуется)
 
-Работает без белого IP, за CG-NAT, без проброса портов. Трафик внутри
-зашифрованного tailnet, наружу ничего не публикуется.
+Без белого IP, за CG-NAT, без проброса портов; наружу ничего не публикуется.
 
-1. Создайте ключ: https://login.tailscale.com/admin/settings/keys (Reusable).
-2. Впишите его в `.env`: `TS_AUTHKEY=tskey-auth-...`
-3. Запустите:
-
-```bash
-docker compose --profile remote up -d
-```
-
-4. На телефоне/ноутбуке поставьте Tailscale и войдите в тот же аккаунт.
-   Стек будет доступен по имени из `TS_HOSTNAME`:
+1. Ключ: https://login.tailscale.com/admin/settings/keys (Reusable) → в `.env`
+   `TS_AUTHKEY=tskey-auth-...`
+2. `docker compose --profile remote up -d`
+3. На телефоне/ноутбуке войти в тот же tailnet. Стек откроется по имени:
 
 ```
 http://leafstack:3000     Grafana
 http://leafstack:8925     Traccar
 http://leafstack:8086     InfluxDB
-https://leafstack:9443    Portainer
+https://leafstack:9443    Portainer (после --profile admin)
 ```
 
-Устройство появится в админке Tailscale; доступ можно ограничить ACL.
+Если на хосте нет `/dev/net/tun` (часть NAS): `TS_USERSPACE=true` и
+`docker exec leafstack-tailscale tailscale serve --bg 3000`.
 
-Если на хосте нет `/dev/net/tun` (часть NAS), поставьте `TS_USERSPACE=true`
-и опубликуйте сервисы через serve внутри контейнера:
+### Вариант B — домены и проброс на роутере
 
-```bash
-docker exec leafstack-tailscale tailscale serve --bg 3000
-```
-
-### Вариант B — проброс портов / reverse proxy на роутере
-
-Если есть белый IP, на роутере (Keenetic, MikroTik, OpenWrt) сделайте правила
-на адрес хоста со стеком:
-
-| Имя | Порт снаружи | Куда |
+| Имя | Снаружи | Куда |
 |---|---|---|
-| `grafana.example.com` | 443 (HTTPS) | `http://HOST:3000` |
-| `traccar.example.com` | 443 (HTTPS) | `http://HOST:8925` |
-| `portainer.example.com` | 443 (HTTPS) | `https://HOST:9443` |
+| `grafana.example.com` | 443 HTTPS | `http://HOST:3000` |
+| `traccar.example.com` | 443 HTTPS | `http://HOST:8925` |
+| `portainer.example.com` | 443 HTTPS | `https://HOST:9443` |
 
-Важно: Grafana и Traccar внутри работают по **HTTP**, Portainer — по
-**HTTPS**. Если в правиле указать не тот протокол, получите `502 Bad Gateway`
-или `Client sent an HTTP request to an HTTPS server`.
+Grafana и Traccar внутри — **HTTP**, Portainer — **HTTPS**. Неверный протокол
+даёт `502 Bad Gateway` или `Client sent an HTTP request to an HTTPS server`.
 
-InfluxDB (`8086`) наружу публиковать не нужно: Grafana ходит в неё по
-внутренней сети docker. Открывайте только если нужен внешний клиент.
+InfluxDB (`8086`) наружу обычно не нужен: Grafana ходит в неё по внутренней
+сети Docker.
 
 ---
 
-## 3. Подключение платы LeafControl
-
-Плата шлёт данные в двух форматах:
+## 3. Подключение платы
 
 **Traccar (позиции):**
 
 ```text
 GET https://traccar.example.com/api/positions
     ?id=Leaf&lat=55.75&lon=37.62&speed=42&bearing=180&timestamp=<unix>
-    &deviceId=Leaf&apiKey=<ключ устройства>
+&apiKey=<ключ устройства>
 ```
 
-Ключ создаётся в Traccar: *Settings → Devices → добавить `Leaf` → API key*.
+Ключ: Traccar → *Settings → Devices → `Leaf` → API key*.
 
-**InfluxDB (телеметрия), line protocol:**
+**InfluxDB (телеметрия), line protocol, precision=s:**
 
 ```text
 leaf    soc=86.5,pack_v=351.2,pack_i=-8.1,pack_kw=-2.8,v12=12.6,i12=-0.4,
@@ -133,29 +116,27 @@ trip    kwh=1.58,km=5.0,dur_s=508,soc0=86,soc1=82,cost=11.85   <ts_end>
 charge  kwh=2.45,dur_s=6262,soc0=88,soc1=97,cost=9.80          <ts_end>
 ```
 
-Отправка: `POST /api/v2/write?org=leaf&bucket=telemetry&precision=s`
-с заголовком `Authorization: Token <INFLUX_TOKEN>` и тегом `device=Leaf`.
-
-Поля дашборда ожидают именно эти имена measurement/field — если плата пишет
-другие, поправьте запросы на панелях или приведите имена к контракту.
+Отправка: `POST /api/v2/write?org=leaf&bucket=telemetry&precision=s`,
+заголовок `Authorization: Token <INFLUX_TOKEN>`, тег `device=Leaf`.
+Имена measurement/field в дашборде рассчитаны именно на этот контракт.
 
 ---
 
 ## 4. Если что-то не открывается
 
-**`502 Bad Gateway` на Grafana/Traccar.** Сервис внутри не слушает порт.
-Смотрите логи: `docker compose logs -f grafana`. Частая причина — права на
-каталог данных: если вместо именованного тома подключили каталог хоста
-(`- ./data/grafana:/var/lib/grafana`), каталог должен быть доступен на запись
-пользователю контейнера. Простейшее решение — добавить сервису `user: "0:0"`.
+**`502 Bad Gateway`.** Сервис внутри не слушает порт — смотрите
+`docker compose logs -f grafana` (или `traccar`).
 
-**Порт занят.** `docker compose up` скажет `port is already allocated` —
-поменяйте `*_PORT` в `.env`.
+**Grafana упала после переезда на каталоги хоста.** При bind-mount вместо тома
+каталог должен быть доступен пользователю контейнера. Простейшее решение —
+добавить сервису `user: "0:0"`.
 
-**Не стартует из-за пустых переменных.** Это защита: заполните
-`INFLUX_PASSWORD`, `INFLUX_TOKEN`, `GRAFANA_PASSWORD` в `.env`.
+**Порт занят.** Поменяйте `*_PORT` в `.env`.
 
-**Нет данных в Grafana.** Проверьте, что плата реально пишет в InfluxDB:
+**Стек не стартует из-за переменных.** Это защита: заполните `INFLUX_PASSWORD`,
+`INFLUX_TOKEN`, `GRAFANA_PASSWORD`.
+
+**Нет данных в Grafana.** Проверьте, что плата пишет в InfluxDB:
 
 ```bash
 curl -s -H "Authorization: Token $INFLUX_TOKEN" \
@@ -164,20 +145,13 @@ curl -s -H "Authorization: Token $INFLUX_TOKEN" \
   --data 'from(bucket:"telemetry")|>range(start:-1h)|>count()'
 ```
 
+**Дашборд в UI только для чтения.** Он создан provisioning-контейнером. Чтобы
+править в интерфейсе — скопируйте его (Save as) или правьте JSON в
+`docker-compose.yml` (секция `grafana-provision`) и перезапустите стек.
+
 ---
 
-## 5. Состав каталога
+## 5. Перенос на другой хост
 
-```
-leafstack/
-├── docker-compose.yml      стек целиком
-├── .env.example            шаблон секретов и портов
-├── traccar/conf.xml        настройки Traccar (фильтры, reverse proxy)
-└── grafana/
-    ├── provisioning/datasources/leaf.yaml    дата-сорс InfluxDB
-    ├── provisioning/dashboards/leaf.yaml     автозагрузка дашбордов
-    └── dashboards/leaf-telemetry.json        дашборд LeafControl
-```
-
-Перенос на другой хост: скопируйте каталог целиком, создайте новый `.env`.
-Секреты и данные переносятся отдельно (`.env` и тома/каталоги данных).
+Нужны: `docker-compose.yml`, `.env` (свои секреты) и, при необходимости,
+данные из томов. Всё остальное создаётся автоматически.

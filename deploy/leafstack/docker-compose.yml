@@ -1,18 +1,17 @@
-# LeafControl — серверный стек (Traccar + InfluxDB 2 + Grafana + Portainer)
+# LeafControl — серверный стек одним файлом
 #
-# Быстрый старт:
-#   cp .env.example .env     # заполнить пароли/токен
-#   docker compose up -d
+# Traccar (карта, поездки) + InfluxDB 2 (хранение) + Grafana (дашборды).
+# Опционально: Portainer (управление) и Tailscale (доступ из интернета).
 #
-# Адреса после запуска:
-#   http://<host>:8925  Traccar   (карта, поездки, API приёма позиций)
-#   http://<host>:3000  Grafana   (готовый дашборд LeafControl)
-#   http://<host>:8086  InfluxDB  (API хранилища)
-#   https://<host>:9443 Portainer (только с профилем admin)
+# Запуск:
+#   1) создайте рядом .env по образцу .env.example и заполните секреты
+#   2) docker compose up -d
 #
-# Профили (не запускаются по умолчанию):
-#   --profile admin   Portainer — управление контейнерами из браузера
-#   --profile remote  Tailscale — доступ из интернета без проброса портов
+# Больше ничего копировать не нужно: контейнер grafana-provision сам создаёт
+# datasource InfluxDB и дашборд LeafControl, Grafana подхватывает их при старте.
+#
+# Порты (переопределяются в .env): 8925 Traccar · 3000 Grafana · 8086 InfluxDB
+# Профили: --profile admin (Portainer) · --profile remote (Tailscale)
 
 name: ${STACK_NAME:-leafstack}
 
@@ -40,38 +39,91 @@ services:
       timeout: 10s
       retries: 5
 
+  traccar:
+    image: traccar/traccar:latest
+    container_name: leafstack-traccar
+    restart: unless-stopped
+    environment:
+      # фильтры GPS и работа за reverse proxy задаются системными свойствами,
+      # поэтому отдельный conf.xml не нужен
+      JAVA_OPTS: >-
+        -Xmx320m -Dfilter.enable=true -Dfilter.invalid=true
+        -Dfilter.accuracy=150 -Dfilter.minDistance=5
+        -Dgeocoder.enable=false -Dserver.reverseProxy=true -Dweb.enable=true
+    volumes:
+      - traccar-data:/opt/traccar/data
+    ports:
+      - "${TRACCAR_PORT:-8925}:8082"
+
+  # одноразовый контейнер: пишет provisioning-файлы в общий том
+  grafana-provision:
+    image: alpine:3.20
+    container_name: leafstack-grafana-provision
+    restart: "no"
+    environment:
+      INFLUX_TOKEN: ${INFLUX_TOKEN:?set INFLUX_TOKEN in .env}
+      INFLUX_ORG: ${INFLUX_ORG:-leaf}
+      INFLUX_BUCKET: ${INFLUX_BUCKET:-telemetry}
+    volumes:
+      - grafana-prov:/prov
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        mkdir -p /prov/datasources /prov/dashboards
+        cat > /prov/datasources/leaf.yaml <<'DS_EOF'
+        apiVersion: 1
+        datasources:
+          - name: InfluxDB-Leaf
+            uid: leaf
+            type: influxdb
+            access: proxy
+            url: http://influxdb:8086
+            basicAuth: false
+            isDefault: true
+            jsonData:
+              version: Flux
+              organization: ${INFLUX_ORG}
+              defaultBucket: ${INFLUX_BUCKET}
+            secureJsonData:
+              token: $INFLUX_TOKEN
+        DS_EOF
+        cat > /prov/dashboards/leaf.yaml <<'PROV_EOF'
+        apiVersion: 1
+        providers:
+          - name: leaf
+            folder: Leaf
+            type: file
+            options:
+              path: /prov/dashboards
+        PROV_EOF
+        cat > /prov/dashboards/leaf-telemetry.json <<'JSON_EOF'
+        {"uid":"leaf-telemetry","title":"LeafControl — телеметрия","tags":["leaf"],"timezone":"browser","schemaVersion":39,"version":1,"refresh":"1m","time":{"from":"now-24h","to":"now"},"templating":{"list":[{"name":"device","type":"query","datasource":{"type":"influxdb","uid":"leaf"},"query":"import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"telemetry\", tag: \"device\")","refresh":1,"current":{"text":"Leaf","value":"Leaf"}}]},"panels":[{"type":"timeseries","title":"SOC, %","id":1,"gridPos":{"h":8,"w":12,"x":0,"y":0},"datasource":{"type":"influxdb","uid":"leaf"},"targets":[{"refId":"A","queryType":"flux","query":"from(bucket:\"telemetry\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn:(r)=>r._measurement==\"leaf\" and r._field==\"soc\" and r.device==\"$device\") |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)"}],"fieldConfig":{"defaults":{"unit":"percent","min":0,"max":100},"overrides":[]}},{"type":"timeseries","title":"Батарея: V / A","id":2,"gridPos":{"h":8,"w":12,"x":12,"y":0},"datasource":{"type":"influxdb","uid":"leaf"},"targets":[{"refId":"A","queryType":"flux","query":"from(bucket:\"telemetry\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn:(r)=>r._measurement==\"leaf\" and r._field==\"pack_v\" and r.device==\"$device\") |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)"},{"refId":"B","queryType":"flux","query":"from(bucket:\"telemetry\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn:(r)=>r._measurement==\"leaf\" and r._field==\"pack_i\" and r.device==\"$device\") |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)"}]},{"type":"timeseries","title":"12 В: напряжение / ток","id":3,"gridPos":{"h":8,"w":12,"x":0,"y":8},"datasource":{"type":"influxdb","uid":"leaf"},"targets":[{"refId":"A","queryType":"flux","query":"from(bucket:\"telemetry\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn:(r)=>r._measurement==\"leaf\" and r._field==\"v12\" and r.device==\"$device\") |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)"},{"refId":"B","queryType":"flux","query":"from(bucket:\"telemetry\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn:(r)=>r._measurement==\"leaf\" and r._field==\"i12\" and r.device==\"$device\") |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)"}]},{"type":"timeseries","title":"Температуры: воздух / салон / батарея","id":4,"gridPos":{"h":8,"w":12,"x":12,"y":8},"datasource":{"type":"influxdb","uid":"leaf"},"targets":[{"refId":"A","queryType":"flux","query":"from(bucket:\"telemetry\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn:(r)=>r._measurement==\"leaf\" and (r._field==\"amb\" or r._field==\"cabin\" or r._field==\"batt\") and r.device==\"$device\") |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)"}],"fieldConfig":{"defaults":{"unit":"celsius"},"overrides":[]}},{"type":"stat","title":"Одометр, км","id":5,"gridPos":{"h":4,"w":4,"x":0,"y":16},"datasource":{"type":"influxdb","uid":"leaf"},"targets":[{"refId":"A","queryType":"flux","query":"from(bucket:\"telemetry\") |> range(start: -7d) |> filter(fn:(r)=>r._measurement==\"leaf\" and r._field==\"odo\" and r.device==\"$device\") |> last()"}],"fieldConfig":{"defaults":{"unit":"km"},"overrides":[]}},{"type":"stat","title":"Последняя поездка, кВт·ч","id":6,"gridPos":{"h":4,"w":4,"x":4,"y":16},"datasource":{"type":"influxdb","uid":"leaf"},"targets":[{"refId":"A","queryType":"flux","query":"from(bucket:\"telemetry\") |> range(start: -7d) |> filter(fn:(r)=>r._measurement==\"trip\" and r._field==\"kwh\" and r.device==\"$device\") |> last()"}],"fieldConfig":{"defaults":{"unit":"kwattime"},"overrides":[]}},{"type":"stat","title":"Последняя зарядка, кВт·ч","id":7,"gridPos":{"h":4,"w":4,"x":8,"y":16},"datasource":{"type":"influxdb","uid":"leaf"},"targets":[{"refId":"A","queryType":"flux","query":"from(bucket:\"telemetry\") |> range(start: -30d) |> filter(fn:(r)=>r._measurement==\"charge\" and r._field==\"kwh\" and r.device==\"$device\") |> last()"}],"fieldConfig":{"defaults":{"unit":"kwattime"},"overrides":[]}},{"type":"bargauge","title":"Поездки за период, кВт·ч","id":8,"gridPos":{"h":8,"w":12,"x":12,"y":16},"datasource":{"type":"influxdb","uid":"leaf"},"targets":[{"refId":"A","queryType":"flux","query":"from(bucket:\"telemetry\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn:(r)=>r._measurement==\"trip\" and r._field==\"kwh\" and r.device==\"$device\")"}],"fieldConfig":{"defaults":{"unit":"kwattime"},"overrides":[]}},{"type":"timeseries","title":"Мощность на ходу / зарядке, кВт","id":9,"gridPos":{"h":8,"w":12,"x":0,"y":20},"datasource":{"type":"influxdb","uid":"leaf"},"targets":[{"refId":"A","queryType":"flux","query":"from(bucket:\"telemetry\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn:(r)=>r._measurement==\"leaf\" and r._field==\"pack_kw\" and r.device==\"$device\") |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)"}],"fieldConfig":{"defaults":{"unit":"kwattime","decimals":2},"overrides":[]}}]}
+        JSON_EOF
+        echo "provisioning files written"
+
   grafana:
     image: grafana/grafana:latest
     container_name: leafstack-grafana
     restart: unless-stopped
     depends_on:
-      - influxdb
+      influxdb:
+        condition: service_started
+      grafana-provision:
+        condition: service_completed_successfully
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-leafview}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?set GRAFANA_PASSWORD in .env}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000/}
-      # токен подставляется в provisioned datasource
       INFLUX_TOKEN: ${INFLUX_TOKEN:?set INFLUX_TOKEN in .env}
     volumes:
       - grafana-data:/var/lib/grafana
-      - ./grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-prov:/etc/grafana/provisioning:ro
     ports:
       - "${GRAFANA_PORT:-3000}:3000"
-
-  traccar:
-    image: traccar/traccar:latest
-    container_name: leafstack-traccar
-    restart: unless-stopped
-    environment:
-      JAVA_EXTRA_OPTIONS: -Xmx320m
-    volumes:
-      - traccar-data:/opt/traccar/data
-      - ./traccar/conf.xml:/opt/traccar/conf/traccar.xml:ro
-    ports:
-      - "${TRACCAR_PORT:-8925}:8082"
 
   portainer:
     profiles: ["admin"]
@@ -85,10 +137,10 @@ services:
     ports:
       - "${PORTAINER_PORT:-9443}:9443"
 
-  # Удалённый доступ без проброса портов и без белого IP.
-  # Включается: docker compose --profile remote up -d
-  # Требуется TS_AUTHKEY в .env (ключ из https://login.tailscale.com/admin/settings/keys)
-  # После запуска стек доступен по tailnet-адресу машины: http://<hostname>:3000 и т.д.
+  # Доступ из интернета без белого IP и проброса портов.
+  #   TS_AUTHKEY=tskey-auth-...  (ключ: https://login.tailscale.com/admin/settings/keys)
+  #   docker compose --profile remote up -d
+  # Тогда стек доступен в tailnet по адресу http://<TS_HOSTNAME>:3000 и т.д.
   tailscale:
     profiles: ["remote"]
     image: tailscale/tailscale:latest
@@ -96,7 +148,7 @@ services:
     restart: unless-stopped
     network_mode: host
     environment:
-      TS_AUTHKEY: ${TS_AUTHKEY:?set TS_AUTHKEY in .env, or start without --profile remote}
+      TS_AUTHKEY: ${TS_AUTHKEY:?set TS_AUTHKEY in .env}
       TS_STATE_DIR: /var/lib/tailscale
       TS_HOSTNAME: ${TS_HOSTNAME:-leafstack}
       TS_USERSPACE: ${TS_USERSPACE:-false}
@@ -112,6 +164,7 @@ volumes:
   influx-data:
   influx-config:
   grafana-data:
+  grafana-prov:
   traccar-data:
   portainer-data:
   tailscale-state:
