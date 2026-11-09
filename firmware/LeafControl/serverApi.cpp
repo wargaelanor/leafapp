@@ -1,6 +1,7 @@
 #include "serverApi.h"
 
 #include <Preferences.h>
+#include <math.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 
@@ -320,6 +321,21 @@ static void sendState() {
   float packV = evData.packVoltage;
   float packI = evData.packCurrent;
   float packKw = (packV > 0 && evData.packDataValid) ? (packV * packI) / 1000.0f : 0.0f;
+#if defined(LEAF_SYNTH_TELEMETRY) && (LEAF_SYNTH_TELEMETRY)
+  // Стендовый режим: CAN нет, поэтому показываем правдоподобные значения,
+  // чтобы проверить обмен, графики и историю. В машине флаг выключен.
+  {
+    static const uint32_t t0 = millis();
+    float ph = (millis() - t0) / 1000.0f;
+    if (soc < 0) soc = 64.0f + 8.0f * sinf(ph / 600.0f);
+    if (evData.odometerKm == 0) evData.odometerKm = 51234 + (uint32_t)((millis() - t0) / 60000);
+    if (cabinTemp < -50) cabinTemp = 12.0f + 3.0f * sinf(ph / 300.0f);
+    if (evData.ambientTemp < -50) evData.ambientTemp = -2.5f;
+    if (evData.batteryTemp < -50) evData.batteryTemp = 11.0f + 2.0f * sinf(ph / 900.0f);
+    if (packV <= 0) packV = 383.4f;
+    if (packKw == 0) packKw = 0.0f;
+  }
+#endif
   time_t tnow = time(nullptr);
   uint32_t ts = (tnow > 1600000000) ? (uint32_t)tnow : 0;
 
