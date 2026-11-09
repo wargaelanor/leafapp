@@ -173,7 +173,12 @@ static bool udsDiagnosticWindow(unsigned long currentTimeMs) {
     if (currentTimeMs - sLastActivitySampleMs >= 5000) {
         uint32_t frameDelta = canFramesB - sLastFramesB;
         uint32_t evDelta = canFramesA - sLastFramesA;
-        bool busActive = isChargingNow || frameDelta >= 20 || evDelta >= 100;
+        // Any RX frame within the sample window means the bus (and therefore
+        // the ECUs behind the gateway) is awake. The BMS poller's stricter
+        // >=20-per-5s threshold was tuned for its own traffic; a parked-but-
+        // awake ZE1 emits a few slow BCM frames per minute, which is plenty
+        // for one polite UDS query.
+        bool busActive = isChargingNow || frameDelta >= 1 || evDelta >= 1;
         if (busActive) sWindowUntilMs = currentTimeMs + 20000;
         sWindowOpen = busActive || currentTimeMs < sWindowUntilMs;
         sLastFramesB = canFramesB;
