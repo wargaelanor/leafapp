@@ -1,0 +1,67 @@
+# LeafControl — минимальный боевой стек (одна ссылка)
+#
+# Только то, что нужно: сервер приложения (API + веб-интерфейс),
+# Traccar (карта, опционально) и Portainer (администрирование, опционально).
+# Grafana и InfluxDB не нужны: история и графики живут в SQLite самого API.
+#
+# Запуск:
+#   docker compose up -d
+#   → http://<host>:8080
+#
+# Переменные (обязательные):
+#   LEAF_ADMIN_PASSWORD — пароль администратора при первом запуске
+#
+# Плата подключается сама: POST /api/device/enroll, затем админ одобряет
+# устройство в разделе «Админ» веб-интерфейса.
+
+name: leaf
+
+services:
+  leaf-api:
+    image: python:3.12-alpine
+    container_name: leaf-api
+    restart: unless-stopped
+    user: "0:0"
+    environment:
+      LEAF_ADMIN_USER: ${LEAF_ADMIN_USER:-admin}
+      LEAF_ADMIN_PASSWORD: ${LEAF_ADMIN_PASSWORD:?set LEAF_ADMIN_PASSWORD}
+      LEAF_DB: /data/leaf.db
+      LEAF_PORT: "8080"
+      LEAF_KEEP_DAYS: ${LEAF_KEEP_DAYS:-365}
+      TZ: ${TZ:-Europe/Moscow}
+    volumes:
+      - ./data:/data
+    ports:
+      - "${LEAF_PORT:-8080}:8080"
+    # ВАЖНО: command задан одной строкой без $ и кавычек —
+    # TrueNAS ломает многострочные command-блоки.
+    command: ["sh", "-c", "mkdir -p /data; rm -rf /tmp/leafapp; wget -O /tmp/a.tgz https://codeload.github.com/wargaelanor/leafapp/tar.gz/refs/heads/sim800; tar xzf /tmp/a.tgz -C /tmp; cd /tmp/leafapp-sim800/server; python app.py"]
+
+  # Карта и треки. Не обязателен: без него API продолжает работать.
+  traccar:
+    image: traccar/traccar:latest
+    container_name: leaf-traccar
+    restart: unless-stopped
+    profiles: ["map"]
+    environment:
+      JAVA_OPTS: >-
+        -Xmx320m -Dfilter.enable=true -Dfilter.invalid=true
+        -Dfilter.accuracy=150 -Dfilter.minDistance=5
+        -Dgeocoder.enable=false -Dserver.reverseProxy=true -Dweb.enable=true
+    volumes:
+      - ./data/traccar:/opt/traccar/data
+    ports:
+      - "${TRACCAR_PORT:-8925}:8082"
+
+  # Управление контейнерами из браузера.
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: leaf-portainer
+    restart: unless-stopped
+    profiles: ["admin"]
+    command: -H unix:///var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data/portainer:/data
+    ports:
+      - "${PORTAINER_PORT:-9443}:9443"
