@@ -690,6 +690,7 @@ class Api(BaseHTTPRequestHandler):
             r = c.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
             if not r or not verify_password(password, r["pass_hash"]):
                 log_event(c, None, "login_failed", {"username": username})
+                login_failed(ip)
                 return self.err(401, "неверный логин или пароль")
             token = secrets.token_urlsafe(32)
             c.execute(
