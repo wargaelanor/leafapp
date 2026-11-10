@@ -133,6 +133,20 @@ CREATE TABLE IF NOT EXISTS fcm_tokens (
   platform TEXT,
   created_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS maintenance (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  device_id INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  due_km INTEGER,
+  due_date TEXT,
+  note TEXT,
+  done_at INTEGER,
+  created_at INTEGER NOT NULL
+);
 """
 
 
@@ -387,6 +401,20 @@ class Api(BaseHTTPRequestHandler):
             return self.device_ack()
 
         # ---------- user endpoints
+        if path == "/api/stats" and method == "GET":
+            return self.get_stats(q)
+        if path == "/api/samples" and method == "GET":
+            return self.get_samples(q)
+        if path == "/api/settings" and method == "GET":
+            return self.get_settings()
+        if path == "/api/settings" and method == "POST":
+            return self.post_settings()
+        if path == "/api/maintenance" and method == "GET":
+            return self.maintenance_list(q)
+        if path == "/api/maintenance" and method == "POST":
+            return self.maintenance_add()
+        if path == "/api/maintenance/done" and method == "POST":
+            return self.maintenance_done()
         if path == "/api/status" and method == "GET":
             return self.pwa_status(q)
         if path in ("/api/trips", "/api/charges") and method == "GET":
@@ -394,9 +422,22 @@ class Api(BaseHTTPRequestHandler):
         if path in ("/api/trips/clear", "/api/charges/clear") and method == "POST":
             return self.json(200, {"ok": True})
         if path == "/api/tariff":
-            if method == "POST":
-                return self.json(200, {"ok": True})
-            return self.json(200, {"day": 0, "night": 0, "from": 0, "to": 7})
+            with db_lock, connect() as c:
+                if method == "POST":
+                    b = self.body()
+                    pairs = {"tariff_day": b.get("day"), "tariff_night": b.get("night"),
+                             "night_from": b.get("from"), "night_to": b.get("to")}
+                    for k, v in pairs.items():
+                        if v is not None:
+                            c.execute("INSERT OR REPLACE INTO app_settings(key,value) VALUES(?,?)",
+                                      (k, str(v)))
+                cfg = self.settings_all(c)
+            return self.json(200, {
+                "day": float(cfg["tariff_day"]), "night": float(cfg["tariff_night"]),
+                "from": int(float(cfg["night_from"])), "to": int(float(cfg["night_to"])),
+                "petrol_price": float(cfg["petrol_price"]),
+                "petrol_l100": float(cfg["petrol_l100"]),
+            })
         if path == "/api/devices" and method == "GET":
             return self.list_devices()
         if path == "/api/state" and method == "GET":
@@ -759,6 +800,214 @@ class Api(BaseHTTPRequestHandler):
             online = (now() - (d["last_seen"] or 0)) < ONLINE_WINDOW_S
         return self.json(200, {"ok": True, "id": cid, "pushed": online, "poll_s": POLL_S})
 
+    # ---------- настройки, статистика, ТО
+
+    SETTING_DEFAULTS = {
+        "tariff_day": "5.50",
+        "tariff_night": "2.80",
+        "night_from": "0",
+        "night_to": "7",
+        "petrol_price": "62.00",
+        "petrol_l100": "7.0",
+        "currency": "₽",
+    }
+
+    def settings_all(self, c):
+        rows = c.execute("SELECT key, value FROM app_settings").fetchall()
+        out = dict(self.SETTING_DEFAULTS)
+        for r in rows:
+            out[r["key"]] = r["value"]
+        return out
+
+    def get_settings(self):
+        u = self.require_user()
+        if not u:
+            return
+        with db_lock, connect() as c:
+            self.json(200, self.settings_all(c))
+
+    def post_settings(self):
+        u = self.require_user()
+        if not u:
+            return
+        data = self.body()
+        allowed = set(self.SETTING_DEFAULTS)
+        with db_lock, connect() as c:
+            for k, v in data.items():
+                if k in allowed:
+                    c.execute("INSERT OR REPLACE INTO app_settings(key,value) VALUES(?,?)",
+                              (k, str(v)))
+            out = self.settings_all(c)
+        self.json(200, out)
+
+    def get_stats(self, q):
+        u = self.require_user()
+        if not u:
+            return
+        d = self.owned_device(u, q.get("device", "0"))
+        if not d:
+            d = self.pwa_pick_device(u)
+        if not d:
+            return self.err(404, "device not found")
+        days = int(q.get("days", "0"))
+        since = now() - days * 86400 if days > 0 else 0
+        with db_lock, connect() as c:
+            trips = c.execute(
+                "SELECT COUNT(*) n, COALESCE(SUM(distance_km),0) km, COALESCE(SUM(energy_kwh),0) kwh "
+                "FROM dev_sessions WHERE device_id=? AND kind='trip' AND COALESCE(ended_at,0)>=?",
+                (d["id"], since),
+            ).fetchone()
+            charges = c.execute(
+                "SELECT COUNT(*) n, COALESCE(SUM(energy_kwh),0) kwh "
+                "FROM dev_sessions WHERE device_id=? AND kind='charge' AND COALESCE(ended_at,0)>=?",
+                (d["id"], since),
+            ).fetchone()
+            per_day = c.execute(
+                "SELECT date(COALESCE(ended_at,started_at),'unixepoch','localtime') d, "
+                "COALESCE(SUM(distance_km),0) km, COALESCE(SUM(energy_kwh),0) kwh "
+                "FROM dev_sessions WHERE device_id=? AND kind='trip' AND COALESCE(ended_at,0)>=? "
+                "GROUP BY d ORDER BY d",
+                (d["id"], since),
+            ).fetchall()
+            soh_rows = c.execute(
+                "SELECT ts, payload FROM samples WHERE device_id=? AND ts>=? "
+                "AND payload LIKE '%\"soh\"%' ORDER BY ts",
+                (d["id"], since),
+            ).fetchall()
+            cfg = self.settings_all(c)
+            maint = c.execute(
+                "SELECT * FROM maintenance WHERE device_id=? AND done_at IS NULL ORDER BY due_km",
+                (d["id"],),
+            ).fetchall()
+
+        km = float(trips["km"] or 0)
+        kwh = float(trips["kwh"] or 0)
+        ch_kwh = float(charges["kwh"] or 0)
+        day_price = float(cfg.get("tariff_day", 0) or 0)
+        night_price = float(cfg.get("tariff_night", 0) or 0)
+        petrol_price = float(cfg.get("petrol_price", 0) or 0)
+        petrol_l100 = float(cfg.get("petrol_l100", 0) or 0)
+
+        electric_cost = kwh * day_price
+        petrol_cost = (km / 100.0) * petrol_l100 * petrol_price
+        consumption = (km / kwh) if kwh > 0 else 0
+
+        soh = []
+        for r in soh_rows:
+            try:
+                p = json.loads(r["payload"])
+            except Exception:
+                continue
+            v = p.get("soh")
+            if isinstance(v, (int, float)) and v > 0:
+                soh.append({"ts": r["ts"], "soh": round(float(v), 2)})
+
+        self.json(200, {
+            "device": d["id"],
+            "days": days,
+            "trips": {"count": trips["n"], "km": round(km, 1), "kwh": round(kwh, 2)},
+            "charges": {"count": charges["n"], "kwh": round(ch_kwh, 2)},
+            "per_day": [{"date": r["d"], "km": round(float(r["km"] or 0), 2),
+                         "kwh": round(float(r["kwh"] or 0), 2)} for r in per_day],
+            "consumption_km_per_kwh": round(consumption, 2),
+            "cost": {
+                "electric": round(electric_cost, 2),
+                "petrol": round(petrol_cost, 2),
+                "saved": round(petrol_cost - electric_cost, 2),
+                "currency": cfg.get("currency", "₽"),
+            },
+            "soh": soh,
+            "maintenance": [dict(r) for r in maint],
+            "settings": cfg,
+        })
+
+    def get_samples(self, q):
+        u = self.require_user()
+        if not u:
+            return
+        d = self.owned_device(u, q.get("device", "0"))
+        if not d:
+            d = self.pwa_pick_device(u)
+        if not d:
+            return self.err(404, "device not found")
+        try:
+            ts_from = int(q.get("from", 0))
+            ts_to = int(q.get("to", 0))
+        except ValueError:
+            return self.err(400, "bad range")
+        if ts_to <= ts_from:
+            return self.json(200, {"points": []})
+        with db_lock, connect() as c:
+            rows = c.execute(
+                "SELECT ts, payload FROM samples WHERE device_id=? AND ts BETWEEN ? AND ? ORDER BY ts",
+                (d["id"], ts_from, ts_to),
+            ).fetchall()
+        pts = []
+        for r in rows:
+            try:
+                p = json.loads(r["payload"])
+            except Exception:
+                continue
+            pts.append({
+                "ts": r["ts"],
+                "kw": p.get("pack_kw"),
+                "soc": p.get("soc"),
+                "batt": p.get("batt"),
+                "spd": p.get("spd"),
+            })
+        self.json(200, {"points": pts})
+
+    def maintenance_list(self, q):
+        u = self.require_user()
+        if not u:
+            return
+        d = self.owned_device(u, q.get("device", "0"))
+        if not d:
+            d = self.pwa_pick_device(u)
+        if not d:
+            return self.err(404, "device not found")
+        with db_lock, connect() as c:
+            rows = c.execute("SELECT * FROM maintenance WHERE device_id=? ORDER BY done_at, due_km",
+                             (d["id"],)).fetchall()
+        self.json(200, {"items": [dict(r) for r in rows]})
+
+    def maintenance_add(self):
+        u = self.require_user()
+        if not u:
+            return
+        body = self.body()
+        d = self.owned_device(u, str(body.get("device", "0")))
+        if not d:
+            d = self.pwa_pick_device(u)
+        if not d:
+            return self.err(404, "device not found")
+        title = (body.get("title") or "").strip()
+        if not title:
+            return self.err(400, "title required")
+        with db_lock, connect() as c:
+            cur = c.execute(
+                "INSERT INTO maintenance(device_id,title,due_km,due_date,note,done_at,created_at)"
+                " VALUES(?,?,?,?,?,NULL,?)",
+                (d["id"], title, body.get("due_km"), body.get("due_date"), body.get("note"), now()),
+            )
+            self.json(200, {"ok": True, "id": cur.lastrowid})
+
+    def maintenance_done(self):
+        u = self.require_user()
+        if not u:
+            return
+        body = self.body()
+        mid = int(body.get("id", 0))
+        with db_lock, connect() as c:
+            row = c.execute("SELECT device_id FROM maintenance WHERE id=?", (mid,)).fetchone()
+            if not row:
+                return self.err(404, "not found")
+            dev = c.execute("SELECT owner_id FROM devices WHERE id=?", (row["device_id"],)).fetchone()
+            if u["role"] != "admin" and (not dev or dev["owner_id"] != u["id"]):
+                return self.err(403, "forbidden")
+            c.execute("UPDATE maintenance SET done_at=? WHERE id=?", (now(), mid))
+        self.json(200, {"ok": True})
+
     def list_devices(self):
         u = self.require_user()
         if not u:
@@ -775,6 +1024,8 @@ class Api(BaseHTTPRequestHandler):
         if not u:
             return
         d = self.owned_device(u, q.get("device", "0"))
+        if not d:
+            d = self.pwa_pick_device(u)
         if not d:
             return self.err(404, "device not found")
         self.json(200, row_to_device(d))
