@@ -29,6 +29,20 @@ POLL_S = int(os.environ.get("LEAF_POLL_S", "10"))
 SESSION_DAYS = 30
 ONLINE_WINDOW_S = 45
 
+# Команды, которые шлёт PWA (те же пути, что у платы).
+PWA_COMMANDS = {
+    "/hvac_on": "clim_on",
+    "/hvac_off": "clim_off",
+    "/lock": "lock",
+    "/unlock": "unlock",
+    "/charge_on": "charge_start",
+    "/charge_off": "charge_stop",
+    "/refresh": "refresh",
+    "/lights": "lights",
+    "/hornlights": "horn",
+    "/rhloff": "lights",
+}
+
 db_lock = threading.Lock()
 
 SCHEMA = """
@@ -313,15 +327,32 @@ class Api(BaseHTTPRequestHandler):
         path = parsed.path.rstrip("/") or "/"
         q = {k: v[-1] for k, v in parse_qs(parsed.query).items()}
         try:
-            if path == "/" or path == "/index.html":
-                return self.serve_static("index.html")
+            if path in ("/", "/index.html"):
+                if self.user():
+                    return self.serve_static("app.html")
+                return self.serve_static("login.html")
+            if path == "/login":
+                return self.serve_static("login.html")
+            if path == "/admin":
+                u = self.user()
+                if not u:
+                    return self._send(302, b"", "text/plain", {"Location": "/login"})
+                if u["role"] != "admin":
+                    return self.err(403, "admin only")
+                return self.serve_static("admin.html")
+            if path == "/settings":
+                return self._send(302, b"", "text/plain", {"Location": "/admin"})
+            if path == "/ui":
+                return self.json(200, {"ok": True})
             if path.startswith("/static/"):
                 return self.serve_static(path[len("/static/"):])
             if path == "/api/health":
                 return self.json(200, {"ok": True, "ts": now()})
             if path.startswith("/api/"):
                 return self.api(method, path, q)
-            # Статика: /index.html, /manifest.webmanifest, /sw.js, /icon-*.png
+            if method == "POST" and path in PWA_COMMANDS:
+                return self.pwa_command(path, q)
+            # Статика: /manifest.webmanifest, /sw.js, /icon-*.png, картинки PWA
             return self.serve_static(path.lstrip("/"))
         except Exception as exc:  # noqa: BLE001
             print("ERROR", path, repr(exc), flush=True)
@@ -356,6 +387,16 @@ class Api(BaseHTTPRequestHandler):
             return self.device_ack()
 
         # ---------- user endpoints
+        if path == "/api/status" and method == "GET":
+            return self.pwa_status(q)
+        if path in ("/api/trips", "/api/charges") and method == "GET":
+            return self.pwa_history(path, q)
+        if path in ("/api/trips/clear", "/api/charges/clear") and method == "POST":
+            return self.json(200, {"ok": True})
+        if path == "/api/tariff":
+            if method == "POST":
+                return self.json(200, {"ok": True})
+            return self.json(200, {"day": 0, "night": 0, "from": 0, "to": 7})
         if path == "/api/devices" and method == "GET":
             return self.list_devices()
         if path == "/api/state" and method == "GET":
@@ -573,6 +614,150 @@ class Api(BaseHTTPRequestHandler):
         self.json(200, {"ok": True})
 
     # ---------- user data
+
+    def pwa_pick_device(self, u):
+        """Устройство для PWA: выбранное в cookie, иначе на связи, иначе свежее."""
+        ref = self.cookies().get("leaf_dev")
+        if ref:
+            d = self.owned_device(u, ref)
+            if d:
+                return d
+        with db_lock, connect() as c:
+            if u["role"] == "admin":
+                rows = c.execute("SELECT * FROM devices ORDER BY last_seen DESC").fetchall()
+            else:
+                rows = c.execute("SELECT * FROM devices WHERE owner_id=? ORDER BY last_seen DESC",
+                                 (u["id"],)).fetchall()
+        if not rows:
+            return None
+        for r in rows:
+            if r["status"] == "active" and (now() - (r["last_seen"] or 0)) < ONLINE_WINDOW_S:
+                return r
+        for r in rows:
+            if r["status"] == "active":
+                return r
+        return rows[0]
+
+    def pwa_status(self, q):
+        u = self.require_user()
+        if not u:
+            return
+        d = self.pwa_pick_device(u)
+        if not d:
+            return self.err(404, "no devices")
+        st = json.loads(d["state_json"]) if d["state_json"] else {}
+        soc = st.get("soc", -1)
+        charging = bool(st.get("charging"))
+        payload = {
+            "fw": d["fw"] or "",
+            "fw_desc": "",
+            "soc": soc,
+            "isoc": soc,
+            "irange": -1,
+            "cabin": st.get("cabin", -99),
+            "amb": st.get("amb", -99),
+            "btemp": st.get("batt", -99),
+            "cdelta": -1,
+            "charging": charging,
+            "charger": "charging" if charging else "",
+            "hvac": bool(st.get("hvac")),
+            "hvac_timer": 0,
+            "setpoint": 22,
+            "fan": 0,
+            "heat": False,
+            "cool": False,
+            "vent": 0,
+            "lock": 1 if st.get("locked") else 0,
+            "locking": True,
+            "lights": 0,
+            "v": st.get("pack_v", -1),
+            "i": 0,
+            "power": st.get("pack_kw", 0),
+            "pack": True,
+            "vvalid": True,
+            "soh": -1,
+            "gids": -1,
+            "odo": st.get("odo", 0),
+            "vin": "",
+            "on": 0,
+            "seq": False,
+            "fage": d["bus_age_s"] if d["bus_age_s"] is not None else -1,
+            "epoch": d["state_ts"] or 0,
+            "tariff_day": None,
+            "tariff_night": None,
+            "night_from": None,
+            "night_to": None,
+            "gps": None,
+            "device": d["login"],
+            "device_name": d["name"],
+        }
+        if st.get("v12") is not None or st.get("doors") is not None:
+            payload["uds"] = {
+                "gear": "",
+                "v12": st.get("v12"),
+                "i12": None,
+                "plug": bool(charging),
+                "mode": "",
+                "spd": 0,
+            }
+        self.json(200, payload)
+
+    def pwa_history(self, path, q):
+        u = self.require_user()
+        if not u:
+            return
+        d = self.pwa_pick_device(u)
+        if not d:
+            return self.json(200, [])
+        kind = "trip" if path.endswith("trips") else "charge"
+        with db_lock, connect() as c:
+            rows = c.execute(
+                "SELECT * FROM dev_sessions WHERE device_id=? AND kind=? "
+                "ORDER BY COALESCE(ended_at,started_at) DESC LIMIT 200",
+                (d["id"], kind),
+            ).fetchall()
+        out = []
+        for r in rows:
+            wh = (r["energy_kwh"] or 0) * 1000.0
+            out.append({
+                "s": r["started_at"] or 0,
+                "e": r["ended_at"] or 0,
+                "d": r["duration_s"] or 0,
+                "k": r["distance_km"] or 0,
+                "w": wh,
+                "wd": wh,
+                "wn": 0,
+                "s0": r["soc_start"] if r["soc_start"] is not None else -1,
+                "s1": r["soc_end"] if r["soc_end"] is not None else -1,
+                "r": "server",
+            })
+        self.json(200, out)
+
+    def pwa_command(self, path, q):
+        u = self.require_user()
+        if not u:
+            return
+        d = self.pwa_pick_device(u)
+        if not d:
+            return self.err(404, "no devices")
+        if d["status"] != "active" and u["role"] != "admin":
+            return self.err(403, "device not approved")
+        name = PWA_COMMANDS[path]
+        args = {}
+        if path == "/hvac_on":
+            try:
+                args["minutes"] = int(q.get("minutes", 20))
+            except ValueError:
+                args["minutes"] = 20
+        with db_lock, connect() as c:
+            cur = c.execute(
+                "INSERT INTO commands(device_id,user_id,name,args,status,created_at) VALUES(?,?,?,?,?,?)",
+                (d["id"], u["id"], name, json.dumps(args, ensure_ascii=False), "queued", now()),
+            )
+            cid = cur.lastrowid
+            log_event(c, d["id"], "cmd_queued", {"cmd": name, "id": cid, "by": u["username"]})
+            online = (now() - (d["last_seen"] or 0)) < ONLINE_WINDOW_S
+        return self.json(200, {"ok": True, "id": cid, "pushed": online, "poll_s": POLL_S})
 
     def list_devices(self):
         u = self.require_user()

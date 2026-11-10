@@ -14,6 +14,7 @@ extern float cabinTemp;
 extern bool isHvacOn;
 extern bool isChargingNow;
 extern bool doorFL, doorFR, doorRL, doorRR, doorTrunk;
+extern int8_t lockState;
 extern EvBatteryData evData;
 
 // ---------------------------------------------------------------- РЅР°СЃС‚СЂРѕР№РєРё
@@ -349,7 +350,7 @@ static void sendState() {
            (double)evData.odometerKm,
            cabinTemp, evData.ambientTemp,
            evData.batteryTemp, packV, packKw, 0.0,
-           isHvacOn ? 1 : 0, isChargingNow ? 1 : 0, 0,
+           isHvacOn ? 1 : 0, isChargingNow ? 1 : 0, (lockState == 1) ? 1 : 0,
            (doorFL || doorFR || doorRL || doorRR || doorTrunk) ? 1 : 0,
            (unsigned long)busAgeSeconds());
 

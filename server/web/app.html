@@ -1,0 +1,3137 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#f9f9f9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#181c21" media="(prefers-color-scheme: dark)">
+<script>
+  // Dark theme follows the phone automatically (CSS prefers-color-scheme).
+  // ?theme=dark|light is only for checking both looks on one device.
+  (function () {
+    var m = location.search.match(/[?&]theme=(dark|light)\b/);
+    if (m) document.documentElement.setAttribute('data-theme', m[1]);
+  })();
+</script>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>Leaf Control</title>
+<style>
+/* Palette. Light by default; dark follows the phone's own setting, and
+   ?theme=dark|light forces one for testing. */
+:root{
+  --bg:#f4f5f7; --surface:#fff; --surface-2:#f9f9f9; --chip:#eceef1;
+  --text:#333; --text-2:#555; --text-strong:#13172c; --muted:#707070; --muted-2:#c1c1c1;
+  --line:#f1f1f1; --accent:#0077ac; --accent-soft:rgba(0,119,172,.12);
+  --btn-bg:#fff; --btn-border:#eee; --card-shadow:0 1px 3px rgba(0,0,0,.06); --btn-shadow:0 2px 8px rgba(0,0,0,.1);
+  --hero-glow:#fff3c4; --hero-glow-2:#ffd166;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0f1216; --surface:#181c21; --surface-2:#1e232a; --chip:#232931;
+    --text:#e6e9ed; --text-2:#b6bec7; --text-strong:#f3f6f9; --muted:#96a0aa; --muted-2:#5c646e;
+    --line:#2f3640; --accent:#4aa8d8; --accent-soft:rgba(74,168,216,.16);
+    --btn-bg:#232a33; --btn-border:#3a434f; --card-shadow:0 1px 3px rgba(0,0,0,.55); --btn-shadow:0 2px 10px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.05);
+    --hero-glow:#ffe9a3; --hero-glow-2:#ffc247;
+  }
+}
+html[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0f1216; --surface:#181c21; --surface-2:#1e232a; --chip:#232931;
+  --text:#e6e9ed; --text-2:#b6bec7; --text-strong:#f3f6f9; --muted:#96a0aa; --muted-2:#5c646e;
+  --line:#2f3640; --accent:#4aa8d8; --accent-soft:rgba(74,168,216,.16);
+  --btn-bg:#232a33; --btn-border:#3a434f; --card-shadow:0 1px 3px rgba(0,0,0,.55); --btn-shadow:0 2px 10px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.05);
+  --hero-glow:#ffe9a3; --hero-glow-2:#ffc247;
+}
+/* Full light palette: the phone may force light while the media query still
+   reports dark (WebView after a system theme change). */
+html[data-theme="light"]{
+  color-scheme:light;
+  --bg:#f4f5f7; --surface:#fff; --surface-2:#f9f9f9; --chip:#eceef1;
+  --text:#333; --text-2:#555; --text-strong:#13172c; --muted:#707070; --muted-2:#c1c1c1;
+  --line:#f1f1f1; --accent:#0077ac; --accent-soft:rgba(0,119,172,.12);
+  --btn-bg:#fff; --btn-border:#eee; --card-shadow:0 1px 3px rgba(0,0,0,.06); --btn-shadow:0 2px 8px rgba(0,0,0,.1);
+  --hero-glow:#fff3c4; --hero-glow-2:#ffd166;
+}
+
+@font-face{font-family:'NissanBrand';src:url('fonts/nissan_regular.ttf') format('truetype');font-weight:400;font-style:normal}
+@font-face{font-family:'NissanBrand';src:url('fonts/nissan_light.ttf') format('truetype');font-weight:300;font-style:normal}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden;overscroll-behavior-y:none}
+/* Inputs inherited the browser's black text on dark surfaces: set both the
+   text colour and the WebKit fill colour (password dots ignore `color`). */
+input,select,textarea{color:var(--text);background:var(--surface-2);font-family:inherit}
+input::placeholder,textarea::placeholder{color:var(--muted);opacity:1}
+input[type=password],input[type=search]{-webkit-text-fill-color:var(--text)}
+input[type=range]{background:transparent}
+body{background:var(--bg);font-family:'NissanBrand',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:var(--text);display:flex;justify-content:center}
+.app{width:100%;max-width:480px;height:100vh;height:100dvh;background:var(--bg);display:flex;flex-direction:column;position:relative;overflow:hidden}
+.appbar{height:48px;background:var(--surface-2);display:flex;align-items:center;padding:0 16px;flex-shrink:0;border-bottom:1px solid var(--line)}
+.appbar .brand{display:flex;align-items:center;gap:8px}
+.appbar .brand svg{width:28px;height:12px}
+.appbar .brand span{font-size:15px;color:var(--text);letter-spacing:.5px}
+.appbar .actions{margin-left:auto;display:flex;gap:10px;align-items:center}
+.conn{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;cursor:pointer;background:none;border:none;font-family:inherit}
+.conn i{width:8px;height:8px;border-radius:50%;background:#c1c1c1;display:block}
+.conn.on i{background:#34c759}
+.conn.off i{background:#ff3b30}
+.conn.warn i{background:#ff9500}
+.screens{flex:1;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;-webkit-overflow-scrolling:touch;
+  overscroll-behavior-y:contain;touch-action:pan-y}
+.screens::-webkit-scrollbar{display:none}
+.screen{display:none;min-height:100%;padding-bottom:72px}
+.screen.active{display:block}
+.tabbar{position:absolute;bottom:0;left:0;right:0;height:56px;background:var(--surface-2);display:flex;box-shadow:0 -1px 0 var(--line);z-index:50;padding-bottom:env(safe-area-inset-bottom)}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;color:var(--muted);font-size:9px;user-select:none;position:relative;padding-top:4px}
+.tab svg{width:22px;height:22px;display:block}
+.tab.active{color:var(--text)}
+.tab.active::before{content:'';position:absolute;top:0;left:20%;right:20%;height:2px;background:var(--accent)}
+.card{background:var(--surface);border-radius:8px;margin:8px 16px;box-shadow:0 1px 3px rgba(0,0,0,.06);overflow:hidden}
+.card-header{padding:16px 16px 0}
+.card-header .accent-line{width:26px;height:1px;background:#40a0da;margin-bottom:8px}
+.card-header .title{font-size:16px;color:var(--text);font-weight:400}
+.vehicle-hero{padding:12px 16px 4px;text-align:center}
+.vehicle-hero img,.vehicle-hero svg{width:100%;max-width:290px;object-fit:contain;display:block;margin:0 auto}
+.vehicle-hero .name{font-size:17px;text-transform:uppercase;color:var(--text-strong);letter-spacing:1px;margin-top:4px}
+.soc-body{padding:16px}
+.soc-mileage{font-size:57px;font-weight:300;color:var(--text);line-height:1;margin:0 0 14px}
+.soc-mileage small{font-size:18px;font-weight:400;color:var(--muted);margin-left:6px}
+.battery-bar{height:10px;background:var(--line);border-radius:5px;overflow:hidden;margin-bottom:6px}
+.battery-bar .fill{height:100%;border-radius:5px;background:#00a1e7;transition:width .6s}
+.battery-bar .fill.low{background:#ff9500}
+.battery-bar .fill.crit{background:#ff3b30}
+.soc-labels{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:14px}
+.soc-labels .pct{color:var(--text);font-weight:600}
+.btn-primary{display:block;width:calc(100% - 32px);margin:0 16px 16px;padding:13px;background:var(--accent);color:#fff;border:none;border-radius:4px;font-size:14px;font-family:inherit;cursor:pointer;letter-spacing:.3px}
+.btn-primary:active{background:#005f8c}
+.btn-primary:disabled{background:#a5cde3}
+.btn-primary.charging{background:#34c759}
+.action-buttons{display:flex;justify-content:center;gap:32px;padding:16px 0 20px;background:var(--bg);margin:8px 16px;border-radius:8px}
+.action-btn{display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer}
+.action-btn[aria-disabled="true"],.feature-card[aria-disabled="true"]{opacity:.42;cursor:default}
+.action-btn .circle{width:68px;height:68px;border-radius:50%;background:var(--btn-bg);box-shadow:var(--btn-shadow);display:flex;align-items:center;justify-content:center;transition:transform .18s,background .18s,box-shadow .18s}
+.action-btn .circle svg{width:30px;height:30px;color:var(--text);transition:color .18s}
+.action-btn span{font-size:12px;color:var(--muted)}
+.action-btn .circle.on{background:#e9f7ef;box-shadow:0 0 0 2px #34c759 inset,0 1px 4px rgba(0,0,0,.1)}
+.action-btn .circle.on svg{color:#1a7f37}
+.action-btn .circle.hot{background:rgba(255,149,0,.14);box-shadow:0 0 0 2px #ff9500 inset,0 1px 4px rgba(0,0,0,.1)}
+.action-btn .circle.hot svg{color:#e67e22}
+.action-btn .circle.unlocked{background:rgba(255,149,0,.14);box-shadow:0 0 0 2px #ff9500 inset,0 1px 4px rgba(0,0,0,.1)}
+.action-btn .circle.flash{background:rgba(255,149,0,.14);box-shadow:0 0 0 2px #ff9500 inset,0 1px 4px rgba(0,0,0,.1);transform:scale(0.92)}
+.action-btn .circle.flash svg{color:#e67e22}
+.feature-card{background:var(--surface);border-radius:8px;margin:0 16px 8px;box-shadow:0 1px 3px rgba(0,0,0,.06);padding:16px;display:flex;align-items:center;gap:14px;cursor:pointer}
+.feature-card.active{background:rgba(255,149,0,.16);box-shadow:0 0 0 1px #ff9500 inset,0 1px 3px rgba(0,0,0,.06)}
+.feature-card.active .ft-title{color:#b45309}
+.feature-card .fi{width:44px;height:44px;background:var(--bg);border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.feature-card .fi svg{width:24px;height:24px;color:var(--accent)}
+.feature-card .ft{flex:1;min-width:0}
+.feature-card .ft .ft-title{font-size:14px;color:var(--text);margin-bottom:2px}
+.feature-card .ft .ft-sub{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.feature-card .chev{color:var(--muted-2);flex-shrink:0}
+.feature-card .chev svg{width:20px;height:20px;display:block}
+.section-title{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin:16px 16px 8px}
+.remote-wrap{padding:0 20px}
+.remote-status{text-align:center;font-size:14px;color:var(--muted);padding:12px 32px;min-height:40px}
+.remote-pad{position:relative;height:340px;margin:4px 0 16px}
+.rbtn{position:absolute;border-radius:50%;background:var(--btn-bg);box-shadow:var(--btn-shadow);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;border:1px solid var(--btn-border)}
+.rbtn:active{background:var(--surface-2)}
+.rbtn svg{width:28px;height:28px;color:var(--text);margin-bottom:4px}
+.rbtn span{font-size:9px;color:var(--muted);letter-spacing:.5px;text-transform:uppercase}
+/* countdown ring around the climate button: depletes counter-clockwise
+   (SVG circle, dashoffset grows as the timer runs down) */
+.rbtn .ring{position:absolute;inset:-5px;width:calc(100% + 10px);height:calc(100% + 10px);
+  transform:rotate(-90deg);pointer-events:none}
+.ring .ring-bg{fill:none;stroke:var(--line);stroke-width:5}
+.ring .ring-fg{fill:none;stroke:var(--accent);stroke-width:5;stroke-linecap:round;
+  stroke-dasharray:320.4;stroke-dashoffset:320.4;
+  transition:stroke-dashoffset .6s linear, stroke .3s}
+.rbtn.start.on .ring .ring-fg{stroke:#34c759}
+.rbtn.start.warn .ring .ring-fg{stroke:#ff3b30}
+.rbtn.start{width:128px;height:128px;left:50%;top:50%;transform:translate(-50%,-50%)}
+.rbtn.start span{font-size:11px;font-weight:600;color:var(--text);line-height:1.3}
+.rbtn.start span b{font-size:13px;font-weight:700}
+.rbtn.start.warn span b{color:#ff3b30}
+.rbtn.start svg.ring ~ svg{width:36px;height:36px;margin-bottom:6px}
+.rbtn.a{width:88px;height:88px;left:5%;top:15%}
+.rbtn.b{width:88px;height:88px;right:5%;top:15%}
+.rbtn.c{width:88px;height:88px;left:5%;top:55%}
+.rbtn.d{width:88px;height:88px;right:5%;top:55%}
+.rbtn:disabled{opacity:.45}
+.rbtn[aria-disabled="true"]{opacity:.42;cursor:default}
+.setpoint-row{display:flex;align-items:center;gap:12px;background:var(--surface);border-radius:8px;margin:0 0 12px;padding:12px 16px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.setpoint-row label{font-size:13px;color:var(--muted);white-space:nowrap}
+.setpoint-row input[type=range]{flex:1;accent-color:var(--accent)}
+.setpoint-row .val{font-size:15px;color:var(--text);font-weight:600;min-width:44px;text-align:right}
+/* duration as buttons + countdown bar */
+.dur-row{flex-wrap:wrap}
+.dur-btns{display:flex;gap:6px;flex:1;justify-content:flex-end;flex-wrap:wrap}
+.dur-btns button{border:1px solid var(--line);background:var(--surface);color:var(--text-2);border-radius:8px;
+  font:inherit;font-size:12.5px;min-width:38px;padding:7px 0;cursor:pointer;transition:background .15s,border-color .15s,color .15s}
+.dur-btns button:hover{border-color:var(--accent)}
+.dur-btns button.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+@media (prefers-color-scheme: dark){.dur-btns button.on{color:#08121a}}
+html[data-theme="dark"] .dur-btns button.on{color:#08121a}
+.remote-divider{height:1px;background:var(--chip);margin:0 32px 8px}
+.remote-meta{text-align:center;font-size:12px;color:var(--muted);padding-bottom:12px}
+.remote-meta .row{display:flex;justify-content:center;gap:40px;padding:10px 0}
+.remote-meta .cell{display:flex;flex-direction:column;align-items:center;gap:4px}
+.remote-meta .cell svg{width:20px;height:20px;color:var(--muted)}
+.remote-meta .cell span{font-size:11px}
+.remote-meta .updated{font-size:11px;color:var(--muted-2)}
+.remote-extra{display:flex;gap:10px;justify-content:center;margin:12px 0 4px}
+.pill-btn{display:flex;align-items:center;gap:7px;background:var(--surface);border:1px solid var(--line);border-radius:22px;padding:9px 20px;font-size:13px;color:var(--text);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.06);cursor:pointer}
+.pill-btn:active{background:var(--surface-2)}
+.pill-btn svg{width:16px;height:16px}
+/* Refresh icon in the app bar: available on every screen */
+.icon-btn{width:34px;height:34px;border:0;background:transparent;color:var(--text);display:flex;align-items:center;justify-content:center;border-radius:50%;cursor:pointer;padding:0;margin-right:2px}
+.icon-btn:active{background:var(--chip)}
+.icon-btn svg{width:19px;height:19px}
+.icon-btn.busy svg{animation:fabspin .9s linear infinite}
+@keyframes fabspin{to{transform:rotate(360deg)}}
+.vs-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 16px}
+.vs-cell{background:var(--surface);border-radius:8px;padding:12px;box-shadow:0 1px 3px rgba(0,0,0,.06);display:flex;align-items:center;gap:10px}
+.vs-cell .vsi{width:32px;height:32px;display:flex;align-items:center;justify-content:center;color:var(--accent);flex-shrink:0}
+.vs-cell .vsi svg{width:20px;height:20px}
+.vs-cell .vst{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.vs-cell .vsv{font-size:13px;color:var(--text);margin-top:2px}
+.more-item{background:var(--surface);margin:0 16px;padding:16px;display:flex;align-items:center;gap:14px;border-bottom:1px solid var(--line);cursor:pointer;font-size:14px;color:var(--text)}
+.more-item:last-child{border-bottom:none}
+.more-item .chev{margin-left:auto;color:var(--muted-2)}
+.more-item .chev svg{width:20px;height:20px;display:block}
+.more-item .mi{width:24px;height:24px;color:var(--muted);display:flex;align-items:center;justify-content:center}
+.more-item .mi svg{width:20px;height:20px}
+.toast{position:absolute;left:50%;bottom:80px;transform:translateX(-50%) translateY(20px);background:rgba(51,51,51,.92);color:#fff;padding:10px 20px;border-radius:20px;font-size:13px;opacity:0;pointer-events:none;transition:.25s;z-index:100;white-space:nowrap;max-width:90%;overflow:hidden;text-overflow:ellipsis}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.hold-target{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;touch-action:pan-y}
+.hold-visual{position:relative!important}
+.rbtn.hold-visual{position:absolute!important}
+.hold-progress{position:absolute;pointer-events:none;opacity:0;transition:opacity .12s}
+.hold-target.holding .hold-progress{opacity:1}
+.hold-target.holding .hold-visual{transform:scale(.96)}
+.hold-progress.hold-ring{inset:-5px;border-radius:50%;background:conic-gradient(#0077ac calc(var(--hold,0)*1%),rgba(0,119,172,.12) 0);-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 3px));mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 3px))}
+.hold-progress.fill{inset:0 auto 0 0;width:calc(var(--hold,0)*1%);border-radius:inherit;background:rgba(0,119,172,.18)}
+.gps-row{display:none;margin:0 16px 8px;gap:8px;align-items:center}
+.gps-row a{flex:1;text-align:center;background:var(--surface);color:var(--accent);font-size:13px;padding:9px 6px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.06);text-decoration:none}
+.gps-row span{font-size:11px;color:var(--muted);white-space:nowrap}
+.modal{position:absolute;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-end;justify-content:center;z-index:200;overscroll-behavior:contain}
+.modal.show{display:flex}
+.modal .sheet{background:var(--surface);border-radius:16px 16px 0 0;width:100%;max-height:88%;overflow-y:auto;padding:20px 20px calc(20px + env(safe-area-inset-bottom));overscroll-behavior-y:contain}
+.modal h2{font-size:18px;color:var(--text);margin-bottom:4px;font-weight:400}
+.modal p.hint{font-size:12px;color:var(--muted);margin-bottom:16px}
+.modal label{display:block;font-size:12px;color:var(--muted);margin:12px 0 4px}
+.modal input{width:100%;padding:10px;font-size:15px;font-family:inherit;border:1px solid var(--line);border-radius:6px;background:var(--surface-2)}
+.modal input:focus{outline:none;border-color:var(--accent);background:var(--surface)}
+.modal .btns{display:flex;gap:10px;margin-top:20px}
+.modal .btns button{flex:1;padding:12px;border:none;border-radius:6px;font-size:14px;font-family:inherit;cursor:pointer}
+.modal .btns .save{background:var(--accent);color:#fff}
+.modal .btns .cancel{background:var(--chip);color:var(--text)}
+.fw-bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden;margin-top:14px}
+.fw-bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s}
+.about-sheet{padding-top:18px!important}
+.about-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:16px}
+.about-head h2{margin:0 0 4px}
+.about-head p{font-size:13px;line-height:1.45;color:var(--muted)}
+.about-close{width:36px;height:36px;flex:0 0 36px;border:0;border-radius:50%;background:var(--chip);color:var(--text);font-size:25px;font-family:inherit;line-height:34px;cursor:pointer}
+.about-section{padding:16px 0;border-top:1px solid var(--line)}
+.about-section h3{font-size:14px;font-weight:600;color:var(--text);margin-bottom:10px}
+.about-list{list-style:none;display:grid;gap:10px}
+.about-list li{position:relative;padding-left:18px;font-size:13px;line-height:1.45;color:var(--text-2)}
+.about-list li:before{content:'';position:absolute;left:1px;top:7px;width:7px;height:7px;border-radius:50%;background:var(--accent)}
+.about-section.planned .about-list li:before{background:#8e8e93}
+.about-note{margin-top:2px;padding:12px 14px;border-left:3px solid #0077ac;background:var(--surface-2);color:var(--text-2);font-size:12px;line-height:1.45}
+.dev-status{margin:16px 0;padding:14px;background:var(--surface-2);border:1px solid var(--line);border-radius:8px}
+.dev-status strong{display:block;font-size:14px;color:var(--text);margin-bottom:4px}
+.dev-status span{font-size:12px;color:var(--muted);line-height:1.4}
+.dev-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
+.dev-actions button{min-height:44px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text);font:14px inherit;cursor:pointer}
+.dev-actions .primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.dev-actions .danger{color:#d93025;border-color:#efc6c3}
+.dev-actions button:disabled{opacity:.45;cursor:default}
+.dev-download{display:block;margin-top:10px;padding:12px;text-align:center;border-radius:6px;background:var(--chip);color:var(--accent);text-decoration:none;font-size:14px}
+.dev-error{min-height:18px;margin-top:8px;color:#d93025;font-size:12px}
+/* Diagnostics sheet */
+.diag-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.diag-grid .d-cell{background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:9px 11px}
+.diag-grid .d-cell b{display:block;font-size:14px;color:var(--text);font-weight:600;word-break:break-word}
+.diag-grid .d-cell span{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+.diag-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.diag-actions .pill-btn{font-size:12px;padding:8px 12px}
+.diag-modem{margin:12px 0 0;padding:10px 12px;background:#0f1115;color:#d7e0ea;border-radius:8px;
+  font:11px/1.45 ui-monospace,Consolas,monospace;white-space:pre-wrap;word-break:break-word;
+  max-height:220px;overflow:auto;display:none}
+.diag-modem.show{display:block}
+/* CAN monitor: one row per identifier, updated in place */
+.dev-monitor{margin:16px 0;padding:14px;background:var(--surface-2);border:1px solid var(--line);border-radius:8px}
+.dm-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.dm-head strong{font-size:14px;color:var(--text)}
+.dm-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.dm-actions button,.dm-filters button{border:1px solid var(--line);background:var(--surface);color:var(--text-2);border-radius:6px;font:inherit;font-size:11.5px;padding:5px 9px;cursor:pointer}
+.dm-actions button:hover,.dm-filters button:hover{border-color:var(--accent)}
+.dm-filters{display:flex;gap:6px;align-items:center;margin-bottom:8px}
+.dm-filters button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+@media (prefers-color-scheme: dark){.dm-filters button.on{color:#08121a}}
+html[data-theme="dark"] .dm-filters button.on{color:#08121a}
+.dm-count{margin-left:auto;font-size:11px;color:var(--muted)}
+.dm-wrap{max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:6px;background:var(--surface);
+  overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:auto}
+@media (max-width:520px){.dm-wrap{max-height:46vh}}
+.dm-table{width:100%;border-collapse:collapse;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px}
+.dm-table th{position:sticky;top:0;background:var(--chip);color:var(--muted);font-weight:600;text-align:left;padding:6px 8px;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px}
+.dm-table td{padding:5px 8px;border-top:1px solid var(--line);color:var(--text);white-space:nowrap}
+.dm-table tr.hot td{background:var(--accent-soft)}
+.dm-table tr.hot td:first-child{box-shadow:inset 2px 0 0 var(--accent)}
+.dm-table td.dm-data{color:var(--text-2);letter-spacing:.5px}
+.dm-table td.dm-age{color:var(--muted);text-align:right}
+.dm-table td.dm-n{text-align:right;color:var(--muted)}
+.dm-empty{text-align:center;color:var(--muted);padding:14px 0!important}
+.dm-add{padding:2px 6px!important}
+.dm-table th:last-child{position:sticky;right:0;background:var(--chip);z-index:2}
+.dm-table td:last-child{position:sticky;right:0;background:var(--surface);z-index:1}
+.dm-table tr.hot td:last-child{background:var(--accent-soft)}
+.dm-add button{border:1px solid var(--line);background:var(--surface);color:var(--accent);border-radius:6px;font:inherit;font-size:15px;font-weight:600;line-height:1;width:32px;height:32px;cursor:pointer;touch-action:manipulation}
+.dm-add button:hover{border-color:var(--accent)}
+.dm-idfilter{flex:1;min-width:0;max-width:120px;margin-left:auto;padding:5px 8px;font:inherit;font-size:12px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text)}
+.dm-idfilter:focus{outline:none;border-color:var(--accent)}
+.dm-nosend{display:inline-block;width:32px;text-align:center;color:var(--muted-2)}
+.dm-hits{text-align:center;color:var(--muted)}
+.dm-hits.has{color:var(--accent);font-weight:700}
+.dm-marks{margin:-2px 0 8px;font-size:11px;color:var(--muted)}
+.dm-count{margin-left:8px;font-size:11px;color:var(--muted);white-space:nowrap}
+.rp-list{display:grid;gap:6px}
+.rp-empty{font-size:12px;color:var(--muted);text-align:center;padding:10px 0}
+.rp-item{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:8px 10px}
+.rp-main{flex:1;min-width:0}
+.rp-name{font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rp-code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--muted);margin-top:2px}
+.rp-play,.rp-del{border:1px solid var(--line);background:var(--surface-2);color:var(--text);border-radius:6px;width:30px;height:28px;font:inherit;font-size:13px;cursor:pointer}
+.rp-play{color:var(--accent)}
+.rp-del{color:#d93025}
+.rp-play:hover,.rp-del:hover{border-color:currentColor}
+#rp-arm.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.settings-groups{margin-top:14px;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.settings-group{border-bottom:1px solid var(--line);background:var(--surface)}
+.settings-group:last-child{border-bottom:0}
+.settings-group summary{list-style:none;min-height:52px;padding:0 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:14px;color:var(--text);cursor:pointer;user-select:none}
+.settings-group summary::-webkit-details-marker{display:none}
+.settings-group summary:after{content:'›';font-size:24px;font-weight:300;color:var(--muted-2);line-height:1;transition:transform .18s}
+.settings-group[open] summary{color:var(--accent);border-bottom:1px solid var(--line)}
+.settings-group[open] summary:after{transform:rotate(90deg)}
+.settings-group-body{padding:2px 14px 16px}
+.settings-availability{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:var(--muted)}
+.settings-availability i{width:8px;height:8px;border-radius:50%;background:var(--muted-2);flex:0 0 auto}
+.seq-banner{background:rgba(255,149,0,.14);color:#b45309;text-align:center;font-size:13px;padding:8px;display:none}
+.seq-banner.show{display:block}
+/*DEMO-BEGIN*/
+.demo-banner{display:none;background:var(--accent);color:#fff;font-size:12.5px;padding:7px 12px;text-align:center;letter-spacing:.2px}
+.demo-banner a{color:#fff;font-weight:600;margin-left:6px}
+body.demo .demo-banner{display:block}
+/*DEMO-END*/
+.trip-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 16px}
+.trip-summary .cell{background:var(--surface);border-radius:8px;padding:12px 8px;box-shadow:0 1px 3px rgba(0,0,0,.06);text-align:center}
+.trip-summary .cell .num{font-size:20px;color:var(--text);font-weight:600}
+.trip-summary .cell .lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+.trip-active-banner{margin:0 16px 8px;padding:10px 14px;background:#e9f7ef;border:1px solid #34c759;border-radius:8px;font-size:12px;color:#1a7f37;display:none;align-items:center;gap:8px}
+.trip-active-banner.show{display:flex}
+.trip-active-banner i{width:8px;height:8px;border-radius:50%;background:#34c759;flex-shrink:0}
+.trip-toggle{display:flex;align-items:center;gap:10px;margin:0 16px 8px;padding:11px 14px;background:var(--surface);border-radius:8px;box-shadow:var(--card-shadow);font-size:13px;color:var(--text);cursor:pointer;user-select:none}
+.trip-toggle .mi{width:20px;height:20px;color:var(--muted);display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.trip-toggle .mi svg{width:18px;height:18px}
+.trip-toggle .lbl{flex:1}
+.trip-toggle .sw{width:40px;height:22px;border-radius:11px;background:var(--chip);position:relative;transition:background .18s;flex:0 0 auto}
+.trip-toggle .sw i{position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .18s;box-shadow:0 1px 2px rgba(0,0,0,.25)}
+.trip-toggle.on .sw{background:var(--accent)}
+.trip-toggle.on .sw i{transform:translateX(18px)}
+.trip-list{margin:0 16px}
+.trip-item{background:var(--surface);border-radius:8px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,.06);padding:14px}
+.trip-item .t-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.trip-item .t-date{font-size:12px;color:var(--muted)}
+.trip-item .t-dur{font-size:12px;color:var(--muted)}
+.trip-item .t-metrics{display:flex;gap:14px;font-size:13px;color:var(--text);margin-bottom:6px}
+.trip-item .t-metrics .m-val{font-weight:600}
+.trip-item .t-meta{font-size:11px;color:var(--muted-2);display:flex;gap:12px;flex-wrap:wrap}
+.t-route{margin-top:8px;color:var(--accent);background:var(--surface-2);border-radius:6px;padding:6px 6px 4px}
+.t-route svg{width:100%;height:86px;display:block}
+.t-route-note{font-size:10.5px;color:var(--muted);text-align:center;margin-top:1px}
+.trip-item .t-meta .route{color:var(--accent);cursor:pointer}
+.trip-empty{text-align:center;color:var(--muted);font-size:14px;padding:48px 20px}
+.trip-clear{display:block;width:calc(100% - 32px);margin:12px 16px;padding:12px;background:var(--surface);color:#ff3b30;border:1px solid #ff3b30;border-radius:8px;font-size:13px;font-family:inherit;cursor:pointer}
+.trip-clear:active{background:rgba(255,59,48,.12)}
+.trip-clear.export{color:var(--accent);border-color:var(--accent);margin-top:0}
+.trip-clear.export:active{background:var(--accent-soft)}
+/* --- Car status picture -------------------------------------------------
+   Base photo always visible. Optional real overlays are separate files next
+   to index.html: car-lights.png, car-cable.png, car-wheel1..4.png. They must
+   be the same size/alignment as leaf.png (620x347 also works: the browser
+   scales them to the box). Missing files remove themselves, so the picture
+   simply stays clean instead of showing a broken image. */
+.car-stage{position:relative;width:100%;max-width:290px;margin:0 auto;line-height:0}
+.car-stage .car-base{width:100%;height:auto;display:block}
+/* Two classes so this beats ".vehicle-hero img{display:block}". */.car-stage .car-layer{position:absolute;left:0;top:0;width:100%;height:100%;display:none;pointer-events:none}
+.car-layer img{position:absolute;left:0;top:0;width:100%;height:100%;display:block}
+.car-stage.lights   .car-layer[data-when="lights"]{display:block}
+.car-stage.charging .car-layer[data-when="cable"]{display:block}
+.car-stage.moving   .car-layer[data-when="moving"]{display:block}
+
+/* Four wheel frames cycled quickly: the classic sprite animation. */
+.car-layer.frames img{opacity:0;animation:wframe .48s linear infinite}
+.car-layer.frames img:nth-child(1){animation-delay:0s}
+.car-layer.frames img:nth-child(2){animation-delay:-.12s}
+.car-layer.frames img:nth-child(3){animation-delay:-.24s}
+.car-layer.frames img:nth-child(4){animation-delay:-.36s}
+@keyframes wframe{0%,24.9%{opacity:1}25%,100%{opacity:0}}
+
+/* Fallback while car-wheel1..4.png are missing: a stepped conic gradient
+   reads as a rotating rim. Hidden as soon as one wheel frame loads. */
+.car-stage.moving.no-wheel-img .car-layer.spin-wheels{display:block}
+.car-layer.spin-wheels .wheel{position:absolute;width:17%;aspect-ratio:1/1;border-radius:50%;
+  transform:translate(-50%,-50%);
+  background:conic-gradient(from 0deg,rgba(255,255,255,.9) 0 8deg,rgba(0,0,0,.55) 8deg 26deg,transparent 26deg 60deg);
+  -webkit-mask:radial-gradient(circle,transparent 50%,#000 52%);
+  mask:radial-gradient(circle,transparent 50%,#000 52%);
+  opacity:.75;animation:wheelspin .45s steps(8) infinite}
+.car-layer.spin-wheels .wheel.w1{left:42%;top:79%}
+.car-layer.spin-wheels .wheel.w2{left:83%;top:77%}
+@keyframes wheelspin{from{transform:translate(-50%,-50%) rotate(0)}to{transform:translate(-50%,-50%) rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){
+  .car-layer.frames img,.car-layer.spin-wheels .wheel{animation:none}
+  .car-layer.frames img:nth-child(1){opacity:1}
+}
+</style>
+
+<style id="desktop-layout">
+/* Десктопная раскладка поверх штатных стилей PWA: та же палитра и карточки. */
+@media (min-width:900px){
+  .app{max-width:none;display:grid;grid-template-columns:230px 1fr;
+       grid-template-rows:auto 1fr;height:100vh;overflow:hidden}
+  .appbar{grid-column:1/-1}
+  .seq-banner,.demo-banner{grid-column:1/-1}
+  .tabbar{grid-column:1;grid-row:2/4;position:static;height:auto;width:auto;
+          flex-direction:column;justify-content:flex-start;align-items:stretch;gap:6px;
+          padding:14px 10px;box-shadow:none;border-right:1px solid var(--line);
+          background:var(--surface-2);z-index:1}
+  .tab{flex:0 0 auto;flex-direction:row;justify-content:flex-start;gap:10px;
+       padding:12px;border-radius:10px;font-size:14px}
+  .tab svg{width:20px;height:20px}
+  .screens{grid-column:2;grid-row:2;overflow-y:auto;padding:16px 22px 28px}
+  .screen{max-width:1080px;margin:0 auto;padding-bottom:0}
+  #screen-garage.active{display:grid;grid-template-columns:minmax(330px,420px) 1fr;
+                        gap:14px;align-items:start}
+  #screen-garage.active > .card{margin:0}
+  .modal .sheet{max-width:560px;margin:0 auto;border-radius:16px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="appbar">
+    <div class="brand">
+      <svg viewBox="0 0 60 24" fill="none"><circle cx="30" cy="12" r="10.5" stroke="currentColor" stroke-width="1.5"/><path d="M14 12h9m14 0h9" stroke="currentColor" stroke-width="1.5"/><path d="M20 8.5l-3 3.5 3 3.5M40 8.5l3 3.5-3 3.5" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
+      <span>Leaf Control</span>
+    </div>
+    <div class="actions">
+      <button class="icon-btn" id="refresh-btn" aria-label="Обновить данные автомобиля" title="Обновить">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+      </button>
+      <button class="conn off" id="conn-badge" onclick="openSettings()"><i></i><span id="conn-text">...</span></button>
+    </div>
+  </div>
+  <div class="seq-banner" id="seq-banner">Выполняется команда…</div>
+  <!--DEMO-BEGIN-->
+  <div class="demo-banner" id="demo-banner">
+    Демо-режим · данные условные, команды не отправляются
+    <a href="?" id="demo-exit">выйти</a>
+  </div>
+  <!--DEMO-END-->
+
+  <div class="screens" id="screens">
+    <!-- ГАРАЖ -->
+    <section class="screen active" id="screen-garage">
+      <div class="card" style="margin-top:8px;padding-bottom:8px">
+        <div class="vehicle-hero">
+          <div class="car-stage" id="car-stage">
+            <img class="car-base" src="leaf.png" alt="Nissan Leaf">
+            <img class="car-layer" data-when="lights" src="car-lights.png" alt=""
+                 onerror="document.getElementById('car-stage').classList.add('no-lights-img');this.remove()">
+            <img class="car-layer" data-when="cable" src="car-cable.png" alt=""
+                 onerror="document.getElementById('car-stage').classList.add('no-cable-img');this.remove()">
+            <div class="car-layer frames" data-when="moving">
+              <img src="car-wheel1.png" alt="" onerror="document.getElementById('car-stage').classList.add('no-wheel-img');this.remove()">
+              <img src="car-wheel2.png" alt="" onerror="document.getElementById('car-stage').classList.add('no-wheel-img');this.remove()">
+              <img src="car-wheel3.png" alt="" onerror="document.getElementById('car-stage').classList.add('no-wheel-img');this.remove()">
+              <img src="car-wheel4.png" alt="" onerror="document.getElementById('car-stage').classList.add('no-wheel-img');this.remove()">
+            </div>
+            <div class="car-layer spin-wheels"><span class="wheel w1"></span><span class="wheel w2"></span></div>
+          </div>
+          <div class="name">Nissan Leaf</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="accent-line"></div>
+          <div class="title">Уровень заряда</div>
+        </div>
+        <div class="soc-body">
+          <div class="soc-mileage"><span id="g-range">—</span><small>км</small></div>
+          <div class="battery-bar"><div class="fill" id="g-bar" style="width:0%"></div></div>
+          <div class="soc-labels">
+            <span class="pct"><span id="g-soc">—</span>%</span>
+            <span id="g-charge-state">—</span>
+          </div>
+        </div>
+        <button class="btn-primary" id="g-charge-btn">Начать зарядку</button>
+      </div>
+      <div class="action-buttons">
+        <div class="action-btn" id="act-lights">
+          <div class="circle" id="act-lights-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-4 10.5c.6.55 1 1.25 1 2v.5h6v-.5c0-.75.4-1.45 1-2A6 6 0 0012 3z"/></svg></div>
+          <span>Вспышка фар</span>
+        </div>
+        <div class="action-btn" id="act-doors">
+          <div class="circle" id="act-doors-ic"><svg viewBox="0 0 26 30" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M23.13 11.1h-1.85l-.01-2.7A8.33 8.33 0 104.63 8.33l0 2.77H2.78A2.78 2.78 0 000 13.88v12.95a2.78 2.78 0 002.78 2.77h20.35A2.78 2.78 0 0025.9 26.83V13.88a2.78 2.78 0 00-2.77-2.78zM7.4 8.33a5.55 5.55 0 0111.1 0v2.77H7.4V8.33zm15.73 18.5H2.78V13.88h20.35v12.95z" fill="currentColor"/></svg></div>
+          <span>Двери</span>
+        </div>
+        <div class="action-btn" id="act-climate">
+          <div class="circle" id="act-climate-ic"><svg viewBox="0 0 36 32" fill="none" aria-hidden="true"><circle cx="28" cy="6" r="4.2" fill="currentColor"/><path d="M25 13l-4.5 8H14l-5 7" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 6h13m0 0l-4-3.5M15 6l-4 3.5M2 13l8 6m0 0l-1-5M10 19l-5 .5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <span>Климат</span>
+        </div>
+      </div>
+      <div class="section-title">Функции</div>
+      <div class="feature-card" onclick="go('status')">
+        <div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13.63.51L4.24 13.11c-.6.85 0 2.06 1.03 2.06h4.66l-1.63 8.12c-.24 1.33 1.45 2.12 2.3 1.03l9.39-12.6c.6-.85 0-2.06-1.03-2.06h-4.66l1.63-8.12c.24-1.33-1.45-2.12-2.3-1.03z"/></svg></div>
+        <div class="ft"><div class="ft-title">Состояние авто</div><div class="ft-sub" id="f-status-sub">Батарея, климат, двери</div></div>
+        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+      </div>
+      <div class="feature-card" onclick="go('remote')">
+        <div class="fi"><svg viewBox="0 0 24 25" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13.63.51L4.24 13.11c-.6.85 0 2.06 1.03 2.06h4.66l-1.63 8.12c-.24 1.33 1.45 2.12 2.3 1.03l9.39-12.6c.6-.85 0-2.06-1.03-2.06h-4.66l1.63-8.12c.24-1.33-1.45-2.12-2.3-1.03z"/></svg></div>
+        <div class="ft"><div class="ft-title">Дистанционные услуги</div><div class="ft-sub">Климат, зарядка, двери</div></div>
+        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+      </div>
+      <div class="feature-card" id="find-car">
+        <div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2a7 7 0 00-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 00-7-7zm0 9.5A2.5 2.5 0 1112 6.5a2.5 2.5 0 010 5z"/></svg></div>
+        <div class="ft"><div class="ft-title">Поиск моей машины</div><div class="ft-sub" id="find-car-sub">Недоступно</div></div>
+        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+      </div>
+      <div class="gps-row" id="gps-row">
+        <a id="gps-ya" target="_blank" rel="noopener">Яндекс.Карты</a>
+        <a id="gps-go" target="_blank" rel="noopener">Google Maps</a>
+        <span id="gps-age"></span>
+      </div>
+      <div class="feature-card" onclick="toast('Нет подключённых уведомлений')">
+        <div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 22a2.5 2.5 0 002.45-2h-4.9A2.5 2.5 0 0012 22zm7-6v-5a7 7 0 00-5-6.7V3a2 2 0 10-4 0v1.3A7 7 0 005 11v5l-2 2v1h18v-1l-2-2z"/></svg></div>
+        <div class="ft"><div class="ft-title">Уведомления ЭЗ</div><div class="ft-sub">Завершение зарядки и др.</div></div>
+        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+      </div>
+      <div class="feature-card" onclick="go('charges')">
+        <div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13.63.51L4.24 13.11c-.6.85 0 2.06 1.03 2.06h4.66l-1.63 8.12c-.24 1.33 1.45 2.12 2.3 1.03l9.39-12.6c.6-.85 0-2.06-1.03-2.06h-4.66l1.63-8.12c.24-1.33-1.45-2.12-2.3-1.03z"/></svg></div>
+        <div class="ft"><div class="ft-title">История зарядок</div><div class="ft-sub" id="f-charges-sub">Сеансы и статистика</div></div>
+        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+      </div>
+      <div class="feature-card" onclick="go('trips')">
+        <div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3.5 18.5l5.57-5.57 3.54 3.53L20.5 8.07V16h-2V10.5L9.6 17.43l-3.54-3.53L4 16.09l-.5 2.41zM2 20h20v2H2v-2z"/></svg></div>
+        <div class="ft"><div class="ft-title">Поездки</div><div class="ft-sub" id="f-trips-sub">Статистика и история</div></div>
+        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+      </div>
+      <div style="height:16px"></div>
+    </section>
+
+    <!-- ДИСТАНЦИОННЫЕ УСЛУГИ -->
+    <section class="screen" id="screen-remote">
+      <div style="padding:12px 16px 0;text-align:center">
+        <img src="leaf.png" alt="" style="width:200px;object-fit:contain;max-height:110px">
+        <div style="font-size:15px;text-transform:uppercase;color:#13172c;letter-spacing:1px;margin-top:4px">Nissan Leaf</div>
+      </div>
+      <div class="remote-wrap">
+        <div class="remote-status" id="remote-status">Выберите действие</div>
+        <div class="setpoint-row">
+          <label>Климат, °C</label>
+          <input type="range" id="sp-slider" min="16" max="28" step="0.5" value="21" oninput="spChanged(this.value)">
+          <span class="val" id="sp-val">21.0</span>
+        </div>
+        <div class="setpoint-row dur-row">
+          <label>Длительность</label>
+          <div class="dur-btns" id="dur-btns">
+            <button type="button" data-min="5">5</button>
+            <button type="button" data-min="10">10</button>
+            <button type="button" data-min="15" class="on">15</button>
+            <button type="button" data-min="20">20</button>
+            <button type="button" data-min="30">30</button>
+          </div>
+          <input type="hidden" id="hvac-minutes" value="15">
+        </div>
+        <div class="remote-pad">
+          <div class="rbtn a" id="rb-horn">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0014 7.97v8.05A4.47 4.47 0 0016.5 12zM14 3.23v2.06a7 7 0 010 13.42v2.06a9 9 0 000-17.54z"/></svg>
+            <span>Сигнал и фары</span>
+          </div>
+          <div class="rbtn b" id="rb-lock">
+            <svg viewBox="0 0 26 30" fill="none"><path d="M23.13 11.1h-1.85l-.01-2.7A8.33 8.33 0 104.63 8.33l0 2.77H2.78A2.78 2.78 0 000 13.88v12.95a2.78 2.78 0 002.78 2.77h20.35A2.78 2.78 0 0025.9 26.83V13.88a2.78 2.78 0 00-2.77-2.78zM7.4 8.33a5.55 5.55 0 0111.1 0v2.77H7.4V8.33zm15.73 18.5H2.78V13.88h20.35v12.95z" fill="currentColor"/></svg>
+            <span>Закрыть</span>
+          </div>
+          <div class="rbtn start" id="rb-climate">
+            <svg class="ring" viewBox="0 0 108 108" aria-hidden="true">
+              <circle class="ring-bg" cx="54" cy="54" r="51"/>
+              <circle class="ring-fg" id="climate-ring" cx="54" cy="54" r="51"/>
+            </svg>
+            <svg viewBox="0 0 36 32" fill="none" aria-hidden="true"><circle cx="28" cy="6" r="4.2" fill="currentColor"/><path d="M25 13l-4.5 8H14l-5 7" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 6h13m0 0l-4-3.5M15 6l-4 3.5M2 13l8 6m0 0l-1-5M10 19l-5 .5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span id="rb-climate-label">Климат</span>
+          </div>
+          <div class="rbtn c" id="rb-lights">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-4 10.5c.6.55 1 1.25 1 2v.5h6v-.5c0-.75.4-1.45 1-2A6 6 0 0012 3z"/></svg>
+            <span>Вспышка фар</span>
+          </div>
+          <div class="rbtn d" id="rb-unlock">
+            <svg viewBox="0 0 26 30" fill="none"><path d="M23.13 29.6H2.78A2.78 2.78 0 010 26.83V13.88A2.78 2.78 0 012.78 11.1h1.85V8.33A8.34 8.34 0 0112.95 0h.02a8.28 8.28 0 015.26 1.91 8.47 8.47 0 012.85 4.72h-2.85a5.62 5.62 0 00-1.99-2.77 5.5 5.5 0 00-3.3-1.09A5.56 5.56 0 007.4 8.33V11.1h10.05v.03h5V11.1h.68A2.78 2.78 0 0125.9 13.88v12.95a2.78 2.78 0 01-2.77 2.77zM2.78 13.88v12.95h20.35V13.88H2.78z" fill="currentColor"/></svg>
+            <span>Открыть</span>
+          </div>
+        </div>
+        <div class="remote-extra">
+          <button class="pill-btn" id="remote-charge"><svg viewBox="0 0 25 25" fill="currentColor"><path d="M14.65 2.17a1.13 1.13 0 00-2.25 0l-.01 4.13h2.25l.01-4.13zM5.63 2.17a1.13 1.13 0 00-2.25 0l-.01 4.13h2.26l0-4.13zm11.65 5.64H.75A.75.75 0 000 8.56v.75c0 .42.34.75.75.75H1.5v3a7.5 7.5 0 006.39 7.4v7.62h2.25V20.46a7.5 7.5 0 006.39-7.4v-3h.75a.75.75 0 00.75-.75v-.75a.75.75 0 00-.75-.75zm-3 5.26a5.26 5.26 0 01-10.52 0v-3h10.52v3z"/></svg>Зарядка</button>
+          <button class="pill-btn" onclick="cmd('refresh')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>Обновить</button>
+        </div>
+        <div class="remote-divider"></div>
+        <div class="remote-meta">
+          <div class="row">
+            <div class="cell">
+              <svg viewBox="0 0 24 25" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M13.63.51L4.24 13.11c-.6.85 0 2.06 1.03 2.06h4.66l-1.63 8.12c-.24 1.33 1.45 2.12 2.3 1.03l9.39-12.6c.6-.85 0-2.06-1.03-2.06h-4.66l1.63-8.12c.24-1.33-1.45-2.12-2.3-1.03z"/></svg>
+              <span><span id="rm-range">—</span> км запас хода</span>
+            </div>
+            <div class="cell">
+              <svg viewBox="0 0 26 30" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M23.13 11.1h-1.85l-.01-2.7A8.33 8.33 0 104.63 8.33l0 2.77H2.78A2.78 2.78 0 000 13.88v12.95a2.78 2.78 0 002.78 2.77h20.35A2.78 2.78 0 0025.9 26.83V13.88a2.78 2.78 0 00-2.77-2.78z"/></svg>
+              <span id="rm-lock">—</span>
+            </div>
+          </div>
+          <div class="updated" id="rm-updated">Обновлено: никогда</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- СОСТОЯНИЕ АВТО -->
+    <section class="screen" id="screen-status">
+      <div class="vs-grid" style="margin-top:12px">
+        <div class="vs-cell">
+          <div class="vsi"><svg viewBox="0 0 24 25" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13.63.51L4.24 13.11c-.6.85 0 2.06 1.03 2.06h4.66l-1.63 8.12c-.24 1.33 1.45 2.12 2.3 1.03l9.39-12.6c.6-.85 0-2.06-1.03-2.06h-4.66l1.63-8.12c.24-1.33-1.45-2.12-2.3-1.03z"/></svg></div>
+          <div><div class="vst">Батарея</div><div class="vsv" id="s-soc">—</div></div>
+        </div>
+        <div class="vs-cell">
+          <div class="vsi"><svg viewBox="0 0 25 20" fill="currentColor"><path d="M5.44 19.77c-.22-.22-5.44-5.54-5.44-10.41a5.68 5.68 0 015.66-5.66 5.66 5.66 0 015.66 5.66c0 4.84-5.22 10.19-5.44 10.41a.29.29 0 01-.22.1.28.28 0 01-.22-.1zM2.8 9.36a2.87 2.87 0 002.86 2.86 2.87 2.87 0 002.87-2.86A2.87 2.87 0 005.66 6.5a2.87 2.87 0 00-2.86 2.86zm18.57.46c-.14-.14-3.32-3.41-3.32-6.37a3.45 3.45 0 013.46-3.46 3.45 3.45 0 013.45 3.46c0 2.99-3.17 6.23-3.31 6.37a.33.33 0 01-.14.05.17.17 0 01-.14-.05zM19.76 3.45a1.76 1.76 0 001.75 1.75 1.76 1.76 0 001.75-1.75 1.76 1.76 0 00-1.75-1.75 1.76 1.76 0 00-1.75 1.75z"/></svg></div>
+          <div><div class="vst">Запас хода</div><div class="vsv" id="s-range">—</div></div>
+        </div>
+        <div class="vs-cell">
+          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 7h-9M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg></div>
+          <div><div class="vst">SOH</div><div class="vsv" id="s-soh">—</div></div>
+        </div>
+        <div class="vs-cell">
+          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="7" width="16" height="10" rx="2"/><path d="M22 11v2"/></svg></div>
+          <div><div class="vst">GIDS</div><div class="vsv" id="s-gids">—</div></div>
+        </div>
+        <div class="vs-cell">
+          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
+          <div><div class="vst">Напряжение</div><div class="vsv" id="s-v">—</div></div>
+        </div>
+        <div class="vs-cell">
+          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2v6M12 16v6M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M2 12h6M16 12h6M4.93 19.07l4.24-4.24M14.83 9.17l4.24-4.24"/></svg></div>
+          <div><div class="vst">Ток</div><div class="vsv" id="s-i">—</div></div>
+        </div>
+        <div class="vs-cell">
+          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
+          <div><div class="vst">Мощность</div><div class="vsv" id="s-power">—</div></div>
+        </div>
+        <div class="vs-cell">
+          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 14.76V3.5a2.5 2.5 0 00-5 0v11.26a4.5 4.5 0 105 0z"/></svg></div>
+          <div><div class="vst">Батарея, °C</div><div class="vsv" id="s-btemp">—</div></div>
+        </div>
+        <div class="vs-cell">
+          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 14.76V3.5a2.5 2.5 0 00-5 0v11.26a4.5 4.5 0 105 0z"/></svg></div>
+          <div><div class="vst">Воздух</div><div class="vsv" id="s-amb">—</div></div>
+        </div>
+        <div class="vs-cell">
+          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 14.76V3.5a2.5 2.5 0 00-5 0v11.26a4.5 4.5 0 105 0z"/></svg></div>
+          <div><div class="vst">Салон</div><div class="vsv" id="s-cabin">—</div></div>
+        </div>
+        <div class="vs-cell">
+          <div class="vsi"><svg viewBox="0 0 26 30" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M23.13 11.1h-1.85l-.01-2.7A8.33 8.33 0 104.63 8.33l0 2.77H2.78A2.78 2.78 0 000 13.88v12.95a2.78 2.78 0 002.78 2.77h20.35A2.78 2.78 0 0025.9 26.83V13.88a2.78 2.78 0 00-2.77-2.78z"/></svg></div>
+          <div><div class="vst">Двери</div><div class="vsv" id="s-lock">—</div></div>
+        </div>
+        <div class="vs-cell">
+          <div class="vsi"><svg viewBox="0 0 25 25" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M14.65 2.17a1.13 1.13 0 00-2.25 0l-.01 4.13h2.25l.01-4.13zM5.63 2.17a1.13 1.13 0 00-2.25 0l-.01 4.13h2.26l0-4.13zm11.65 5.64H.75A.75.75 0 000 8.56v.75c0 .42.34.75.75.75H1.5v3a7.5 7.5 0 006.39 7.4v7.62h2.25V20.46a7.5 7.5 0 006.39-7.4v-3h.75a.75.75 0 00.75-.75v-.75a.75.75 0 00-.75-.75zm-3 5.26a5.26 5.26 0 01-10.52 0v-3h10.52v3z"/></svg></div>
+          <div><div class="vst">Зарядка</div><div class="vsv" id="s-charge">—</div></div>
+        </div>
+        <div class="vs-cell">
+          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg></div>
+          <div><div class="vst">Климат</div><div class="vsv" id="s-hvac">—</div></div>
+        </div>
+        <div class="vs-cell">
+          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
+          <div><div class="vst">Машина</div><div class="vsv" id="s-on">—</div></div>
+        </div>
+        <div class="vs-cell">
+          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 3v12M6 21v-2M18 3v18M12 9h0M6 9h6M12 3v6"/><circle cx="18" cy="3" r="1.6"/><circle cx="6" cy="21" r="1.6"/></svg></div>
+          <div><div class="vst">Передача</div><div class="vsv" id="s-gear">—</div></div>
+        </div>
+        <div class="vs-cell">
+          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
+          <div><div class="vst">12 В</div><div class="vsv" id="s-v12">—</div></div>
+        </div>
+        <div class="vs-cell">
+          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 2v6M15 2v6M7 8h10v5a5 5 0 01-10 0V8zM12 18v4"/></svg></div>
+          <div><div class="vst">Разъём</div><div class="vsv" id="s-plug">—</div></div>
+        </div>
+        <div class="vs-cell">
+          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M7 12h10M12 7v10"/></svg></div>
+          <div><div class="vst">Общий пробег</div><div class="vsv" id="s-odo">—</div></div>
+        </div>
+        <div class="vs-cell">
+          <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16v16H4zM8 8h8M8 12h8M8 16h5"/></svg></div>
+          <div><div class="vst">VIN</div><div class="vsv" id="s-vin" style="font-size:13px;overflow-wrap:anywhere">—</div></div>
+        </div>
+      </div>
+      <div style="height:16px"></div>
+    </section>
+
+    <!-- ЗАРЯДКИ -->
+    <section class="screen" id="screen-charges">
+      <div class="trip-summary">
+        <div class="cell"><div class="num" id="cs-total">0</div><div class="lbl">Сеансов</div></div>
+        <div class="cell"><div class="num" id="cs-kwh">0</div><div class="lbl">кВт·ч</div></div>
+        <div class="cell"><div class="num" id="cs-hours">0</div><div class="lbl">часов</div></div>
+        <div class="cell" onclick="openTariff()" title="Нажмите, чтобы задать тариф"><div class="num" id="cs-rub">—</div><div class="lbl">₽</div></div>
+      </div>
+      <div class="trip-active-banner" id="charge-active-banner"><i></i><span>Идёт зарядка…</span></div>
+      <div class="trip-list" id="charge-list"></div>
+      <div class="trip-empty" id="charge-empty">Плата записывает зарядку сама. Сеанс появится в списке после отключения кабеля.</div>
+      <button class="trip-clear" id="charge-clear" style="display:none" onclick="clearCharges()">Очистить историю</button>
+      <button class="trip-clear export" onclick="exportChargesCsv()">Экспорт CSV</button>
+      <div style="height:16px"></div>
+    </section>
+
+    <!-- ПОЕЗДКИ -->
+    <section class="screen" id="screen-trips">
+      <div class="trip-summary">
+        <div class="cell"><div class="num" id="ts-total">0</div><div class="lbl">Поездок</div></div>
+        <div class="cell"><div class="num" id="ts-km">0</div><div class="lbl">км всего</div></div>
+        <div class="cell"><div class="num" id="ts-kwh">0</div><div class="lbl">кВт·ч</div></div>
+        <div class="cell" onclick="openTariff()" title="Нажмите, чтобы задать тариф"><div class="num" id="ts-rub">—</div><div class="lbl">₽</div></div>
+      </div>
+      <div class="trip-active-banner" id="trip-active-banner"><i></i><span>Идёт поездка…</span></div>
+      <div class="trip-toggle" id="trip-toggle" onclick="toggleTracks()">
+        <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 20l-6-2V4l6 2m0 14l6-2m-6 2V6m6 12l6 2V6l-6-2m0 14V4M9 6l6-2"/></svg></div>
+        <span class="lbl">Записывать трек поездок</span>
+        <span class="sw"><i></i></span>
+      </div>
+      <div class="trip-list" id="trip-list"></div>
+      <div class="trip-empty" id="trip-empty">Плата записывает поездку сама, как только машина начинает двигаться. Первая запись появится после поездки.</div>
+      <button class="trip-clear" id="trip-clear" style="display:none" onclick="clearTrips()">Очистить историю</button>
+      <button class="trip-clear export" onclick="exportTripsCsv()">Экспорт CSV</button>
+      <div style="height:16px"></div>
+    </section>
+
+    <!-- ЕЩЁ -->
+    <section class="screen" id="screen-more">
+      <div class="section-title">Приложение</div>
+      <div class="more-item" onclick="openSettings()">
+        <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-1.42 3.42 2 2 0 01-1.41-.59l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-3.42-1.42 2 2 0 01.59-1.41l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 011.42-3.42 2 2 0 011.41.59l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 013.42 1.42 2 2 0 01-.59 1.41l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></div>
+        <span id="more-settings-label">Настройки подключения</span>
+        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+      </div>
+      <div class="more-item" id="more-ota" style="display:none" onclick="openFw()">
+        <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg></div>
+        Обновление прошивки
+        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+      </div>
+      <div class="more-item" id="more-developer" style="display:none" onclick="openDeveloper()">
+        <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 9l-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg></div>
+        Для разработчика
+        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+      </div>
+      <div class="more-item" id="more-diag" style="display:none" onclick="openDiag()">
+        <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+        Диагностика
+        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+      </div>
+      <div class="more-item" id="more-lite" style="display:none" onclick="switchUi('lite')">
+        <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h16M4 12h10M4 18h13"/></svg></div>
+        Упрощённая страница
+        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+      </div>
+      <div class="more-item" onclick="openAbout()">
+        <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></div>
+        О приложении
+        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+      </div>
+      <!--DEMO-BEGIN-->
+      <div class="more-item" onclick="location.href='?demo=1'">
+        <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M10 8.5l6 3.5-6 3.5z" fill="currentColor" stroke="none"/></svg></div>
+        Демо-режим
+        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+      </div>
+      <!--DEMO-END-->
+      <div class="section-title">Режим</div>
+      <div class="more-item" style="border-bottom:none">
+        <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 12.55a11 11 0 0114.08 0M1.42 9a16 16 0 0121.16 0M8.53 16.11a6 6 0 016.95 0M12 20h.01"/></svg></div>
+        <span id="more-mode">—</span>
+      </div>
+      <div style="height:16px"></div>
+    </section>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <div class="tabbar">
+    <div class="tab active" data-screen="garage">
+      <svg viewBox="0 0 19.4 17.2" fill="none"><path d="M8.01 16.71H3.6V9.67l-1.3 1.22L.7 9.14l1.84-1.71 6.74-6.33a.71.71 0 01.09-.06l.28-.27.07-.05 9 8.44-1.59 1.75-1.62-.82v7.08h-4.37v-4.03a1.69 1.69 0 00-3.38 0v4.03z" stroke="currentColor" stroke-width="1"/></svg>
+      <span>Гараж</span>
+    </div>
+    <div class="tab" data-screen="remote">
+      <svg viewBox="0 0 24 25" fill="none"><path d="M13.63.51L4.24 13.11c-.6.85 0 2.06 1.03 2.06h4.66l-1.63 8.12c-.24 1.33 1.45 2.12 2.3 1.03l9.39-12.6c.6-.85 0-2.06-1.03-2.06h-4.66l1.63-8.12c.24-1.33-1.45-2.12-2.3-1.03z" fill="currentColor"/></svg>
+      <span>Дистанция</span>
+    </div>
+    <div class="tab" data-screen="status">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+      <span>Состояние</span>
+    </div>
+    <div class="tab" data-screen="charges">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 3h9a1 1 0 011 1v5H5V4a1 1 0 011-1z"/><path d="M5 9h11v9a2 2 0 01-2 2H7a2 2 0 01-2-2V9z"/><path d="M16 12h2a2 2 0 012 2v3a1 1 0 01-1 1h-3"/></svg>
+      <span>Зарядки</span>
+    </div>
+    <div class="tab" data-screen="trips">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 19V5m0 14l4-4 4 3 4-6 4 4"/></svg>
+      <span>Поездки</span>
+    </div>
+    <div class="tab" data-screen="more">
+      <svg viewBox="0 0 25 5" fill="currentColor"><circle cx="2.5" cy="2.5" r="2.5"/><circle cx="12.5" cy="2.5" r="2.5"/><circle cx="22.5" cy="2.5" r="2.5"/></svg>
+      <span>Ещё</span>
+    </div>
+  </div>
+
+  <!-- Настройки -->
+  <div class="modal" id="settings-modal">
+    <div class="sheet">
+      <h2>Настройки</h2>
+      <div class="settings-groups">
+        <details class="settings-group" data-pwa-section="mqtt" open>
+          <summary>MQTT-брокер</summary>
+          <div class="settings-group-body">
+            <label>Сервер</label>
+            <input id="cfg-host" placeholder="m5.wqtt.ru">
+            <label>Порт WebSocket TLS</label>
+            <input id="cfg-port" type="number" value="15871">
+            <label>Пользователь</label>
+            <input id="cfg-user" placeholder="u_XXXXXX" autocapitalize="off">
+            <label>Пароль</label>
+            <input id="cfg-pass" type="password">
+            <label>Vehicle ID</label>
+            <input id="cfg-vid" placeholder="leaf">
+            <label>Тариф днём, ₽/кВт·ч</label>
+            <input id="cfg-tar-day" type="number" step="0.01" min="0" placeholder="5.50">
+            <label>Тариф ночью, ₽/кВт·ч</label>
+            <input id="cfg-tar-night" type="number" step="0.01" min="0" placeholder="2.80">
+            <div style="display:flex;gap:10px">
+              <div style="flex:1"><label>Ночь с, час</label><input id="cfg-night-from" type="number" min="0" max="23" value="0"></div>
+              <div style="flex:1"><label>Ночь до, час</label><input id="cfg-night-to" type="number" min="0" max="23" value="7"></div>
+            </div>
+          </div>
+        </details>
+        <details class="settings-group" data-pwa-section="wifi">
+          <summary>Wi-Fi</summary>
+          <div class="settings-group-body"><div class="settings-availability"><i></i><span>Настраивается при локальном подключении к плате</span></div></div>
+        </details>
+        <details class="settings-group" data-pwa-section="security">
+          <summary>Безопасность</summary>
+          <div class="settings-group-body"><div class="settings-availability"><i></i><span>Настраивается при локальном подключении к плате</span></div></div>
+        </details>
+        <details class="settings-group" data-pwa-section="modem">
+          <summary>Мобильный модем</summary>
+          <div class="settings-group-body"><div class="settings-availability"><i></i><span>Настраивается при локальном подключении к плате</span></div></div>
+        </details>
+        <details class="settings-group" data-pwa-section="power">
+          <summary>Экономия энергии</summary>
+          <div class="settings-group-body"><div class="settings-availability"><i></i><span>Настраивается при локальном подключении к плате</span></div></div>
+        </details>
+      </div>
+      <div class="btns">
+        <button class="cancel" onclick="closeSettings()">Отмена</button>
+        <button class="save" onclick="saveSettings()">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Тариф -->
+  <div class="modal" id="tariff-modal" role="dialog" aria-modal="true" onclick="closeTariff(event)">
+    <div class="sheet">
+      <h2>Тариф на электричество</h2>
+      <p class="hint">Цена за кВт·ч. Ночной тариф действует в указанном интервале (по умолчанию 00:00–07:00), энергия распределяется по времени поездки или зарядки.</p>
+      <label for="tar-day">День, ₽/кВт·ч</label>
+      <input id="tar-day" type="number" step="0.01" min="0" inputmode="decimal" placeholder="5.50">
+      <label for="tar-night">Ночь, ₽/кВт·ч</label>
+      <input id="tar-night" type="number" step="0.01" min="0" inputmode="decimal" placeholder="2.80">
+      <div style="display:flex;gap:10px">
+        <div style="flex:1"><label for="tar-from">Ночь с, час</label><input id="tar-from" type="number" min="0" max="23" value="0"></div>
+        <div style="flex:1"><label for="tar-to">Ночь до, час</label><input id="tar-to" type="number" min="0" max="23" value="7"></div>
+      </div>
+      <div class="btns">
+        <button class="cancel" type="button" onclick="closeTariff()">Отмена</button>
+        <button class="save" type="button" onclick="saveTariff()">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Диагностика -->
+  <div class="modal" id="diag-modal" role="dialog" aria-modal="true" onclick="closeDiag(event)">
+    <div class="sheet about-sheet">
+      <div class="about-head">
+        <div>
+          <h2>Диагностика</h2>
+          <p>Состояние платы, шин и батареи. Обновляется каждые 2 секунды.</p>
+        </div>
+        <button class="about-close" type="button" aria-label="Закрыть" onclick="closeDiag()">×</button>
+      </div>
+      <div class="diag-grid" id="diag-grid"></div>
+      <div class="diag-actions">
+        <button class="pill-btn" type="button" onclick="diagWake()">Разбудить и снять BMS</button>
+        <button class="pill-btn" type="button" onclick="diagVin()">Проба VIN</button>
+        <button class="pill-btn" type="button" onclick="diagModem()">Проверить модем</button>
+        <button class="pill-btn" type="button" onclick="diagModemPower()">Импульс POWER</button>
+        <button class="pill-btn" type="button" onclick="diagCopy()">Копировать</button>
+      </div>
+      <pre class="diag-modem" id="diag-modem"></pre>
+      <div class="dev-error" id="diag-note"></div>
+    </div>
+  </div>
+
+  <!-- Обновление прошивки платы из PWA -->
+  <div class="modal" id="fw-modal" role="dialog" aria-modal="true" onclick="closeFw(event)">
+    <div class="sheet">
+      <div class="about-head">
+        <div>
+          <h2>Обновление прошивки платы</h2>
+          <p id="fw-head">—</p>
+        </div>
+        <button class="about-close" type="button" aria-label="Закрыть" onclick="closeFw()">×</button>
+      </div>
+      <div class="diag-actions">
+        <button class="pill-btn" type="button" onclick="fwCheck()">Проверить обновление</button>
+        <button class="pill-btn" type="button" id="fw-flash-btn" style="display:none" onclick="fwFlash()">Скачать и прошить плату</button>
+        <label class="pill-btn" style="display:inline-flex;align-items:center;cursor:pointer">
+          Выбрать файл .bin
+          <input type="file" id="fw-file" accept=".bin" style="display:none" onchange="fwFilePicked(this)">
+        </label>
+      </div>
+      <div class="fw-bar" id="ota-progress" style="display:none"><i id="fw-bar-fill"></i></div>
+      <div class="dev-error" id="fw-note"></div>
+      <p class="hint" style="margin-top:14px">Классическая страница заливки —
+        <a href="/ota" style="color:var(--accent)">/ota</a>. Во время загрузки не отключайте
+        питание платы; телеметрия на время заливки приостанавливается.</p>
+    </div>
+  </div>
+
+  <!-- О приложении -->
+  <div class="modal" id="about-modal" role="dialog" aria-modal="true" aria-labelledby="about-title" onclick="closeAbout(event)">
+    <div class="sheet about-sheet">
+      <div class="about-head">
+        <div>
+          <h2 id="about-title">О Leaf Control</h2>
+          <p>Телематическая плата для Nissan Leaf ZE1: показывает состояние автомобиля и позволяет управлять основными функциями со смартфона.</p>
+        </div>
+        <button class="about-close" type="button" aria-label="Закрыть" onclick="closeAbout()">×</button>
+      </div>
+
+      <section class="about-section">
+        <h3>Что умеет</h3>
+        <ul class="about-list">
+          <li><strong>Дистанционное управление.</strong> Климат с выбором температуры и таймером (5–30 минут, ободок отсчёта на кнопке), запуск и <strong>остановка зарядки</strong>, автостановка зарядки при 70–95 %, закрытие и открытие дверей, вспышка фар, сигнал с фарами.</li>
+          <li><strong>Настройки платы без браузера.</strong> Wi-Fi (3 профиля), точка доступа, MQTT, OVMS, модем, тариф, сон и лимит зарядки — прямо из этого приложения рядом с машиной.</li>
+          <li><strong>Управление звонком.</strong> С разрешённого номера климат включается и выключается звонком, плата отвечает голосовым подтверждением. В режиме «Только звонок» модем спит между вызовами, а Wi-Fi продолжает работать.</li>
+          <li><strong>Состояние автомобиля.</strong> Заряд и запас хода, напряжение, ток и мощность, температуры, пробег, состояние климата, зарядки, дверей и света.</li>
+          <li><strong>Живая картинка.</strong> Автомобиль на главном экране меняется по состоянию: загорается свет, появляется кабель зарядки, крутятся колёса в движении.</li>
+          <li><strong>Светлая и тёмная тема.</strong> Оформление подстраивается под настройку телефона автоматически.</li>
+          <li><strong>Четыре режима связи.</strong> Без подключения (только локально), MQTT-брокер, OVMS Server V2 или только звонок — выбирается в настройках платы. Приложение ставится на главный экран телефона.</li>
+          <li><strong>История.</strong> Поездки и сеансы зарядки пишет сама плата и хранит у себя: около 6000 поездок и 1600 зарядок, старые записи удаляются автоматически. Приложение только показывает их, поэтому история не зависит от того, открыт ли телефон. Есть экспорт в CSV и расчёт стоимости по дневному и ночному тарифу.</li>
+          <li><strong>Диагностика.</strong> Отдельный экран: прошивка, время работы, причина последней перезагрузки, свободная память, Wi-Fi, ошибки CAN, состояние BMS и часы платы. Оттуда же можно разбудить шлюз и снять данные батареи или запустить пробу VIN.</li>
+          <!--DEMO-BEGIN--><li><strong>Демо-режим.</strong> Позволяет пройтись по всем экранам и кнопкам без автомобиля — данные условные, команды никуда не отправляются.</li><!--DEMO-END-->
+          <li><strong>Две версии страницы.</strong> По умолчанию открывается упрощённая — только заряд, запас хода, напряжение, ток, температуры и основные команды; весит несколько килобайт и работает даже при очень слабом сигнале. Кнопка «Красивый вид» включает полное приложение, выбор запоминается в плате.</li>
+          <li><strong>Обновление по Wi-Fi.</strong> Прошивка обновляется со страницы платы, разбирать устройство не нужно.</li>
+          <li><strong>Для разработчика.</strong> CAN-монитор: по строке на каждый ID, подсветка изменений, фильтр по ID и счётчик нажатий — сразу видно, какие кадры реагируют на кнопку в машине. Кадр можно сохранить под своим названием и отправить обратно после явного разрешения (10 минут).</li>
+        </ul>
+      </section>
+
+      <section class="about-section">
+        <h3>Как это работает</h3>
+        <ul class="about-list">
+          <li>Плата читает данные напрямую из CAN-шин автомобиля и передаёт их в приложение через выбранное подключение.</li>
+          <li>Команды защищены от случайного нажатия: их нужно удерживать.</li>
+          <li>Если данные устарели, приложение показывает «—», а не последнее известное значение.</li>
+          <li>Температура батареи и состояние ёмкости доступны, пока блок управления батареей отвечает — то есть при движении, зарядке или включённом климате.</li>
+          <li>Отправка сохранённых кадров — отдельное действие: она включается вручную на 10 минут и работает только по CAR-CAN, чтобы нельзя было случайно задеть автомобиль.</li>
+        </ul>
+      </section>
+
+      <section class="about-section planned">
+        <h3>Планируется</h3>
+        <ul class="about-list">
+          <li>Чтение VIN по штатному OBD-II запросу — блок батареи отдаёт его не на всех машинах.</li>
+          <li>Расширенная диагностика тяговой батареи: состояние ячеек и ёмкости.</li>
+          <li>Уведомления о завершении зарядки, низком заряде и важных событиях автомобиля.</li>
+          <li>Более подробная статистика поездок и зарядок.</li>
+        </ul>
+      </section>
+
+      <p class="about-note" id="about-fw" style="display:none"></p>
+      <p class="about-note">Набор доступных функций зависит от комплектации автомобиля, установленного модема и способа подключения платы.</p>
+    </div>
+  </div>
+
+  <!-- Для разработчика -->
+  <div class="modal" id="developer-modal" role="dialog" aria-modal="true" aria-labelledby="developer-title" onclick="closeDeveloper(event)">
+    <div class="sheet">
+      <div class="about-head">
+        <div><h2 id="developer-title">Для разработчика</h2><p>Запись CAN-журнала автомобиля в диагностическое хранилище платы.</p></div>
+        <button class="about-close" type="button" aria-label="Закрыть" onclick="closeDeveloper()">×</button>
+      </div>
+      <div id="developer-login">
+        <label for="developer-password">Пароль</label>
+        <input id="developer-password" type="password" inputmode="numeric" autocomplete="off" maxlength="12" onkeydown="if(event.key==='Enter')developerLogin()">
+        <div class="dev-error" id="developer-login-error"></div>
+        <div class="btns"><button class="save" onclick="developerLogin()">Войти</button></div>
+      </div>
+      <div id="developer-panel" style="display:none">
+        <div class="dev-status"><strong id="firmware-state">Прошивка платы</strong><span id="firmware-details">—</span></div>
+        <div class="dev-status"><strong id="canlog-state">Запись выключена</strong><span id="canlog-details">Кадров: 0</span></div>
+        <div class="dev-status"><strong id="bus-state">Шины CAN</strong><span id="bus-details">—</span></div>
+        <div class="dev-monitor">
+          <div class="dm-head">
+            <strong>CAN-монитор</strong>
+            <div class="dm-actions">
+              <button id="dm-pause" type="button" onclick="canWatchTogglePause()">Пауза</button>
+              <button id="dm-mark" type="button" onclick="canWatchMark()">Отметить нажатие</button>
+              <button type="button" onclick="canWatchReset()">Сброс</button>
+              <button type="button" onclick="canWatchCopy()">Копировать</button>
+            </div>
+          </div>
+          <div class="dm-filters">
+            <button class="on" data-bus="all" onclick="canWatchFilter('all')">Все</button>
+            <button data-bus="B" onclick="canWatchFilter('B')">CAR</button>
+            <button data-bus="A" onclick="canWatchFilter('A')">EV</button>
+            <input id="dm-idfilter" class="dm-idfilter" type="search" inputmode="text" autocomplete="off"
+                   placeholder="ID" oninput="canWatchSetIdFilter(this.value)">
+            <span class="dm-count" id="dm-count">0 ID</span>
+          </div>
+          <div class="dm-marks" id="dm-marks">Отметок: 0 · нажмите «Отметить нажатие» перед каждым нажатием кнопки в машине</div>
+          <div class="dm-wrap">
+            <table class="dm-table">
+              <thead><tr><th>Шина</th><th>ID</th><th>Данные</th><th>Изм.</th><th>Δ</th><th>Наж.</th><th></th></tr></thead>
+              <tbody id="dm-rows"><tr><td colspan="5" class="dm-empty">Ждём кадры…</td></tr></tbody>
+            </table>
+          </div>
+          <div class="hint" style="margin-top:8px">Каждая строка — один ID. Значение меняется на месте; подсвечивается строка, где изменения идут прямо сейчас. Нажмите кнопку в машине несколько раз и смотрите, какие ID реагируют.</div>
+          <div class="hint" style="margin-top:4px">Кнопка <b>«Отметить нажатие»</b> открывает окно 1,5 с: все ID, которые изменились в этот момент, получают отметку в колонке <b>«Наж.»</b>. Нажмите её перед каждым нажатием кнопки в машине — и сразу видно, какие ID реагируют.</div>
+          <div class="hint" style="margin-top:4px">Чтобы сохранить кадр как команду, нажмите <b>«＋»</b> справа в нужной строке и введите название. Фильтр по ID — в поле рядом с кнопками CAR/EV (достаточно части номера, например <b>1D6</b>).</div>
+        </div>
+        <div class="dev-monitor">
+          <div class="dm-head">
+            <strong>Мои команды</strong>
+            <div class="dm-actions">
+              <button id="rp-arm" type="button" onclick="replayToggleArm()">Разрешить отправку</button>
+            </div>
+          </div>
+          <div class="rp-list" id="rp-list"></div>
+          <div class="hint" style="margin-top:8px">Кадр сохраняется кнопкой «+» в строке монитора. Отправка возможна только после «Разрешить отправку» (действует 10 минут) и только в CAR-CAN.
+            Осторожно: произвольные кадры могут управлять автомобилем — отправляйте только то, что сами проверили.</div>
+        </div>
+        <p class="hint">Нажмите «Начать запись», выполните действия штатным ключом, затем остановите запись и скачайте файл. Новая запись удаляет предыдущую.</p>
+        <div class="dev-actions">
+          <button class="primary" id="canlog-start" onclick="canLogAction('start')">Начать запись</button>
+          <button id="canlog-stop" onclick="canLogAction('stop')">Остановить</button>
+          <button class="danger" id="canlog-clear" onclick="canLogAction('clear')">Очистить</button>
+          <button onclick="refreshCanLogStatus()">Обновить</button>
+        </div>
+        <a class="dev-download" id="canlog-download" href="/api/developer/canlog/download" download>Скачать журнал</a>
+        <div class="dev-error" id="canlog-error"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ---------- state ----------
+const S = { soc:-1, cabin:-99, charging:false, charger:'', hvac:false, lock:-1,
+  setpoint:-1, fan:-1, heat:false, cool:false, vent:-1,
+  soh:-1, gids:-1, v:-1, i:0, power:0, packValid:false, voltageValid:false, amb:-99, on:-1, seq:false, locking:false, fage:-1,
+  isoc:-1, irange:-1, btemp:-99, cdelta:-1,
+  odo:0, vin:'', hvacTimer:0, lights:-1, gps:null, fw:'', fwDesc:'' };
+let mode = 'local'; // 'local' | 'mqtt'
+let onBoard = true; // true only when served from the board itself (local /api/status works)
+let lastUpdate = 0;
+let client = null;
+let cfg = null;
+let spTouched = false;
+// How long the climate was asked to run, so the countdown bar has a scale.
+let hvacTotal = 0;
+let findActive = false;
+let findTimer = null;
+const LOCK_CLOSED_SVG = '<svg viewBox="0 0 26 30" fill="none"><path d="M23.13 11.1h-1.85l-.01-2.7A8.33 8.33 0 104.63 8.33l0 2.77H2.78A2.78 2.78 0 000 13.88v12.95a2.78 2.78 0 002.78 2.77h20.35A2.78 2.78 0 0025.9 26.83V13.88a2.78 2.78 0 00-2.77-2.78zM7.4 8.33a5.55 5.55 0 0111.1 0v2.77H7.4V8.33zm15.73 18.5H2.78V13.88h20.35v12.95z" fill="currentColor"/></svg>';
+const LOCK_OPEN_SVG = '<svg viewBox="0 0 26 30" fill="none"><path d="M23.13 29.6H2.78A2.78 2.78 0 010 26.83V13.88A2.78 2.78 0 012.78 11.1h1.85V8.33A8.34 8.34 0 0112.95 0h.02a8.28 8.28 0 015.26 1.91 8.47 8.47 0 012.85 4.72h-2.85a5.62 5.62 0 00-1.99-2.77 5.5 5.5 0 00-3.3-1.09A5.56 5.56 0 007.4 8.33V11.1h10.05v.03h5V11.1h.68A2.78 2.78 0 0125.9 13.88v12.95a2.78 2.78 0 01-2.77 2.77zM2.78 13.88v12.95h20.35V13.88H2.78z" fill="currentColor"/></svg>';
+const DOOR_SVG = '<svg viewBox="0 0 26 30" fill="none"><path d="M23.13 11.1h-1.85l-.01-2.7A8.33 8.33 0 104.63 8.33l0 2.77H2.78A2.78 2.78 0 000 13.88v12.95a2.78 2.78 0 002.78 2.77h20.35A2.78 2.78 0 0025.9 26.83V13.88a2.78 2.78 0 00-2.77-2.78zM7.4 8.33a5.55 5.55 0 0111.1 0v2.77H7.4V8.33zm15.73 18.5H2.78V13.88h20.35v12.95z" fill="currentColor"/></svg>';
+
+// ---------- helpers ----------
+const $ = id => document.getElementById(id);
+function toast(msg){ const el=$('toast'); el.textContent=msg; el.classList.add('show');
+  clearTimeout(el._t); el._t=setTimeout(()=>el.classList.remove('show'),2200); }
+
+// Vehicle commands require a deliberate 1.5 s hold. The progress ring/fill
+// gives immediate feedback; releasing, scrolling or moving away cancels it.
+const HOLD_MS=1500, HOLD_MOVE_PX=12;
+function holdButton(el, run, visual, holdMs){
+  if(!el) return;
+  const need = holdMs || HOLD_MS;
+  const host=visual||el;
+  const round=host.classList.contains('circle')||host.classList.contains('rbtn');
+  const progress=document.createElement('span');
+  progress.className='hold-progress '+(round?'hold-ring':'fill');
+  host.classList.add('hold-visual');
+  el.classList.add('hold-target');
+  if(!/^(BUTTON|A)$/.test(el.tagName)){ el.tabIndex=0; el.setAttribute('role','button'); }
+  host.prepend(progress);
+  let started=0, timer=0, raf=0, pointerId=null, x=0, y=0;
+  const paint=()=>{
+    progress.style.setProperty('--hold',Math.min(100,(performance.now()-started)/need*100).toFixed(1));
+    raf=requestAnimationFrame(paint);
+  };
+  const reset=()=>{
+    clearTimeout(timer); cancelAnimationFrame(raf);
+    timer=raf=0; started=0; pointerId=null;
+    el.classList.remove('holding');
+    progress.style.setProperty('--hold',0);
+  };
+  const begin=(id,px,py)=>{
+    if(started||el.disabled||el.getAttribute('aria-disabled')==='true') return;
+    started=performance.now(); pointerId=id; x=px; y=py;
+    el.classList.add('holding'); paint();
+    timer=setTimeout(()=>{
+      reset();
+      if(navigator.vibrate) try{ navigator.vibrate(30); }catch(e){}
+      run();
+    },need);
+  };
+  const end=(quiet=false)=>{
+    if(!started) return;
+    reset();
+    if(!quiet) toast('Удерживайте кнопку '+(need/1000).toFixed(1).replace('.',',')+' секунды');
+  };
+  el.addEventListener('pointerdown',e=>{
+    if(e.button!==0) return;
+    begin(e.pointerId,e.clientX,e.clientY);
+    try{ el.setPointerCapture(e.pointerId); }catch(err){}
+  });
+  el.addEventListener('pointermove',e=>{
+    if(started&&e.pointerId===pointerId&&Math.hypot(e.clientX-x,e.clientY-y)>HOLD_MOVE_PX) end(true);
+  });
+  el.addEventListener('pointerup',()=>end(false));
+  el.addEventListener('pointercancel',()=>end(true));
+  el.addEventListener('lostpointercapture',()=>end(true));
+  el.addEventListener('contextmenu',e=>e.preventDefault());
+  el.addEventListener('keydown',e=>{
+    if((e.key==='Enter'||e.key===' ')&&!e.repeat){ e.preventDefault(); begin('key',0,0); }
+  });
+  el.addEventListener('keyup',e=>{ if(e.key==='Enter'||e.key===' ') end(false); });
+  el.addEventListener('blur',()=>end(true));
+}
+function go(name){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('active',s.id==='screen-'+name));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.screen===name));
+  $('screens').scrollTop=0;
+  if(name==='trips') refreshTripsScreen();
+  if(name==='charges') refreshChargesScreen();
+}
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>go(t.dataset.screen)));
+
+// ---------- refresh from anywhere ----------
+// Single entry point: the app-bar icon next to the connection badge, visible
+// on every screen. Vehicle commands keep the stricter 1.5 s hold.
+function doRefresh(){
+  const btn=$('refresh-btn');
+  if(S.seq){ toast('Дождитесь завершения текущей команды'); return Promise.resolve(false); }
+  if(btn) btn.classList.add('busy');
+  const finish=()=>{ if(btn) setTimeout(()=>btn.classList.remove('busy'),1200); };
+  let p;
+  try{ p=cmd('refresh',true); }
+  catch(e){ finish(); toast('Не удалось отправить'); return Promise.resolve(false); }
+  if(p&&p.then) p.then(finish,finish); else finish();
+  return p;
+}
+const refreshBtn=$('refresh-btn');
+if(refreshBtn) refreshBtn.addEventListener('click',doRefresh);
+
+// Calculated range estimate. GIDS are the only honest base: the old
+// SOC*3 fallback produced a fictional 285 km at 95 % and is gone.
+function rangeKm(){
+  // 0x3FF (1023) is an invalid/uninitialised GIDS and used to print 614 km.
+  if(S.gids>0 && S.gids<=500) return Math.round(S.gids*0.6);
+  return null;
+}
+// Dashboard (instrument) values from 0x59E / 0x5A9; fall back to the estimates
+function socInstr(){ return (S.isoc!=null && S.isoc>=0) ? S.isoc : null; }
+function rangeInstr(){ return (S.irange!=null && S.irange>0) ? S.irange : null; }
+function fmtPct(v){ return (v!=null && v>=0) ? v.toFixed(0)+' %' : '—'; }
+function fmtKm(v){ return (v!=null && v>0) ? v+' км' : '—'; }
+// EV-CAN goes silent when the high-voltage side sleeps, while CAR-CAN can stay
+// awake. Never present the last frame as a live measurement: 30 s is stale.
+function evFresh(){ return S.fage>=0 && S.fage<30; }
+function chargerRu(){
+  return {charging:'Заряжается',done:'Завершено',stopped:'Прервано',wait:'Ожидание','':'Не подключено'}[S.charger]||'—';
+}
+
+// ---------- render ----------
+let renderQueued = false;
+function render(){
+  // Debounce: MQTT bursts deliver a dozen topics per second
+  if(renderQueued) return;
+  renderQueued = true;
+  requestAnimationFrame(()=>{ renderQueued = false; renderNow(); });
+}
+
+// Status picture: base photo + optional overlay files (car-lights.png,
+// car-cable.png, car-wheel1..4.png). Missing files removed themselves on
+// load, so the classes only ever toggle what actually exists.
+function renderCarStage(){
+  const stage = document.getElementById('car-stage');
+  if(!stage) return;
+  // A stale reading must not keep the lights/cable drawn. Locally the board
+  // reports how old the CAN data is; over MQTT only the poll time is known.
+  const fresh = (mode === 'local')
+    ? (S.fage >= 0 && S.fage < 60)
+    : (lastUpdate > 0 && Date.now() - lastUpdate < 60000);
+  stage.classList.toggle('lights',   fresh && S.lights === 1);
+  // The cable layer shows whenever the connector is plugged: an active
+  // charge, a finished one (charger=done) or a scheduled wait. "charging"
+  // alone hid the plug once the session ended but the cable stayed in.
+  const plugged = S.charging || S.charger === 'done' || S.charger === 'wait';
+  stage.classList.toggle('charging', fresh && plugged);
+  stage.classList.toggle('moving',   fresh && S.on === 1 && !S.charging);
+}
+function renderNow(){
+  renderCarStage();
+  const soc = S.soc>=0 ? S.soc : null;
+  const km = rangeKm();
+  // Instrument values are only trustworthy while EV-CAN is fresh. The big
+  // number is the BMS value: it matches the car's dashboard on ZE1 and the
+  // board's lite page; a stale 0x59E frame used to show 77 % while the car
+  // showed 69 %.
+  const iSoc = evFresh() ? socInstr() : null;
+  const iRange = evFresh() ? rangeInstr() : null;
+  const socShown = soc != null ? soc : iSoc;
+  const kmShown = iRange != null ? iRange : km;
+  $('g-soc').textContent = socShown!=null ? socShown.toFixed(0) : '—';
+  $('g-range').textContent = kmShown==null ? '—' : (iRange!=null ? kmShown : '≈'+kmShown);
+  $('rm-range').textContent = kmShown==null ? '—' : (iRange!=null ? kmShown : '≈'+kmShown);
+  const bar = $('g-bar');
+  const pct = socShown!=null ? socShown : 0;
+  bar.style.width = pct+'%';
+  bar.className = 'fill' + (pct>20?'':' crit') + (pct>20&&pct<=40?' low':'');
+  let chargeState = S.charging ? 'Заряжается' : (S.charger?chargerRu():'—');
+  // Rough time to full: 40 kWh usable pack, current power into the battery.
+  if(S.charging && S.power > 0.3 && S.soc >= 0){
+    const needKwh = (100 - S.soc) / 100 * 40;
+    const min = Math.round(needKwh / Math.abs(S.power) * 60);
+    if(min > 0 && min < 24*60) chargeState += ' · ~' + fmtDur(min*60);
+  }
+  $('g-charge-state').textContent = chargeState;
+  const cb = $('g-charge-btn');
+  // Charging is a togglable state now: the button starts OR stops the charge.
+  // It used to be disabled while charging, which made a stop impossible.
+  cb.disabled = false;
+  if(S.charging){ cb.textContent = 'Стоп зарядки'; cb.classList.add('charging'); }
+  else { cb.classList.remove('charging');
+    cb.textContent = S.charger==='done' ? 'Зарядка окончена' : 'Начать зарядку'; }
+
+  // action icon states
+  $('act-lights-ic').classList.toggle('hot', S.lights===1);
+  $('act-climate-ic').classList.toggle('on', S.hvac);
+  const dIc = $('act-doors-ic');
+  if(dIc.dataset.k !== String(S.lock)){
+    dIc.dataset.k = String(S.lock);
+    const holdProgress=dIc.querySelector('.hold-progress');
+    dIc.innerHTML = S.lock===1 ? LOCK_CLOSED_SVG : (S.lock===0 ? LOCK_OPEN_SVG : DOOR_SVG);
+    if(holdProgress) dIc.prepend(holdProgress);
+    dIc.classList.toggle('unlocked', S.lock===0);
+  }
+
+  // setpoint slider: follow the car until the user touches it
+  if(!spTouched && S.setpoint>=16 && S.setpoint<=28){
+    $('sp-slider').value = S.setpoint;
+    $('sp-val').textContent = parseFloat(S.setpoint);
+  }
+
+  $('rm-lock').textContent = S.lock===1?'Заблокировано':(S.lock===0?'Открыто':'—');
+  $('rm-updated').textContent = lastUpdate ? 'Обновлено: '+new Date(lastUpdate).toLocaleTimeString('ru-RU') : 'Обновлено: никогда';
+  $('rb-climate').classList.toggle('on', S.hvac);
+  // The countdown lives on the climate button: the SVG ring depletes
+  // counter-clockwise (dashoffset grows), the label carries the minutes left
+  // (or ∞ when the board runs climate without a timer).
+  const hvacLeft = S.hvacTimer > 0 ? S.hvacTimer : 0;
+  if(hvacLeft > 0 && S.hvac && hvacTotal < hvacLeft) hvacTotal = hvacLeft;  // first sample sets the scale
+  const RING_C = 320.4;  // 2*pi*51, matches the .ring circles
+  const hvacFrac = (S.hvac && hvacLeft > 0 && hvacTotal > 0)
+    ? Math.min(1, hvacLeft / hvacTotal)
+    : (S.hvac ? 1 : 0);   // infinite / no timer yet → full ring
+  $('climate-ring').style.strokeDashoffset = (RING_C * (1 - hvacFrac)).toFixed(1);
+  // Red as soon as the last 20% of the countdown is left
+  $('rb-climate').classList.toggle('warn', S.hvac && hvacLeft > 0 && hvacFrac <= 0.2);
+  $('rb-climate-label').innerHTML = S.hvac
+    ? ('Выкл климат<br><b>' + (hvacLeft > 0 ? hvacLeft + ' мин' : '∞') + '</b>')
+    : 'Климат';
+
+  // Source is spelled out: the dashboard value, the BMS (nominal) value, or a
+  // calculated estimate. The UI never presents one as the other.
+  // BMS is the displayed value; a stale instrument frame must not reappear as
+  // a second 77 % next to the car's 69 %.
+  $('s-soc').textContent = soc != null ? fmtPct(soc) + ' (BMS)'
+    : ((S.isoc != null && S.isoc >= 0) ? fmtPct(S.isoc) + ' (прибор)' : '—');
+  $('s-range').textContent = iRange!=null ? fmtKm(iRange)+' (прибор)'
+                          : (km!=null ? '≈'+fmtKm(km)+' (расч.)' : '—');
+  $('s-soh').textContent = S.soh>=0 ? S.soh+' %' : '—';
+  $('s-gids').textContent = S.gids>=0 ? S.gids : '—';
+  $('s-v').textContent = (S.voltageValid && evFresh()) ? S.v.toFixed(1)+' V' : '—';
+  $('s-i').textContent = (S.packValid && evFresh()) ? S.i.toFixed(1)+' A' : '—';
+  $('s-power').textContent = (S.packValid && evFresh()) ? S.power.toFixed(1)+' кВт' : '—';
+  $('s-btemp').textContent = (S.btemp>-30&&S.btemp<70) ? S.btemp.toFixed(1)+' °C' : '—';
+  $('s-amb').textContent = (S.amb>-40&&S.amb<60) ? S.amb.toFixed(1)+' °C' : '—';
+  $('s-cabin').textContent = (S.cabin>-30&&S.cabin<80) ? S.cabin.toFixed(1)+' °C' : '—';
+  $('s-lock').textContent = S.lock===1?'Заблокировано':(S.lock===0?'Открыто':'—');
+  $('s-charge').textContent = S.charging?'Подключено':(S.charger?chargerRu():'—');
+  $('s-hvac').textContent = S.hvac ? (S.heat?'Обогрев':(S.cool?'Охлаждение':'Вкл')) : 'Выкл';
+  $('s-on').textContent = S.on===1?'Вкл':(S.on===0?'Выкл':'—');
+  // Tier-1 UDS tiles (gear / 12 V net / J1772 plug). Values arrive only while
+  // the car is awake; after a long silence the tiles fall back to "—".
+  const u = S.uds;
+  const uFresh = u && (Date.now() - (u.ts || 0) < 90000);
+  $('s-gear').textContent = (uFresh && u.gear) ? u.gear : '—';
+  $('s-v12').textContent = (uFresh && u.v12 > 6 && u.v12 < 20)
+    ? u.v12.toFixed(1) + ' V' + (Math.abs(u.i12) > 0.4 ? (' ' + (u.i12 > 0 ? '+' : '') + u.i12.toFixed(1) + ' A') : '')
+    : '—';
+  $('s-plug').textContent = uFresh ? (u.plug === 2 ? 'Подключён' : (u.plug === 1 ? 'Наполовину' : (u.plug === 0 ? 'Нет' : '—'))) : '—';
+  $('s-odo').textContent = S.odo>0 ? S.odo.toLocaleString('ru-RU')+' км' : '—';
+  $('s-vin').textContent = S.vin || '—';
+  $('f-status-sub').textContent = soc!=null ? 'Батарея '+soc.toFixed(0)+'%' : 'Батарея, климат, двери';
+
+  $('seq-banner').classList.toggle('show', !!S.seq);
+  updateGpsRow();
+}
+
+function gpsAgeText(){
+  if(!S.gps) return '';
+  const m = Math.max(0, Math.round((Date.now()-S.gps.at)/60000));
+  if(m < 1) return 'только что';
+  if(m < 60) return m+' мин назад';
+  const h = Math.round(m/60);
+  return h+' ч назад';
+}
+function updateGpsRow(){
+  const row=$('gps-row'); if(!row) return;
+  if(!S.gps){ row.style.display='none'; return; }
+  const {lat,lon}=S.gps;
+  $('gps-ya').href='https://yandex.ru/maps/?pt='+lon.toFixed(6)+','+lat.toFixed(6)+'&z=17&l=map';
+  $('gps-go').href='https://www.google.com/maps/search/?api=1&query='+lat.toFixed(6)+','+lon.toFixed(6);
+  $('gps-age').textContent=gpsAgeText();
+  row.style.display='flex';
+  updateFindCard();
+}
+
+// ---------- local mode ----------
+let pollBusy = false;
+// Abort a hung request so pollBusy never locks up permanently (PW-1)
+function fetchTimeout(ms){
+  const ctl=new AbortController();
+  setTimeout(()=>ctl.abort(),ms);
+  return ctl.signal;
+}
+async function pollLocal(){
+  if(pollBusy) return; // no overlapping requests if the board hangs
+  pollBusy = true;
+  try{
+    const r = await fetch('/api/status', {signal:fetchTimeout(5000)});
+    if(!r.ok) throw 0;
+    const j = await r.json();
+    S.fw=j.fw||''; S.fwDesc=j.fw_desc||'';
+    if(S.fw){ $('about-fw').style.display='block'; $('about-fw').textContent='Прошивка платы: '+S.fw; }
+    S.soc=j.soc; S.cabin=j.cabin; S.charging=!!j.charging; S.charger=j.charger||'';
+    S.hvac=!!j.hvac; S.lock=j.lock; S.setpoint=j.setpoint; S.fan=j.fan;
+    S.heat=!!j.heat; S.cool=!!j.cool; S.vent=j.vent;
+    S.soh=j.soh; S.gids=j.gids; S.v=j.v; S.i=j.i; S.power=j.power||0; S.packValid=!!j.pack; S.voltageValid=(j.vvalid===undefined)?S.packValid:!!j.vvalid;
+    S.amb=j.amb; S.on=j.on; S.seq=!!j.seq; S.locking=!!j.locking;
+    S.isoc=(j.isoc===undefined)?-1:j.isoc; S.irange=(j.irange===undefined)?-1:j.irange;
+    if(j.uds) S.uds={gear:j.uds.gear||'', v12:j.uds.v12, i12:j.uds.i12,
+                     plug:j.uds.plug, mode:j.uds.mode, spd:j.uds.spd, ts:Date.now()};
+    S.btemp=(j.btemp===undefined)?-99:j.btemp; S.cdelta=(j.cdelta===undefined)?-1:j.cdelta;
+    S.fage=(j.fage===undefined)?-1:j.fage;
+    S.odo=j.odo||0; S.vin=j.vin||''; S.hvacTimer=j.hvac_timer||0;
+    S.epoch=(j.epoch===undefined)?0:j.epoch;   // board clock, 0 until NTP syncs
+    S.tariffDay=(j.tariff_day===undefined)?null:j.tariff_day;
+    S.tariffNight=(j.tariff_night===undefined)?null:j.tariff_night;
+    S.nightFrom=(j.night_from===undefined)?null:j.night_from;
+    S.nightTo=(j.night_to===undefined)?null:j.night_to;
+    S.lights = (j.lights===undefined) ? -1 : (j.lights?1:0);
+    if(j.gps && j.gps.lat && j.gps.lon && j.gps.age < 900)
+      S.gps = { lat:j.gps.lat, lon:j.gps.lon, spd:(j.gps.spd||0)*1.852, at:Date.now()-j.gps.age*1000 };
+    lastUpdate = Date.now();
+    updateBadge();
+    tripTick();
+    chargeTick();
+    render();
+  }catch(e){ updateBadge(); }
+  finally{ pollBusy = false; }
+}
+async function localCmd(path){
+  try{
+    // POST-only routes (CSRF protection); redirect:'manual' keeps the 303
+    // from downloading the whole HTML page
+    const r = await fetch(path,{method:'POST', redirect:'manual', signal:fetchTimeout(5000)});
+    if(r.type==='opaqueredirect'){ return true; } // 303 = accepted
+    if(!r.ok){ toast('Команда отклонена'); return false; }
+    return true;
+  }
+  catch(e){ toast('Ошибка отправки'); return false; }
+}
+
+// ---------- mqtt mode ----------
+function loadCfg(){ try{ return JSON.parse(localStorage.getItem('leafcfg')); }catch(e){ return null; } }
+function setConn(state, label){
+  const b=$('conn-badge');
+  b.classList.toggle('on',state==='on');
+  b.classList.toggle('warn',state==='warn');
+  b.classList.toggle('off',state==='off');
+  $('conn-text').textContent = label;
+}
+function netTypeLabel(){
+  const c=navigator.connection;
+  if(!c) return 'Net';
+  const e=c.effectiveType||'';
+  if(c.type==='wifi') return 'Wi-Fi';
+  if(c.type==='ethernet') return 'Ethernet';
+  if(c.type==='wimax') return 'WiMAX';
+  if(c.type==='bluetooth') return 'Bluetooth';
+  if(c.type==='cellular'){
+    if(e==='4g') return '4G';
+    if(e==='3g') return '3G';
+    return 'GSM';
+  }
+  if(e==='4g') return '4G';
+  if(e==='3g') return '3G';
+  if(e==='2g'||e==='slow-2g') return 'GSM';
+  return 'Net';
+}
+function updateBadge(){
+  if(DEMO){ setConn('on','Online'); return; }
+  if(client && client.connected){ setConn('on','Online'); return; }
+  if(onBoard && lastUpdate && Date.now()-lastUpdate < 10000){ setConn('on','Online'); return; }
+  if(navigator.onLine){ setConn('warn',netTypeLabel()); return; }
+  setConn('off','Offline');
+}
+window.addEventListener('online',updateBadge);
+window.addEventListener('offline',updateBadge);
+if(navigator.connection && navigator.connection.addEventListener)
+  navigator.connection.addEventListener('change',updateBadge);
+// Belt-and-suspenders vs pull-to-refresh: CSS overscroll-behavior is ignored
+// by Chrome for gestures that start on a scroller with no overflow (short
+// screens), so a downward overdrag at the top still triggers a reload.
+// Explicitly cancel the swipe once it looks like a PTR pull.
+(function(){
+  let startY=null,startX=null;
+  const hadMove=()=>startY!==null;
+  document.addEventListener('touchstart',e=>{
+    if(e.touches.length>1){startY=null;return;}
+    startX=e.touches[0].clientX; startY=e.touches[0].clientY;
+  },{passive:true});
+  document.addEventListener('touchmove',e=>{
+    if(!hadMove()||e.touches.length>1) return;
+    const dy=e.touches[0].clientY-startY;
+    const dx=e.touches[0].clientX-startX;
+    if(dy<=10||Math.abs(dx)>Math.abs(dy)) return;   // up-swipe/horizontal: normal
+    // find the scrollable container under the finger
+    let sc=null;
+    for(let n=e.target;n&&n!==document.documentElement;n=n.parentElement){
+      if(n.nodeType===1){
+        const s=getComputedStyle(n);
+        if((s.overflowY==='auto'||s.overflowY==='scroll')&&n.scrollHeight>n.clientHeight){sc=n;break;}
+      }
+    }
+    if(!sc||sc.scrollTop<=0) e.preventDefault();    // pull at top → block PTR
+  },{passive:false});
+  document.addEventListener('touchend',()=>{startY=null;startX=null},{passive:true});
+})();
+function mqttConnect(){
+  mode = 'local'; return;  // сервер: только локальный API
+  cfg = loadCfg();
+  if(!cfg){ mode='local'; return; }
+  if(typeof mqtt==='undefined'){
+    const s=document.createElement('script');
+    s.src='https://unpkg.com/mqtt@5.3.5/dist/mqtt.min.js';
+    s.onload=()=>mqttConnect();
+    // CDN fallback: unpkg goes down occasionally; retry via jsdelivr once
+    s.onerror=()=>{
+      if(!s._fallback){
+        s._fallback=true;
+        s.src='https://cdn.jsdelivr.net/npm/mqtt@5.3.5/dist/mqtt.min.js';
+        s.onerror=()=>{ updateBadge(); toast('Не удалось загрузить MQTT-клиент'); };
+      } else {
+        updateBadge(); toast('Не удалось загрузить MQTT-клиент');
+      }
+    };
+    document.head.appendChild(s);
+    return;
+  }
+  mode='mqtt';
+  const url='wss://'+cfg.host+':'+(cfg.port||15871);
+  try{ if(client) client.end(true); }catch(e){}
+  client = mqtt.connect(url,{ username:cfg.user, password:cfg.pass,
+    clientId:'leafpwa-'+Math.random().toString(16).slice(2,8), reconnectPeriod:4000 });
+  const myClient = client;
+  client.on('connect',()=>{
+    updateBadge();
+    $('more-mode').textContent='MQTT · '+cfg.host;
+    const p='ovms/'+cfg.user+'/'+(cfg.vid||'leaf')+'/';
+    client.subscribe(p+'metric/#');
+    client.subscribe(p+'client/pwa/response/#');
+  });
+  client.on('close',()=>{ if(myClient===client) updateBadge(); });
+  client.on('error',()=>{ if(myClient===client) updateBadge(); });
+  client.on('message',(topic,payload)=>{
+    if(myClient!==client) return; // stale connection from a previous session
+    const t=payload.toString();
+    const base='ovms/'+cfg.user+'/'+(cfg.vid||'leaf')+'/';
+    // Firmware replies to client/<id>/response/<cmd> — check before the
+    // metric prefix (client topics live OUTSIDE metric/)
+    if(topic.startsWith(base+'client/')){
+      toast(t);
+      remoteStatusDone(t);
+      return;
+    }
+    const p=base+'metric/';
+    if(!topic.startsWith(p)) return;
+    const m=topic.slice(p.length);
+    const num=parseFloat(t);
+    switch(m){
+      case 'v/b/soc': S.soc=num; break;
+      case 'v/b/soc/instrument': S.isoc=num; break;
+      case 'v/b/range/instrument': S.irange=num; break;
+      case 'v/b/temp': S.btemp=num; break;
+      case 'v/b/c/voltage/dev/max': S.cdelta=Math.round(num*1000); break;
+      case 'v/e/cabintemp': S.cabin=num; break;
+      case 'v/c/charging': S.charging=(t==='yes'); break;
+      case 'v/c/state': S.charger=t; if(chg) chg.endState=t; break;
+      case 'v/e/hvac': S.hvac=(t==='yes'); break;
+      case 'v/e/locked': S.lock=(t==='yes')?1:0; break;
+      case 'v/e/cabinsetpoint': S.setpoint=num; break;
+      case 'v/e/cabinfan': S.fan=num; break;
+      case 'v/e/heating': S.heat=(t==='yes'); break;
+      case 'v/e/cooling': S.cool=(t==='yes'); break;
+      case 'v/e/cabinvent': S.vent=num; break;
+      case 'v/b/soh': S.soh=num; break;
+      case 'v/b/gids': S.gids=num; break;
+      case 'v/b/voltage': S.v=num; S.packValid=true; break;
+      case 'v/b/current': S.i=num; break;
+      case 'v/b/power': S.power=num; break;
+      case 'v/e/ambienttemp': S.amb=num; break;
+      case 'v/e/on': S.on=(t==='yes')?1:0; break;
+      case 'v/e/headlights': S.lights=(t==='yes')?1:0; break;
+      case 'v/p/odometer': S.odo=Math.round(num); break;
+      case 'v/vin': S.vin=t; break;
+      case 'v/e/hvac/timer': S.hvacTimer=Math.round(num); break;
+      case 'v/location/last': try{ const g=JSON.parse(t); if(g.lat&&g.lon) S.gps={lat:g.lat,lon:g.lon,spd:(g.spd||0)*1.852,at:Date.now()}; }catch(e){} break;
+      default: return;
+    }
+    lastUpdate=Date.now();
+    tripTick();
+    chargeTick();
+    render();
+  });
+}
+
+// ---------- commands ----------
+function pressFx(type){
+  const map={ lights:'act-lights-ic', rhloff:'act-lights-ic', hornlights:'act-lights-ic',
+    lock:'act-doors-ic', unlock:'act-doors-ic', hvac:'act-climate-ic' };
+  const el=map[type]&&$(map[type]); if(!el) return;
+  el.classList.add('flash');
+  setTimeout(()=>el.classList.remove('flash'),200);
+}
+/*DEMO-BEGIN*/
+// ---------- demo mode (?demo=1) ----------
+// Everything runs on simulated data: no network calls, no commands to a car.
+// Scenarios rotate by themselves so every screen and every button can be shown
+// to a buyer without a vehicle.
+const DEMO = new URLSearchParams(location.search).has('demo');
+
+function demoCommand(type, quiet){
+  const names = { charge:'Зарядка', chargeoff:'Стоп зарядки', lock:'Закрытие', unlock:'Открытие',
+    refresh:'Обновление', hvac:'Климат', lights:'Вспышка фар', hornlights:'Сигнал и фары', rhloff:'Отмена' };
+  switch(type){
+    case 'charge':    S.charging = true;  S.charger = 'charging'; break;
+    case 'chargeoff': S.charging = false; S.charger = ''; break;
+    case 'lock':      S.lock = 1; break;
+    case 'unlock':    S.lock = 0; break;
+    case 'hvac':      S.hvac = !S.hvac; S.heat = S.hvac; S.cool = false; break;
+    case 'lights':    S.lights = 1; setTimeout(()=>{ S.lights = 0; render(); }, 1500); break;
+  }
+  pressFx(type);
+  if(!quiet) toast('Демо: ' + (names[type] || type));
+  render();
+  return Promise.resolve(true);
+}
+
+// Each scenario lasts `dur` seconds; `tick(u)` gets the 0..1 progress.
+const DEMO_STEPS = [
+  { dur: 5 },
+  { dur: 4, start(){ S.lights = 1; }, end(){ S.lights = 0; } },
+  { dur: 8, start(){ S.hvac = true; S.heat = true; hvacTotal = 8; },
+    tick(u){ S.cabin = 9.5 + 13 * u; S.hvacTimer = Math.max(0, Math.round(8 * (1 - u))); },
+    end(){ S.hvacTimer = 0; } },
+  { dur: 10, start(){ S.hvac = false; S.heat = false; S.charging = true; S.charger = 'charging'; },
+    tick(u){ S.soc = Math.min(100, 72 + u * 2); S.isoc = S.soc; S.irange = Math.round(S.soc * 2.5);
+             S.v = 388; S.i = 16.5; S.power = 6.4; },
+    end(){ S.charging = false; S.charger = ''; } },
+  { dur: 12, start(){ S.on = 1; },
+    tick(u){ S.soc = 74 - u * 1.5; S.isoc = S.soc; S.irange = Math.round(S.soc * 2.5);
+             S.v = 369; S.i = 38 + Math.sin(u * 14) * 20; S.power = Math.round(S.v * S.i) / 1000;
+             S.odo += 0.03; S.btemp = 17.5 + u * 1.5; },
+    end(){ S.on = 0; S.i = 0; S.power = 0; } },
+  { dur: 5, start(){ S.lock = 0; }, end(){ S.lock = 1; } },
+  { dur: 6, start(){ S.soc = 12; S.isoc = 12; S.irange = 30; },
+    end(){ S.soc = 72; S.isoc = 72; S.irange = 180; } },
+];
+
+let demoIndex = 0;
+let demoTickCount = 0;
+
+function demoApplyStep(){
+  const st = DEMO_STEPS[demoIndex];
+  const u = Math.min(1, demoTickCount / st.dur);
+  if(demoTickCount === 0 && st.start) st.start();
+  if(st.tick) st.tick(u);
+  demoTickCount++;
+  if(demoTickCount >= st.dur){
+    if(st.end) st.end();
+    demoIndex = (demoIndex + 1) % DEMO_STEPS.length;
+    demoTickCount = 0;
+  }
+  S.fage = 0;
+  lastUpdate = Date.now();
+  render();
+  updateBadge();
+}
+
+function demoStart(){
+  document.body.classList.add('demo');
+  const m = $('more-mode'); if(m) m.textContent = 'Демо';
+  Object.assign(S, { soc:72, isoc:72, irange:180, cabin:9.5, amb:9.5, charging:false, charger:'',
+    hvac:false, heat:false, cool:false, fan:3, setpoint:22, vent:0, lock:1, locking:true,
+    soh:92, gids:180, v:372.4, i:0, power:0, packValid:true, voltageValid:true, on:0,
+    fage:0, btemp:17.5, odo:46210, vin:'', lights:0, hvacTimer:0, gps:null });
+  demoApplyStep();
+  setInterval(demoApplyStep, 1000);
+}
+/*DEMO-END*/
+
+function cmd(type, quiet){
+  if(DEMO) return demoCommand(type, quiet);
+  if(!navigator.onLine && mode==='mqtt') toast('Нет сети');
+  if(mode==='local'){
+    if(S.seq){ if(!quiet) toast('Дождитесь завершения текущей команды'); return Promise.resolve(false); }
+    const sp=parseFloat($('sp-slider').value);
+    const mins=parseInt($('hvac-minutes').value,10);
+    if(type==='hvac' && !S.hvac) hvacTotal = mins;   // scale for the countdown bar
+    const map={ charge:'/charge_on', chargeoff:'/charge_off', lock:'/lock', unlock:'/unlock', refresh:'/refresh',
+      lights:'/lights', hornlights:'/hornlights', rhloff:'/rhloff',
+      hvac: S.hvac?'/hvac_off':'/hvac_on?setpoint='+sp+'&minutes='+mins };
+    pressFx(type);
+    toast('Команда отправлена');
+    return localCmd(map[type]).then(ok=>{
+      if(ok){ S.seq=true; render(); setTimeout(pollLocal,1500); }
+      return ok;
+    });
+  }
+  if(!client||!client.connected){ toast('Нет подключения к брокеру'); return Promise.resolve(false); }
+  const p='ovms/'+cfg.user+'/'+(cfg.vid||'leaf')+'/client/pwa/command/c';
+  const sp=parseFloat($('sp-slider').value);
+  const mins=parseInt($('hvac-minutes').value,10);
+  if(type==='hvac' && !S.hvac) hvacTotal = mins;   // scale for the countdown bar
+  const payload={ charge:'charge start', chargeoff:'charge stop', lock:'lock', unlock:'unlock',
+    refresh:'server v3 update modified',
+    lights:'lights', hornlights:'hornlights', rhloff:'lights off',
+    hvac: S.hvac?'climatecontrol off':'climatecontrol on '+sp+' '+mins }[type];
+  client.publish(p,payload);
+  pressFx(type);
+  toast('Команда отправлена');
+  remoteStatus(type);
+  return Promise.resolve(true);
+}
+let remoteStatusTimer=null;
+function remoteStatus(type){
+  // No fake "выполнено": nothing is confirmed until the board replies on
+  // client/pwa/response/<c>. After 15 s the request is shown as unanswered.
+  const el=$('remote-status');
+  const names={charge:'Зарядка',chargeoff:'Стоп зарядки',lock:'Закрытие',unlock:'Открытие',refresh:'Обновление',hvac:'Климат',
+    lights:'Вспышка фар',hornlights:'Сигнал и фары',rhloff:'Отмена'};
+  el.textContent=names[type]+': запрос отправлен…';
+  clearTimeout(remoteStatusTimer);
+  remoteStatusTimer=setTimeout(()=>{
+    el.textContent=names[type]+': нет ответа — плата офлайн или занята';
+    setTimeout(()=>{el.textContent='Выберите действие';},6000);
+  },15000);
+}
+// Called when any response from the board arrives while a request is pending
+function remoteStatusDone(text){
+  clearTimeout(remoteStatusTimer);
+  const el=$('remote-status');
+  if(el){ el.textContent='Ответ: '+text; setTimeout(()=>{el.textContent='Выберите действие';},8000); }
+}
+
+// ---------- garage quick actions ----------
+// Toggle: start when idle, stop when charging. Both paths go through the
+// same hold-to-confirm + local/MQTT command flow.
+function toggleCharge(){ cmd(S.charging ? 'chargeoff' : 'charge'); }
+// No optimistic state flips: the truth comes from the next poll (local)
+// or from the retained metric (MQTT). Optimistic values used to lie
+// after a 403 (locking disabled) or when the board was busy.
+function actLights(){ cmd('lights'); }
+function actDoors(){
+  if(mode==='local' && !S.locking){ toast('Блокировка выключена в настройках платы'); return; }
+  if(S.lock===1) sendLockCmd(0);
+  else if(S.lock===0) sendLockCmd(1);
+  else {
+    // State unknown (no 0x60D yet): let the user pick instead of guessing
+    const open = confirm('Состояние замков неизвестно.\nOK — открыть двери, Отмена — закрыть.');
+    sendLockCmd(open?0:1);
+  }
+}
+// Send lock/unlock and tell the user if the car never reported the new state
+function sendLockCmd(expect){
+  const res = cmd(expect===1?'lock':'unlock');
+  if(!res || !res.then) return;
+  res.then(ok=>{
+    if(!ok) return;
+    setTimeout(()=>{ if(S.lock!==expect) toast('Замки не отреагировали — повторите'); }, 10000);
+  });
+}
+function actClimate(){ cmd('hvac'); }
+function spChanged(v){
+  spTouched=true;
+  localStorage.setItem('leafsp',v);
+  $('sp-val').textContent=v;
+}
+// Climate duration: buttons instead of a select, remembered between visits.
+function setDuration(m){
+  const mins = [5,10,15,20,30].includes(m) ? m : 15;
+  $('hvac-minutes').value = mins;
+  document.querySelectorAll('#dur-btns button').forEach(b=>{
+    b.classList.toggle('on', parseInt(b.dataset.min,10) === mins);
+  });
+  try{ localStorage.setItem('leafdur', String(mins)); }catch(e){}
+}
+document.querySelectorAll('#dur-btns button').forEach(b=>{
+  b.addEventListener('click', ()=> setDuration(parseInt(b.dataset.min,10)));
+});
+// Switch between the light and the full page. POST only: a GET link could be
+// prefetched by the browser and silently flip the stored choice.
+function switchUi(mode){
+  fetch('/ui', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'mode='+mode})
+    .then(()=>{ location.href='/'; })
+    .catch(()=>toast('Не удалось переключить'));
+}
+function updateFindCard(){
+  const c=$('find-car'); if(!c) return;
+  c.classList.remove('active');
+  $('find-car-sub').textContent = 'Свет и сигнал';
+}
+function findCar(){
+  cmd('hornlights');
+}
+function cancelRhl(){
+  cmd('rhloff',true).then(ok=>{
+    if(!ok && S.seq) setTimeout(cancelRhl,2000);
+  });
+}
+
+holdButton($('g-charge-btn'),toggleCharge);
+holdButton($('act-lights'),actLights,$('act-lights-ic'));
+holdButton($('act-doors'),actDoors,$('act-doors-ic'));
+holdButton($('act-climate'),actClimate,$('act-climate-ic'));
+holdButton($('find-car'),findCar);
+holdButton($('rb-horn'),()=>cmd('hornlights'));
+holdButton($('rb-lock'),()=>sendLockCmd(1));
+holdButton($('rb-climate'),()=>cmd('hvac'));
+holdButton($('rb-lights'),()=>cmd('lights'));
+holdButton($('rb-unlock'),()=>sendLockCmd(0));
+holdButton($('remote-charge'),toggleCharge);
+
+// ---------- trips (IndexedDB) ----------
+const TRIP_DB='leaftrips', TRIP_STORE='trips';
+let tripDB=null;
+let trip=null;           // active trip record
+let tripPrevOn=-1;
+let tripLastPointMs=0;
+let tripLastMoveMs=0;    // last time we saw real movement
+let tripLastOdo=null;    // previous odometer reading, for movement detection
+let tripStaleTimer=null;
+
+function tripOpenDB(){
+  return new Promise((res,rej)=>{
+    const r=indexedDB.open(TRIP_DB,1);
+    r.onupgradeneeded=()=>{ r.result.createObjectStore(TRIP_STORE,{keyPath:'id'}); };
+    r.onsuccess=()=>res(r.result);
+    r.onerror=()=>rej(r.error);
+  });
+}
+function tripPut(rec){
+  if(!tripDB) return Promise.resolve();
+  return new Promise((res,rej)=>{
+    const tx=tripDB.transaction(TRIP_STORE,'readwrite');
+    tx.objectStore(TRIP_STORE).put(rec);
+    tx.oncomplete=()=>res();
+    tx.onerror=()=>rej(tx.error);
+  });
+}
+// ---------- board history ----------
+// When the page is served by the board itself, the history is written by the
+// board around the clock and only read here. This is what makes a trip survive
+// a closed phone.
+async function boardTrips(){
+  const r = await fetch('/api/trips', {cache:'no-store'});
+  if(!r.ok) throw new Error('http ' + r.status);
+  const rows = await r.json();
+  return (Array.isArray(rows) ? rows : []).map(x => ({
+    id: 'b' + x.s,
+    startMs: (+x.s || 0) * 1000,
+    endMs: (+x.e || +x.s || 0) * 1000,
+    distKm: +x.k || 0,
+    // The board writes Wh (not kWh) in "w"/"wd"/"wn"; the app stores Wh.
+    energyWh: +x.w || 0,
+    whDay: (x.wd != null ? +x.wd : undefined),
+    whNight: (x.wn != null ? +x.wn : undefined),
+    maxSpd: 0,
+    startSoc: (x.s0 >= 0 ? +x.s0 : null),
+    endSoc: (x.s1 >= 0 ? +x.s1 : null),
+    endReason: x.r || '',
+    points: []
+  })).filter(t => t.startMs > 0 && t.endMs >= t.startMs);
+}
+async function boardCharges(){
+  const r = await fetch('/api/charges', {cache:'no-store'});
+  if(!r.ok) throw new Error('http ' + r.status);
+  const rows = await r.json();
+  return (Array.isArray(rows) ? rows : []).map(x => ({
+    id: 'b' + x.s,
+    startMs: (+x.s || 0) * 1000,
+    endMs: (+x.e || +x.s || 0) * 1000,
+    energyWh: +x.w || 0,
+    whDay: (x.wd != null ? +x.wd : undefined),
+    whNight: (x.wn != null ? +x.wn : undefined),
+    maxV: null,
+    startSoc: (x.s0 >= 0 ? +x.s0 : null),
+    endSoc: (x.s1 >= 0 ? +x.s1 : null),
+    endReason: x.r || '',
+    points: []
+  })).filter(c => c.startMs > 0 && c.endMs >= c.startMs);
+}
+function tripGetAll(){
+  if(onBoard) return boardTrips().catch(()=>[]);
+  return new Promise((res,rej)=>{
+    if(!tripDB) return res([]);
+    const r=tripDB.transaction(TRIP_STORE).objectStore(TRIP_STORE).getAll();
+    r.onsuccess=()=>res(r.result||[]);
+    r.onerror=()=>rej(r.error);
+  });
+}
+// History is kept in the phone's browser storage, so it must not grow forever.
+// Points are dropped when a trip closes; the list itself is capped here.
+const TRIP_KEEP=500;        // trips kept on the phone
+const TRIP_MAX_POINTS=4000; // sanity cap for one very long drive
+function tripDelete(ids){
+  return new Promise((res,rej)=>{
+    if(!tripDB||!ids.length) return res();
+    const tx=tripDB.transaction(TRIP_STORE,'readwrite');
+    const st=tx.objectStore(TRIP_STORE);
+    ids.forEach(id=>st.delete(id));
+    tx.oncomplete=()=>res();
+    tx.onerror=()=>rej(tx.error);
+  });
+}
+async function tripPrune(){
+  if(onBoard) return;
+  const all=await tripGetAll();
+  const done=all.filter(t=>t.endMs!=null).sort((a,b)=>b.startMs-a.startMs);
+  if(done.length<=TRIP_KEEP) return;
+  await tripDelete(done.slice(TRIP_KEEP).map(t=>t.id));
+}
+function tripClearAll(){
+  return new Promise((res,rej)=>{
+    if(!tripDB) return res();
+    const tx=tripDB.transaction(TRIP_STORE,'readwrite');
+    tx.objectStore(TRIP_STORE).clear();
+    tx.oncomplete=()=>res();
+    tx.onerror=()=>rej(tx.error);
+  });
+}
+function haversineKm(lat1,lon1,lat2,lon2){
+  const R=6371, toR=d=>d*Math.PI/180;
+  const dLat=toR(lat2-lat1), dLon=toR(lon2-lon1);
+  const a=Math.sin(dLat/2)**2+Math.cos(toR(lat1))*Math.cos(toR(lat2))*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(a));
+}
+function tripHasGps(){ return !!(S.gps && S.gps.lat && S.gps.lon); }
+function tripValidGps(g){ return !!(g && g.lat && g.lon); }
+
+function tripComputeSummary(points){
+  let distKm=0, energyWh=0, whDay=0, whNight=0, maxSpd=0, startSoc=null, endSoc=null, startLat=null, startLon=null, endLat=null, endLon=null;
+  for(let k=0;k<points.length;k++){
+    const p=points[k];
+    if(p.spd!=null && p.spd>maxSpd) maxSpd=p.spd;
+    if(p.soc!=null){ if(startSoc==null) startSoc=p.soc; endSoc=p.soc; }
+    if(tripValidGps(p)){ if(startLat==null){startLat=p.lat;startLon=p.lon;} endLat=p.lat; endLon=p.lon; }
+    if(k>0){
+      const q=points[k-1];
+      const dtH=(p.t-q.t)/3600000;
+      if(dtH>0 && dtH<0.02){   // ignore gaps: a paused trip must not add phantom energy
+        if(tripValidGps(p)&&tripValidGps(q)){
+          const d=haversineKm(q.lat,q.lon,p.lat,p.lon);
+          if(d<50) distKm+=d; // guard vs GPS jump
+        }
+        if(p.v!=null&&p.i!=null&&q.v!=null&&q.i!=null){
+          const avgW=((p.v*p.i)+(q.v*q.i))/2;
+          const wh=Math.abs(avgW)*dtH;
+          energyWh += wh;
+          if(isNightTime(p.t)) whNight += wh; else whDay += wh;
+        }
+      }
+    }
+  }
+  return {distKm, energyWh, whDay, whNight, maxSpd, startSoc, endSoc, startLat, startLon, endLat, endLon};
+}
+
+// Distance for a trip: the odometer is the honest source (it comes from the car
+// over CAN), GPS is only a fallback. Without this every trip showed "0.0 км",
+// because most boards have no GPS module.
+function tripDistanceKm(t, sum){
+  if(t.odoStart!=null && t.odoEnd!=null){
+    const d=t.odoEnd-t.odoStart;
+    if(d>0.01) return d;
+  }
+  return sum.distKm;
+}
+
+// Compress the recorded points into a small polyline for the map preview:
+// at most ROUTE_MAX_POINTS pairs, ~5 decimal places (about one metre).
+const ROUTE_MAX_POINTS = 80;
+// Tracks are optional: some owners do not need a map and prefer the smaller
+// records. The choice is stored per device.
+let tracksOn = true;
+try { tracksOn = localStorage.getItem('leaftracks') !== '0'; } catch(e) {}
+function updateTracksToggle(){
+  const el = document.getElementById('trip-toggle');
+  if(el) el.classList.toggle('on', tracksOn);
+}
+function toggleTracks(){
+  tracksOn = !tracksOn;
+  try { localStorage.setItem('leaftracks', tracksOn ? '1' : '0'); } catch(e) {}
+  updateTracksToggle();
+  toast(tracksOn ? 'Треки поездок включены' : 'Треки поездок выключены');
+}
+function tripBuildRoute(points){
+  const pts = (points||[]).filter(p=>p.lat!=null && p.lon!=null);
+  if(pts.length < 2) return null;
+  const step = Math.max(1, Math.ceil(pts.length / ROUTE_MAX_POINTS));
+  const out = [];
+  for(let i=0;i<pts.length;i+=step) out.push([+pts[i].lat.toFixed(5), +pts[i].lon.toFixed(5)]);
+  const last = pts[pts.length-1];
+  const tail = [+last.lat.toFixed(5), +last.lon.toFixed(5)];
+  const prev = out[out.length-1];
+  if(!prev || prev[0]!==tail[0] || prev[1]!==tail[1]) out.push(tail);
+  return out.length>1 ? out : null;
+}
+
+function routeSvg(route){
+  const w=300, h=96, pad=8;
+  const lats=route.map(p=>p[0]), lons=route.map(p=>p[1]);
+  const minLat=Math.min(...lats), maxLat=Math.max(...lats);
+  const minLon=Math.min(...lons), maxLon=Math.max(...lons);
+  const spanLat=Math.max(maxLat-minLat,1e-6), spanLon=Math.max(maxLon-minLon,1e-6);
+  const s=Math.min((w-2*pad)/spanLon, (h-2*pad)/spanLat);
+  const offX=(w-2*pad-spanLon*s)/2, offY=(h-2*pad-spanLat*s)/2;
+  const x=lon=>pad+offX+(lon-minLon)*s;
+  const y=lat=>h-pad-offY-(lat-minLat)*s;
+  const d=route.map((p,i)=>(i?'L':'M')+x(p[1]).toFixed(1)+' '+y(p[0]).toFixed(1)).join(' ');
+  const a=route[0], b=route[route.length-1];
+  return '<svg viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="xMidYMid meet">'+
+    '<path d="'+d+'" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" opacity=".85"/>'+
+    '<circle cx="'+x(a[1]).toFixed(1)+'" cy="'+y(a[0]).toFixed(1)+'" r="3.2" fill="#34c759"/>'+
+    '<circle cx="'+x(b[1]).toFixed(1)+'" cy="'+y(b[0]).toFixed(1)+'" r="3.2" fill="#ff3b30"/>'+
+    '</svg>';
+}
+
+function tripStart(now){
+  trip={ id:'trip_'+now.toString(36)+'_'+Math.random().toString(36).slice(2,6),
+    startMs:now, endMs:null, points:[],
+    odoStart:(S.odo>0?S.odo:null) };
+  tripLastMoveMs=now;
+  tripLastPointMs=now;
+  tripPut(trip);
+}
+function tripEnd(now, reason){
+  if(!trip) return;
+  const durSec=(now-trip.startMs)/1000;
+  const sum=tripComputeSummary(trip.points);
+  trip.endMs=now;
+  trip.endReason=reason;
+  trip.odoEnd=(S.odo>0?S.odo:null);
+  Object.assign(trip,sum);
+  trip.distKm=tripDistanceKm(trip, sum);
+  // discard junk trips (too short and no distance) — and delete the stub that
+  // tripStart() already wrote, otherwise it came back later as a 0 km trip
+  if(durSec<20 && (trip.distKm||0)<0.05){ const id=trip.id; trip=null; tripDelete([id]); return; }
+  // keep a compressed track before the raw points are dropped
+  trip.route = tracksOn ? tripBuildRoute(trip.points) : null;
+  // The summary is final; the points are the bulk of the record (a long trip is
+  // hundreds of them). Keeping only the summary keeps history small forever.
+  trip.points=[];
+  tripPut(trip);
+  trip=null;
+  refreshTripsScreen();
+  tripPrune();
+}
+function tripRecordPoint(now){
+  if(trip.points.length>=TRIP_MAX_POINTS) return;   // long drive: keep the first ones
+  const p={ t:now,
+    lat: tripHasGps()?S.gps.lat:null, lon: tripHasGps()?S.gps.lon:null,
+    spd:(S.gps&&S.gps.spd)||0, v:S.packValid?S.v:null, i:S.packValid?S.i:null,
+    soc:S.soc>=0?S.soc:null };
+  trip.points.push(p);
+  tripLastPointMs=now;
+  tripPut(trip); // persist on every point so a reload doesn't lose the trip
+}
+
+// Timestamps for history come from the board's clock when it is synchronised
+// (NTP), so records made from different phones agree. Falls back to the phone.
+function nowMs(){
+  return (onBoard && S.epoch && S.epoch > 1600000000) ? S.epoch * 1000 : Date.now();
+}
+function tripTick(){
+  // The board writes the history itself; a second recorder in the page would
+  // only create duplicates and lose trips when the phone sleeps.
+  if(onBoard) return;
+  if(!tripDB) return;
+  const now=nowMs();
+  const odo = (S.odo>0 ? S.odo : null);
+  const moved = tripHasGps() && ((S.gps.spd||0)>2);
+  // detect movement from coordinate delta too (local mode has no spd)
+  if(!moved && trip && trip.points.length){
+    const last=trip.points[trip.points.length-1];
+    if(tripValidGps(last) && tripHasGps()){
+      const d=haversineKm(last.lat,last.lon,S.gps.lat,S.gps.lon);
+      if(d>0.02) moved=true; // 20m in one tick = movement
+    }
+  }
+  // Odometer is the movement source when there is no GPS: the car is "driving"
+  // only if the reading grew. Start on movement, not on the ignition edge, so
+  // a parked car does not create empty trips and opening the app mid-drive
+  // still starts one.
+  const odoMoved = (odo!=null && tripLastOdo!=null && odo - tripLastOdo > 0.02);
+  if(moved || odoMoved) tripLastMoveMs=now;
+
+  if(!trip){
+    if(S.on===1 && (moved || odoMoved) && lastUpdate){
+      tripStart(now);
+      if(odo!=null && trip) trip.odoStart = tripLastOdo!=null ? tripLastOdo : odo;
+    }
+  } else {
+    const noMoveMs = now - tripLastMoveMs;
+    const end = (S.on===0) || (noMoveMs>15*60*1000); // off, or no movement 15min
+    if(end){
+      tripEnd(now, S.on===0?'off':'idle');
+    } else if(now-tripLastPointMs>=5000 || odoMoved){
+      tripRecordPoint(now);
+    }
+  }
+  tripLastOdo=odo;
+  tripPrevOn=S.on;
+  updateTripBanner();
+}
+// Live summary in the "trip in progress" strip: km and kWh so far.
+function updateTripBanner(){
+  const banner = $('trip-active-banner');
+  if(!banner) return;
+  const label = banner.querySelector('span');
+  if(!label) return;
+  if(!trip){ label.textContent = 'Идёт поездка…'; return; }
+  let text = 'Идёт поездка';
+  if(trip.odoStart != null && S.odo > 0){
+    text += ' · ' + Math.max(0, S.odo - trip.odoStart).toFixed(1) + ' км';
+  }
+  const wh = tripComputeSummary(trip.points).energyWh;
+  if(wh > 0) text += ' · ' + (wh/1000).toFixed(2) + ' кВт·ч';
+  label.textContent = text;
+}
+
+async function tripCleanupOrphans(){
+  if(onBoard) return;
+  const all=await tripGetAll();
+  let changed=false;
+  for(const t of all){
+    if(t.endMs==null && (!trip || t.id!==trip.id)){
+      const lastT=t.points.length?t.points[t.points.length-1].t:t.startMs;
+      const sum=tripComputeSummary(t.points);
+      t.endMs=lastT; t.endReason='orphan';
+      Object.assign(t,sum);
+      await tripPut(t);
+      changed=true;
+    }
+  }
+  if(changed) refreshTripsScreen();
+}
+
+function fmtDur(sec){
+  sec=Math.max(0,Math.round(sec));
+  const h=Math.floor(sec/3600), m=Math.round((sec%3600)/60);
+  if(h>0) return h+' ч '+m+' мин';
+  if(m>0) return m+' мин';
+  return sec+' с';
+}
+async function refreshTripsScreen(){
+  const banner=$('trip-active-banner');
+  if(banner) banner.classList.toggle('show', !!trip);
+  if(!tripDB) return;
+  const all=await tripGetAll();
+  all.sort((a,b)=>b.startMs-a.startMs);
+  const done=all.filter(t=>t.endMs!=null);
+  const totalKm=done.reduce((s,t)=>s+(t.distKm||0),0);
+  const totalWh=done.reduce((s,t)=>s+(t.energyWh||0),0);
+  $('ts-total').textContent=done.length;
+  $('ts-km').textContent=totalKm.toFixed(1);
+  $('ts-kwh').textContent=(totalWh/1000).toFixed(2);
+  $('ts-rub').textContent=summaryRub(done);
+  const list=$('trip-list'); if(!list) return;
+  if(!done.length){ list.innerHTML=''; $('trip-empty').style.display='block'; $('trip-clear').style.display='none'; return; }
+  $('trip-empty').style.display='none'; $('trip-clear').style.display='block';
+  list.innerHTML=done.map(t=>{
+    const d=new Date(t.startMs);
+    const dstr=d.toLocaleDateString('ru-RU',{day:'2-digit',month:'short'})+' '+d.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
+    const dur=(t.endMs-t.startMs)/1000;
+    const socStr=(t.startSoc!=null&&t.endSoc!=null)?(t.startSoc.toFixed(0)+'→'+t.endSoc.toFixed(0)+'%'):'';
+    const hasTrack = !!(t.route && t.route.length>1);
+    const routeLink = (t.startLat!=null)
+      ? '<span class="route" onclick="openTripRoute('+t.startLat+','+t.startLon+')">Открыть на карте</span>' : '';
+    const track = hasTrack
+      ? '<div class="t-route">'+routeSvg(t.route)+'<div class="t-route-note">Трек поездки · '+t.route.length+' точек</div></div>'
+      : '';
+    const spdCell=(t.maxSpd>0)?'<span><span class="m-val">'+t.maxSpd.toFixed(0)+'</span> км/ч</span>':'';
+    const kwh=(t.energyWh||0)/1000;
+    const per100=(t.distKm>0.5)?(kwh/t.distKm*100):null;
+    const per100Cell=per100!=null?'<span><span class="m-val">'+per100.toFixed(1)+'</span> кВт·ч/100</span>':'';
+    const cost=costText(t);
+    const costCell=cost?'<span><span class="m-val">'+cost+'</span> стоимость</span>':'';
+    return '<div class="trip-item">'+
+      '<div class="t-head"><span class="t-date">'+dstr+'</span><span class="t-dur">'+fmtDur(dur)+'</span></div>'+
+      '<div class="t-metrics"><span><span class="m-val">'+(t.distKm||0).toFixed(1)+'</span> км</span>'+
+      spdCell+
+      '<span><span class="m-val">'+kwh.toFixed(2)+'</span> кВт·ч</span>'+
+      per100Cell+costCell+'</div>'+
+      '<div class="t-meta">'+(socStr?'<span>Заряд: '+socStr+'</span>':'')+routeLink+'</div>'+
+      track+
+      '</div>';
+  }).join('');
+}
+function openTripRoute(lat,lon){
+  window.open('https://yandex.ru/maps/?pt='+lon.toFixed(6)+','+lat.toFixed(6)+'&z=15&l=map','_blank');
+}
+async function clearTrips(){
+  if(!confirm('Удалить всю историю поездок?')) return;
+  if(onBoard){
+    try{
+      const r = await fetch('/api/trips/clear', {method:'POST', cache:'no-store', headers:{'X-Requested-With':'leaf'}});
+      if(!r.ok) throw new Error('http '+r.status);
+    }catch(e){ toast('Плата не подтвердила очистку'); return; }
+  } else {
+    await tripClearAll();
+  }
+  refreshTripsScreen();
+  toast('История очищена');
+}
+
+// ---------- charges (IndexedDB) ----------
+const CHG_DB='leafcharges', CHG_STORE='charges';
+let chgDB=null;
+let chg=null;            // active charge session
+let chgPrevCharging=false;
+let chgLastPointMs=0;
+
+function chargeOpenDB(){
+  return new Promise((res,rej)=>{
+    const r=indexedDB.open(CHG_DB,1);
+    r.onupgradeneeded=()=>{ r.result.createObjectStore(CHG_STORE,{keyPath:'id'}); };
+    r.onsuccess=()=>res(r.result);
+    r.onerror=()=>rej(r.error);
+  });
+}
+function chgPut(rec){
+  if(!chgDB) return Promise.resolve();
+  return new Promise((res,rej)=>{
+    const tx=chgDB.transaction(CHG_STORE,'readwrite');
+    tx.objectStore(CHG_STORE).put(rec);
+    tx.oncomplete=()=>res();
+    tx.onerror=()=>rej(tx.error);
+  });
+}
+function chgGetAll(){
+  if(onBoard) return boardCharges().catch(()=>[]);
+  return new Promise((res,rej)=>{
+    if(!chgDB) return res([]);
+    const r=chgDB.transaction(CHG_STORE).objectStore(CHG_STORE).getAll();
+    r.onsuccess=()=>res(r.result||[]);
+    r.onerror=()=>rej(r.error);
+  });
+}
+const CHG_KEEP=300;
+const CHG_MAX_POINTS=4000;
+function chgDelete(ids){
+  return new Promise((res,rej)=>{
+    if(!chgDB||!ids.length) return res();
+    const tx=chgDB.transaction(CHG_STORE,'readwrite');
+    const st=tx.objectStore(CHG_STORE);
+    ids.forEach(id=>st.delete(id));
+    tx.oncomplete=()=>res();
+    tx.onerror=()=>rej(tx.error);
+  });
+}
+async function chgPrune(){
+  if(onBoard) return;
+  const all=await chgGetAll();
+  const done=all.filter(c=>c.endMs!=null).sort((a,b)=>b.startMs-a.startMs);
+  if(done.length<=CHG_KEEP) return;
+  await chgDelete(done.slice(CHG_KEEP).map(c=>c.id));
+}
+function chgClearAll(){
+  return new Promise((res,rej)=>{
+    if(!chgDB) return res();
+    const tx=chgDB.transaction(CHG_STORE,'readwrite');
+    tx.objectStore(CHG_STORE).clear();
+    tx.oncomplete=()=>res();
+    tx.onerror=()=>rej(tx.error);
+  });
+}
+function chgComputeSummary(points){
+  let energyWh=0, whDay=0, whNight=0, startSoc=null, endSoc=null, maxV=null;
+  for(let k=0;k<points.length;k++){
+    const p=points[k];
+    if(p.soc!=null){ if(startSoc==null) startSoc=p.soc; endSoc=p.soc; }
+    if(p.v!=null && (maxV==null||p.v>maxV)) maxV=p.v;
+    if(k>0){
+      const q=points[k-1];
+      if(p.v!=null&&p.i!=null&&q.v!=null&&q.i!=null){
+        const dtH=(p.t-q.t)/3600000;
+        if(dtH>0 && dtH<0.02){
+          const wh=Math.abs(((p.v*p.i)+(q.v*q.i))/2*dtH);
+          energyWh += wh;
+          if(isNightTime(p.t)) whNight += wh; else whDay += wh;
+        }
+      }
+    }
+  }
+  return {energyWh, whDay, whNight, startSoc, endSoc, maxV};
+}
+function chargeStart(now){
+  chg={ id:'chg_'+now.toString(36)+'_'+Math.random().toString(36).slice(2,6),
+    startMs:now, endMs:null, points:[] };
+  chgLastPointMs=now;
+  chgPut(chg);
+}
+function chargeEnd(now, reason){
+  if(!chg) return;
+  const durSec=(now-chg.startMs)/1000;
+  const sum=chgComputeSummary(chg.points);
+  chg.endMs=now;
+  chg.endReason=reason;
+  chg.endState=S.charger||'';
+  Object.assign(chg,sum);
+  // discard junk sessions (too short / no energy) and remove the stub record
+  if(durSec<30 && (sum.energyWh||0)<0.01){ const id=chg.id; chg=null; chgDelete([id]); return; }
+  chg.points=[];   // the summary is what the list shows
+  chgPut(chg);
+  chg=null;
+  refreshChargesScreen();
+  chgPrune();
+}
+function chargeRecordPoint(now){
+  if(chg.points.length>=CHG_MAX_POINTS) return;
+  chg.points.push({ t:now, soc:S.soc>=0?S.soc:null,
+    v:S.packValid?S.v:null, i:S.packValid?S.i:null });
+  chgLastPointMs=now;
+  chgPut(chg);
+}
+function chargeTick(){
+  if(onBoard) return;    // board-side recorder owns the history
+  if(!chgDB) return;
+  const now=nowMs();
+  if(!chg){
+    // Also start when the app is opened in the middle of a charge: waiting for
+    // the 0->1 edge lost whole sessions.
+    if(S.charging && lastUpdate) chargeStart(now);
+  } else {
+    if(!S.charging) chargeEnd(now,'stopped');
+    else if(now-chgLastPointMs>=30000) chargeRecordPoint(now); // 30s, charging is slow
+  }
+  chgPrevCharging=S.charging;
+}
+async function chargeCleanupOrphans(){
+  if(onBoard) return;
+  const all=await chgGetAll();
+  let changed=false;
+  for(const c of all){
+    if(c.endMs==null && (!chg || c.id!==chg.id)){
+      const lastT=c.points.length?c.points[c.points.length-1].t:c.startMs;
+      const sum=chgComputeSummary(c.points);
+      c.endMs=lastT; c.endReason='orphan';
+      Object.assign(c,sum);
+      await chgPut(c);
+      changed=true;
+    }
+  }
+  if(changed) refreshChargesScreen();
+}
+async function refreshChargesScreen(){
+  const banner=$('charge-active-banner');
+  if(banner) banner.classList.toggle('show', !!chg);
+  if(!chgDB) return;
+  const all=await chgGetAll();
+  all.sort((a,b)=>b.startMs-a.startMs);
+  const done=all.filter(c=>c.endMs!=null);
+  const totalWh=done.reduce((s,c)=>s+(c.energyWh||0),0);
+  const totalSec=done.reduce((s,c)=>s+((c.endMs-c.startMs)/1000),0);
+  $('cs-total').textContent=done.length;
+  $('cs-kwh').textContent=(totalWh/1000).toFixed(2);
+  $('cs-hours').textContent=(totalSec/3600).toFixed(1);
+  $('cs-rub').textContent=summaryRub(done);
+  const list=$('charge-list'); if(!list) return;
+  if(!done.length){ list.innerHTML=''; $('charge-empty').style.display='block'; $('charge-clear').style.display='none'; return; }
+  $('charge-empty').style.display='none'; $('charge-clear').style.display='block';
+  list.innerHTML=done.map(c=>{
+    const d=new Date(c.startMs);
+    const dstr=d.toLocaleDateString('ru-RU',{day:'2-digit',month:'short'})+' '+d.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
+    const dur=(c.endMs-c.startMs)/1000;
+    const socStr=(c.startSoc!=null&&c.endSoc!=null)?(c.startSoc.toFixed(0)+'→'+c.endSoc.toFixed(0)+'%'):'';
+    // endReason is our own enum; endState is a raw charger state and used to
+    // leak English words like "charging" into the list.
+    const reasonTxt = c.endReason==='stopped' ? 'остановлена'
+                    : (c.endReason==='orphan' ? 'без завершения' : '');
+    const st = reasonTxt ? ' · '+reasonTxt : '';
+    return '<div class="trip-item">'+
+      '<div class="t-head"><span class="t-date">'+dstr+'</span><span class="t-dur">'+fmtDur(dur)+'</span></div>'+
+      '<div class="t-metrics"><span><span class="m-val">'+((c.energyWh||0)/1000).toFixed(2)+'</span> кВт·ч</span>'+
+      (costText(c)?'<span><span class="m-val">'+costText(c)+'</span> стоимость</span>':'')+
+      (c.maxV!=null?'<span><span class="m-val">'+c.maxV.toFixed(0)+'</span> V</span>':'')+'</div>'+
+      '<div class="t-meta">'+(socStr?'<span>Заряд: '+socStr+'</span>':'')+'<span>'+st+'</span></div>'+
+      '</div>';
+  }).join('');
+}
+async function clearCharges(){
+  if(!confirm('Удалить всю историю зарядок?')) return;
+  if(onBoard){
+    try{
+      const r = await fetch('/api/charges/clear', {method:'POST', cache:'no-store', headers:{'X-Requested-With':'leaf'}});
+      if(!r.ok) throw new Error('http '+r.status);
+    }catch(e){ toast('Плата не подтвердила очистку'); return; }
+  } else {
+    await chgClearAll();
+  }
+  refreshChargesScreen();
+  toast('История очищена');
+}
+
+// ---------- settings modal ----------
+function openSettings(){
+  // On the board the full /settings page stays the primary UI - the built-in
+  // panel was a reduced view and the users asked for the real page back.
+  if(onBoard){ location.href='/settings'; return; }
+  cfg=loadCfg()||{host:'m5.wqtt.ru',port:15871,user:'',pass:'',vid:'leaf'};
+  $('cfg-host').value=cfg.host||''; $('cfg-port').value=cfg.port||15871;
+  $('cfg-user').value=cfg.user||''; $('cfg-pass').value=cfg.pass||'';
+  $('cfg-vid').value=cfg.vid||'leaf';
+  const t=tariffCfg();
+  $('cfg-tar-day').value=t.day?t.day:'';
+  $('cfg-tar-night').value=t.night?t.night:'';
+  $('cfg-night-from').value=t.from;
+  $('cfg-night-to').value=t.to;
+  $('settings-modal').classList.add('show');
+}
+function closeSettings(){ $('settings-modal').classList.remove('show'); }
+
+// ---------- money ----------
+// Two tariffs (day / night) with a configurable night window. Prices live on
+// the phone: they only affect how the history is displayed.
+function tariffCfg(){
+  // On the board page the tariff is stored on the board itself, so it does not
+  // disappear when the phone opens the same board by a different address.
+  if(onBoard && S && S.tariffDay !== undefined && S.tariffDay !== null){
+    return { day: +S.tariffDay || 0, night: +S.tariffNight || 0,
+             from: (S.nightFrom === undefined ? 0 : +S.nightFrom),
+             to:   (S.nightTo === undefined ? 7 : +S.nightTo) };
+  }
+  try{
+    const v = JSON.parse(localStorage.getItem('leaftariff') || '{}');
+    return { day: +v.day || 0,
+             night: (v.night === undefined ? +v.day||0 : +v.night||0),
+             from: (v.from === undefined ? 0 : +v.from),
+             to:   (v.to === undefined ? 7 : +v.to) };
+  }catch(e){ return {day:0, night:0, from:0, to:7}; }
+}
+function saveTariffCfg(c){ try{ localStorage.setItem('leaftariff', JSON.stringify(c)); }catch(e){} }
+// The board splits trip/charge energy into day/night itself, so its night
+// window must match the phone's tariff window.
+function syncTariffToBoard(){
+  if(!onBoard) return;
+  const c = tariffCfg();
+  const body = 'day=' + encodeURIComponent(c.day) + '&night=' + encodeURIComponent(c.night) +
+    '&from=' + encodeURIComponent(c.from) + '&to=' + encodeURIComponent(c.to);
+  fetch('/api/tariff', {method:'POST', cache:'no-store',
+    headers:{'Content-Type':'application/x-www-form-urlencoded','X-Requested-With':'leaf'},
+    body}).catch(()=>{});
+}
+// Night window may wrap over midnight (23 -> 7).
+function isNightTime(ts){
+  const c = tariffCfg();
+  const d = new Date(ts);
+  const h = d.getHours() + d.getMinutes()/60;
+  if(c.from === c.to) return false;
+  return (c.from < c.to) ? (h >= c.from && h < c.to) : (h >= c.from || h < c.to);
+}
+// Cost of one record. Records written before day/night split existed have only
+// energyWh, so they are priced at the day rate.
+function recordCost(rec){
+  const c = tariffCfg();
+  const wh = rec.energyWh || 0;
+  const day = (rec.whDay === undefined || rec.whDay === null) ? wh : rec.whDay;
+  const night = (rec.whNight === undefined || rec.whNight === null) ? 0 : rec.whNight;
+  return (day/1000)*c.day + (night/1000)*c.night;
+}
+function costText(rec){
+  const v = recordCost(rec);
+  return v >= 0.5 ? (v.toFixed(0) + ' ₽') : '';
+}
+// Total roubles for a history list; a dash means the tariff is not set yet.
+function summaryRub(records){
+  const c = tariffCfg();
+  if (!(c.day > 0 || c.night > 0)) return '—';
+  return records.reduce((s, r) => s + recordCost(r), 0).toFixed(0);
+}
+function openTariff(){
+  const c = tariffCfg();
+  $('tar-day').value = c.day ? c.day : '';
+  $('tar-night').value = c.night ? c.night : '';
+  $('tar-from').value = c.from;
+  $('tar-to').value = c.to;
+  $('tariff-modal').classList.add('show');
+}
+function closeTariff(event){
+  if(event && event.target !== $('tariff-modal')) return;
+  $('tariff-modal').classList.remove('show');
+}
+function saveTariff(){
+  const day = parseFloat(String($('tar-day').value).replace(',', '.')) || 0;
+  const night = parseFloat(String($('tar-night').value).replace(',', '.')) || 0;
+  let from = parseInt($('tar-from').value, 10); if(!(from >= 0 && from <= 23)) from = 0;
+  let to = parseInt($('tar-to').value, 10); if(!(to >= 0 && to <= 23)) to = 7;
+  saveTariffCfg({day, night, from, to});
+  syncTariffToBoard();
+  closeTariff();
+  refreshTripsScreen(); refreshChargesScreen();
+  toast(day||night ? ('Тариф: '+day.toFixed(2)+' / '+night.toFixed(2)+' ₽') : 'Тариф отключён');
+}
+function editTariff(){ openTariff(); }
+
+// ---------- CSV export ----------
+function csvField(v){
+  const s = (v === null || v === undefined) ? '' : String(v);
+  return /[";\n]/.test(s) ? ('"' + s.replace(/"/g, '""') + '"') : s;
+}
+function downloadCsv(name, head, rows){
+  const lines = [head.map(csvField).join(';')].concat(rows.map(r => r.map(csvField).join(';')));
+  const blob = new Blob(['\ufeff' + lines.join('\r\n')], {type: 'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  toast('Файл сохранён');
+}
+async function exportTripsCsv(){
+  const all = await tripGetAll();
+  const done = all.filter(t => t.endMs != null).sort((a,b) => a.startMs - b.startMs);
+  if(!done.length){ toast('История поездок пуста'); return; }
+  const head = ['начало','конец','минут','км','кВт·ч','кВт·ч/100км','заряд до, %','заряд после, %','причина'];
+  const rows = done.map(t => {
+    const kwh = (t.energyWh || 0) / 1000;
+    const per100 = (t.distKm > 0.5) ? (kwh / t.distKm * 100) : '';
+    return [new Date(t.startMs).toLocaleString('ru-RU'),
+            new Date(t.endMs).toLocaleString('ru-RU'),
+            Math.round((t.endMs - t.startMs) / 60000),
+            (t.distKm || 0).toFixed(2),
+            kwh.toFixed(2),
+            per100 === '' ? '' : per100.toFixed(1),
+            t.startSoc != null ? t.startSoc.toFixed(0) : '',
+            t.endSoc != null ? t.endSoc.toFixed(0) : '',
+            t.endReason || ''];
+  });
+  downloadCsv('leaf-trips.csv', head, rows);
+}
+async function exportChargesCsv(){
+  const all = await chgGetAll();
+  const done = all.filter(c => c.endMs != null).sort((a,b) => a.startMs - b.startMs);
+  if(!done.length){ toast('История зарядок пуста'); return; }
+  const head = ['начало','конец','минут','кВт·ч','заряд до, %','заряд после, %','макс. напряжение','причина'];
+  const rows = done.map(c => [
+    new Date(c.startMs).toLocaleString('ru-RU'),
+    new Date(c.endMs).toLocaleString('ru-RU'),
+    Math.round((c.endMs - c.startMs) / 60000),
+    ((c.energyWh || 0) / 1000).toFixed(2),
+    c.startSoc != null ? c.startSoc.toFixed(0) : '',
+    c.endSoc != null ? c.endSoc.toFixed(0) : '',
+    c.maxV != null ? c.maxV.toFixed(0) : '',
+    c.endReason || ''
+  ]);
+  downloadCsv('leaf-charges.csv', head, rows);
+}
+// ---------- diagnostics ----------
+let diagTimer = null;
+
+function openDiag(){
+  if(!onBoard){ toast('Доступно только при подключении к плате'); return; }
+  $('diag-modal').classList.add('show');
+  diagRender();
+  if(diagTimer) clearInterval(diagTimer);
+  diagTimer = setInterval(diagRender, 2000);
+}
+function closeDiag(event){
+  if(event && event.target!==$('diag-modal')) return;
+  $('diag-modal').classList.remove('show');
+  if(diagTimer){ clearInterval(diagTimer); diagTimer = null; }
+}
+function diagResetText(code, sw){
+  const base = {1:'включение питания',2:'внешний сигнал',3:'программный',4:'паника',
+                5:'watchdog',6:'watchdog задачи',7:'watchdog',8:'выход из сна',9:'просадка питания'}[code] || ('код '+code);
+  const why = {2:'после OTA',3:'зависла заливка',4:'перезапуск радио',5:'мало памяти',6:'кнопка в настройках'}[sw];
+  return base + (why ? ' · '+why : '');
+}
+function diagUptime(sec){
+  sec = sec||0;
+  const h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60);
+  return h ? (h+' ч '+m+' мин') : (m ? (m+' мин') : (sec+' с'));
+}
+async function diagRender(){
+  try{
+    const r = await fetch('/api/status', {cache:'no-store'});
+    const j = await r.json();
+    $('diag-note').textContent = '';
+    const bmsAge = (j.bmsage === 4294967295 || j.bmsage === undefined) ? 'нет ответа' : (j.bmsage+' с назад');
+    const t = (v, unit) => (v === undefined || v === null || v < -900) ? '—' : (v + (unit||''));
+    const rows = [
+      ['Прошивка', j.fw || '—'],
+      ['Работает', diagUptime(j.uptime)],
+      ['Перезагрузка', diagResetText(j.reset_reason, j.software_restart)],
+      ['Память', Math.round((j.free_heap||0)/1024) + ' КБ'],
+      ['PSRAM', j.psram ? (Math.round((j.psram_free||0)/1024) + ' из ' + Math.round(j.psram/1024) + ' КБ') : 'нет'],
+      ['Wi-Fi', t(j.wifi_rssi,' dBm')],
+      ['Часы платы', j.epoch ? new Date(j.epoch*1000).toLocaleTimeString('ru-RU') : 'не синхронизированы'],
+      ['Интерфейс', j.ui_lite ? 'лёгкий' : 'полный'],
+      ['CAN B', (j.fb||0)+' кадров · TX '+t(j.btec)+' / RX '+t(j.brec)],
+      ['CAN A', (j.evcan ? 'есть' : 'нет')+' · '+(j.evclk||'?')+' / '+(j.evkbps||'?')+' · '+(j.fa||0)+' кадров'],
+      ['BMS', 'группа '+(j.bmsgrp||0)+' · '+bmsAge+' · ошибок '+(j.bmsfail||0)],
+      ['Батарея', t(j.btemp,' °C')+' · разброс '+t(j.cdelta,' мВ')],
+      ['Связь', ['без подключения','MQTT','OVMS V2','только звонок'][j.remote_mode] || '—'],
+      ['Модем', j.modem || '—'],
+    ];
+    $('diag-grid').innerHTML = rows.map(rr =>
+      '<div class="d-cell"><b>'+rr[1]+'</b><span>'+rr[0]+'</span></div>').join('');
+  }catch(e){
+    $('diag-note').textContent = 'нет связи с платой';
+  }
+}
+async function diagWake(){
+  $('diag-note').textContent = 'пробуждаем шлюз…';
+  try{
+    await fetch('/refresh', {method:'POST'});
+    setTimeout(()=>{ diagRender(); $('diag-note').textContent = 'запрос отправлен, данные появятся через 10–20 с'; }, 12000);
+  }catch(e){ $('diag-note').textContent = 'команда не отправлена'; }
+}
+async function diagVin(){
+  $('diag-note').textContent = 'запускаем пробу VIN…';
+  try{
+    const r = await fetch('/api/vin_probe', {method:'POST'});
+    if(!r.ok){ $('diag-note').textContent = 'плата отклонила пробу'; return; }
+    $('diag-note').textContent = 'проба запущена — VIN появится в «Состоянии», если блок ответит';
+  }catch(e){ $('diag-note').textContent = 'не удалось отправить'; }
+}
+// Clipboard works only in a secure context (https or localhost). The board is
+// plain http, so fall back to the old textarea trick.
+function copyText(text){
+  if(navigator.clipboard && window.isSecureContext){
+    return navigator.clipboard.writeText(text);
+  }
+  return new Promise((resolve, reject) => {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.top = '-1000px';
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, ta.value.length);
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch(e) { ok = false; }
+    ta.remove();
+    ok ? resolve() : reject(new Error('copy failed'));
+  });
+}
+async function diagModem(){
+  const out = $('diag-modem');
+  out.classList.add('show');
+  out.textContent = 'проверяем модем — до 10 секунд…';
+  try{
+    const r = await fetch('/api/modem_probe', {method:'POST', cache:'no-store'});
+    if(r.status === 409){ out.textContent = 'модем занят: отключите его в настройках и повторите'; return; }
+    const j = await r.json();
+    out.textContent = j.reply || (j.ok ? 'AT ответил, но без данных' : 'нет ответа');
+  }catch(e){
+    out.textContent = 'плата не ответила';
+  }
+}
+async function diagModemPower(){
+  const out = $('diag-modem');
+  out.classList.add('show');
+  out.textContent = 'импульс PWRKEY отправлен. Подождите 10–15 секунд и нажмите «Проверить модем».';
+  try{
+    await fetch('/api/modem_power', {method:'POST', cache:'no-store', headers:{'X-Requested-With':'leaf'}});
+  }catch(e){
+    out.textContent = 'не удалось отправить импульс';
+  }
+}
+function diagCopy(){
+  const cells = [...document.querySelectorAll('#diag-grid .d-cell')];
+  if(!cells.length){ toast('Пока нечего копировать'); return; }
+  const text = cells.map(c => c.querySelector('span').textContent + ': ' + c.querySelector('b').textContent).join('\n');
+  copyText(text).then(
+    ()=>toast('Скопировано в буфер'),
+    ()=>toast('Не удалось скопировать — выделите текст вручную')
+  );
+}
+
+function openAbout(){ $('about-modal').classList.add('show'); }
+function closeAbout(event){
+  if(event && event.target!==$('about-modal')) return;
+  $('about-modal').classList.remove('show');
+}
+let developerStatusTimer=null;
+function openDeveloper(){
+  if(!onBoard){ toast('Доступно только при подключении к плате'); return; }
+  $('developer-modal').classList.add('show');
+  $('developer-password').value='';
+  $('developer-login-error').textContent='';
+  developerShowLogin();
+  $('developer-password').focus();
+}
+function closeDeveloper(event){
+  if(event && event.target!==$('developer-modal')) return;
+  $('developer-modal').classList.remove('show');
+  if(developerStatusTimer){ clearInterval(developerStatusTimer); developerStatusTimer=null; }
+  canWatchStop();
+}
+function developerShowLogin(){
+  $('developer-login').style.display='block';
+  $('developer-panel').style.display='none';
+}
+async function developerLogin(){
+  const password=$('developer-password').value;
+  $('developer-login-error').textContent='';
+  try{
+    const r=await fetch('/api/developer/login',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'password='+encodeURIComponent(password)});
+    if(!r.ok){ $('developer-login-error').textContent='Неверный пароль'; return; }
+    $('developer-login').style.display='none';
+    $('developer-panel').style.display='block';
+    await refreshCanLogStatus();
+    developerStatusTimer=setInterval(refreshCanLogStatus,2000);
+    canWatchStart();
+    replayRender();
+    replayArmRender();
+  }catch(e){ $('developer-login-error').textContent='Нет связи с платой'; }
+}
+async function refreshCanLogStatus(){
+  try{
+    const r=await fetch('/api/developer/canlog',{cache:'no-store'});
+    if(r.status===401){ developerShowLogin(); return; }
+    if(!r.ok) throw new Error();
+    const s=await r.json();
+    $('canlog-state').textContent=s.full?'Память заполнена':(s.recording?'Идёт запись':'Запись остановлена');
+    $('canlog-details').textContent='Кадров: '+s.frames+' из '+s.capacity;
+    $('canlog-start').disabled=s.recording;
+    $('canlog-stop').disabled=!s.recording;
+    $('canlog-clear').disabled=s.recording||s.frames===0;
+    $('canlog-download').style.display=s.available?'block':'none';
+    $('canlog-error').textContent=s.full?'Запись остановлена автоматически. Скачайте журнал.':
+      (!s.recording&&s.available&&s.frames===0?'CAN-кадры не получены. Проверьте подключение к автомобилю и повторите запись.':'');
+    refreshBusStatus();
+  }catch(e){ $('canlog-error').textContent='Не удалось получить состояние записи'; }
+}
+// Bus health: is the Port A controller alive and are frames arriving at all?
+async function refreshBusStatus(){
+  try{
+    const r=await fetch('/api/status',{cache:'no-store'});
+    if(!r.ok) throw new Error();
+    const j=await r.json();
+    $('firmware-state').textContent = 'Прошивка: '+(j.fw||'неизвестна');
+    $('firmware-details').textContent = j.fw_desc||'Описание сборки отсутствует';
+    $('bus-state').textContent = j.evcan ? 'Port A (EV-CAN): MCP2515 отвечает' : 'Port A (EV-CAN): MCP2515 не отвечает';
+    $('bus-details').textContent = 'Кадров: Port A '+(j.fa||0)+', Port B '+(j.fb||0);
+  }catch(e){ $('bus-details').textContent='Ошибка опроса /api/status'; }
+}
+async function canLogAction(action){
+  $('canlog-error').textContent='';
+  try{
+    const r=await fetch('/api/developer/canlog/'+action,{method:'POST'});
+    if(r.status===401){ developerShowLogin(); return; }
+    if(!r.ok) throw new Error();
+    await refreshCanLogStatus();
+  }catch(e){ $('canlog-error').textContent='Команда не выполнена'; }
+}
+
+// ---------- CAN monitor ----------
+// Polls /api/developer/canwatch: one row per identifier, updated in place.
+// Rows that changed recently are highlighted, so pressing a button in the car
+// shows exactly which IDs react.
+let canWatchTimer = null;
+let canWatchPaused = false;
+let canWatchBus = 'all';
+let canWatchIdFilter = '';
+let canWatchData = [];
+
+// Press tracking: each "Отметить нажатие" opens a 1.5 s window; every ID whose
+// value changed inside that window gets a hit for this press. That is how you
+// tell which frames belong to the button you keep pressing in the car.
+const MARK_WINDOW_MS = 1500;
+let markWindows = [];
+let markHits = {};
+let markCount = 0;
+
+function canWatchMark(){
+  const now = Date.now();
+  markWindows.push({ t0: now, t1: now + MARK_WINDOW_MS, seen: {} });
+  if(markWindows.length > 40) markWindows.shift();
+  markCount++;
+  canWatchMarkLine();
+  if(navigator.vibrate) try { navigator.vibrate(30); } catch(e) {}
+}
+function canWatchScoreMarks(){
+  if(!markWindows.length) return;
+  const now = Date.now();
+  for(const row of canWatchData){
+    const last = now - row.ms;
+    const key = row.b + ':' + row.id;
+    for(const w of markWindows){
+      if(last < w.t0 || last > w.t1 || w.seen[key]) continue;
+      w.seen[key] = true;
+      markHits[key] = (markHits[key] || 0) + 1;
+    }
+  }
+  markWindows = markWindows.filter(w => now <= w.t1);
+}
+function canWatchMarkLine(){
+  const el = $('dm-marks');
+  if(!el) return;
+  el.textContent = markCount
+    ? 'Отметок: ' + markCount + ' · колонка «Наж.» показывает, на скольких нажатиях менялся ID'
+    : 'Отметок: 0 · нажмите «Отметить нажатие» перед каждым нажатием кнопки в машине';
+}
+
+function canWatchStart(){
+  if(canWatchTimer) return;
+  canWatchPoll();
+  canWatchTimer = setInterval(canWatchPoll, 700);
+}
+function canWatchStop(){
+  if(canWatchTimer){ clearInterval(canWatchTimer); canWatchTimer = null; }
+}
+function canWatchTogglePause(){
+  canWatchPaused = !canWatchPaused;
+  const b = $('dm-pause');
+  if(b) b.textContent = canWatchPaused ? 'Продолжить' : 'Пауза';
+  if(!canWatchPaused) canWatchPoll();
+}
+async function canWatchPoll(){
+  if(canWatchPaused) return;
+  try{
+    const r = await fetch('/api/developer/canwatch', {cache:'no-store'});
+    if(r.status === 401){ developerShowLogin(); canWatchStop(); return; }
+    canWatchData = await r.json();
+    canWatchScoreMarks();
+    canWatchRender();
+  }catch(e){}
+}
+function canWatchFilter(bus){
+  canWatchBus = bus;
+  document.querySelectorAll('.dm-filters button').forEach(btn=>{
+    btn.classList.toggle('on', btn.dataset.bus === bus);
+  });
+  canWatchRender();
+}
+function canWatchAge(ms){
+  if(ms < 1000) return 'сейчас';
+  if(ms < 60000) return (ms/1000).toFixed(1)+' с';
+  return Math.round(ms/60000)+' мин';
+}
+function canWatchSetIdFilter(value){
+  canWatchIdFilter = (value || '').trim().toUpperCase().replace(/^0X/, '');
+  canWatchRender();
+}
+function canWatchRows(){
+  return canWatchData.filter(row => {
+    if(canWatchBus !== 'all' && row.b !== canWatchBus) return false;
+    if(canWatchIdFilter){
+      const hex = row.id.toString(16).toUpperCase().padStart(3, '0');
+      if(hex.indexOf(canWatchIdFilter) < 0) return false;
+    }
+    return true;
+  });
+}
+function canWatchRender(){
+  const body = $('dm-rows');
+  if(!body) return;
+  const rows = canWatchRows();
+  $('dm-count').textContent = rows.length + ' ID';
+  if(!rows.length){
+    body.innerHTML = '<tr><td colspan="7" class="dm-empty">Ждём кадры…</td></tr>';
+    return;
+  }
+  body.innerHTML = rows.map(row=>{
+    const hot = row.ms < 1200 ? ' class="hot"' : '';
+    // EV-CAN is listen-only, so only CAR-CAN frames can be replayed.
+    const addCell = row.b === 'B'
+      ? '<button type="button" title="Сохранить как команду" onclick="replaySaveRow(\''+row.b+'\','+row.id+',\''+(row.d||'')+'\')">＋</button>'
+      : '<span class="dm-nosend" title="EV-CAN работает только на приём">—</span>';
+    const hits = markHits[row.b + ':' + row.id] || 0;
+    return '<tr'+hot+'>'+
+      '<td>'+row.b+'</td>'+
+      '<td>'+('000'+row.id.toString(16).toUpperCase()).slice(-3)+'</td>'+
+      '<td class="dm-data">'+(row.d||'—')+'</td>'+
+      '<td class="dm-n">'+row.n+'</td>'+
+      '<td class="dm-age">'+canWatchAge(row.ms)+'</td>'+
+      '<td class="dm-hits'+(hits?' has':'')+'">'+(hits||'')+'</td>'+
+      '<td class="dm-add">'+addCell+'</td>'+
+      '</tr>';
+  }).join('');
+}
+async function canWatchReset(){
+  try{
+    const r = await fetch('/api/developer/canwatch/reset',{method:'POST'});
+    if(r.status === 401){ developerShowLogin(); return; }
+    canWatchData = [];
+    markWindows = [];
+    markHits = {};
+    markCount = 0;
+    canWatchMarkLine();
+    canWatchRender();
+    toast('Монитор очищен');
+  }catch(e){}
+}
+// ---------- saved commands (developer) ----------
+// Stored in the browser; the board only transmits once replay is armed.
+const RP_ARM_MS = 10*60*1000;
+let replayArmedUntil = 0;
+
+function replayLoad(){
+  try { const v = JSON.parse(localStorage.getItem('leafcmds') || '[]'); return Array.isArray(v) ? v : []; }
+  catch(e) { return []; }
+}
+function replayStore(list){
+  try { localStorage.setItem('leafcmds', JSON.stringify(list)); } catch(e) {}
+}
+function replayHex(id){ return '0x' + id.toString(16).toUpperCase().padStart(3,'0'); }
+function replayRender(){
+  const box = $('rp-list');
+  if(!box) return;
+  const list = replayLoad();
+  if(!list.length){
+    box.innerHTML = '<div class="rp-empty">Пока нет сохранённых команд. В мониторе нажмите «+» у нужного ID.</div>';
+    return;
+  }
+  box.innerHTML = list.map((c,i) =>
+    '<div class="rp-item">'+
+      '<div class="rp-main"><div class="rp-name">'+c.name+'</div>'+
+      '<div class="rp-code">'+replayHex(c.id)+' · '+(c.d||'')+' · ×'+(c.n||1)+'</div></div>'+
+      '<button type="button" class="rp-play" title="Отправить" onclick="replaySend('+i+')">▶</button>'+
+      '<button type="button" class="rp-del" title="Удалить" onclick="replayDelete('+i+')">×</button>'+
+    '</div>').join('');
+}
+function replaySaveRow(bus, id, d){
+  const code = replayHex(id) + ' ' + (d||'');
+  const name = prompt('Название команды', code);
+  if(name === null) return;
+  const list = replayLoad();
+  list.push({ name: (name.trim() || code), id: id, d: (d||'').trim(), n: 3, gap: 120 });
+  replayStore(list);
+  replayRender();
+  toast('Сохранено: ' + (name.trim() || code));
+}
+function replayDelete(i){
+  const list = replayLoad();
+  if(!list[i]) return;
+  list.splice(i,1);
+  replayStore(list);
+  replayRender();
+}
+async function replayToggleArm(){
+  const armed = replayArmedUntil > Date.now();
+  try{
+    const r = await fetch('/api/developer/replay/' + (armed ? 'disarm' : 'arm'), {method:'POST'});
+    if(r.status === 401){ developerShowLogin(); return; }
+    if(!r.ok) throw new Error();
+    replayArmedUntil = armed ? 0 : Date.now() + RP_ARM_MS;
+    replayArmRender();
+    toast(armed ? 'Отправка запрещена' : 'Отправка разрешена на 10 минут');
+  }catch(e){ toast('Не удалось переключить'); }
+}
+function replayArmRender(){
+  const btn = $('rp-arm');
+  if(!btn) return;
+  const armed = replayArmedUntil > Date.now();
+  btn.textContent = armed ? 'Запретить отправку' : 'Разрешить отправку';
+  btn.classList.toggle('on', armed);
+}
+async function replaySend(i){
+  const list = replayLoad();
+  const c = list[i];
+  if(!c) return;
+  if(replayArmedUntil <= Date.now()){ toast('Сначала разрешите отправку'); return; }
+  if(!confirm('Отправить ' + replayHex(c.id) + ' ' + (c.d||'') + ' ×' + (c.n||1) + '?')) return;
+  try{
+    const q = 'id=' + encodeURIComponent(c.id.toString(16)) +
+              '&d=' + encodeURIComponent(c.d||'') +
+              '&n=' + (c.n||1) + '&gap=' + (c.gap||120);
+    const r = await fetch('/api/developer/replay?' + q, {method:'POST'});
+    if(r.status === 401){ developerShowLogin(); return; }
+    if(r.status === 403){ replayArmedUntil = 0; replayArmRender(); toast('Отправка не разрешена'); return; }
+    const j = await r.json().catch(()=>({}));
+    toast('Отправлено: ' + (j.sent!==undefined ? j.sent : '?') + ' из ' + (c.n||1));
+    canWatchPoll();
+  }catch(e){ toast('Не удалось отправить'); }
+}
+
+function canWatchCopy(){
+  const rows = canWatchRows();
+  if(!rows.length){ toast('Пока нечего копировать'); return; }
+  const lines = rows.map(row =>
+    ['CAN'+row.b, '0x'+row.id.toString(16).toUpperCase().padStart(3,'0'),
+     row.d||'', 'изм. '+row.n].join('\t'));
+  const text = 'ID\tшина\tданные\tизменений\n' + rows.map(row =>
+    ['0x'+row.id.toString(16).toUpperCase().padStart(3,'0'), 'CAN'+row.b,
+     row.d||'', row.n].join('\t')).join('\n');
+  copyText(text).then(
+    ()=>toast('Скопировано в буфер'),
+    ()=>toast('Не удалось скопировать — выделите текст вручную')
+  );
+  return lines.length;
+}
+document.addEventListener('keydown',event=>{
+  if(event.key==='Escape'){ closeAbout(); closeDeveloper(); }
+});
+document.querySelectorAll('.settings-group').forEach(s=>s.addEventListener('toggle',()=>{
+  if(!s.open) return;
+  document.querySelectorAll('.settings-group[open]').forEach(o=>{ if(o!==s) o.open=false; });
+}));
+function saveSettings(){
+  cfg={ host:$('cfg-host').value.trim(), port:parseInt($('cfg-port').value)||15871,
+    user:$('cfg-user').value.trim(), pass:$('cfg-pass').value, vid:$('cfg-vid').value.trim()||'leaf' };
+  const day=parseFloat(String($('cfg-tar-day').value).replace(',','.'))||0;
+  const night=parseFloat(String($('cfg-tar-night').value).replace(',','.'))||0;
+  let from=parseInt($('cfg-night-from').value,10); if(!(from>=0&&from<=23)) from=0;
+  let to=parseInt($('cfg-night-to').value,10); if(!(to>=0&&to<=23)) to=7;
+  saveTariffCfg({day,night,from,to});
+  localStorage.setItem('leafcfg',JSON.stringify(cfg));
+  syncTariffToBoard();
+  closeSettings();
+  if(mode==='mqtt'){ try{client.end(true);}catch(e){} }
+  mqttConnect();
+  toast('Сохранено');
+}
+
+// ---------- firmware update from the PWA ----------
+// Check the GitHub releases, download the image for the detected board and
+// stream it into /ota_update — the same flow the Android app has. Works only
+// when served from the board (same origin); from public hosting the browser
+// blocks http requests to the board.
+let fwAsset = null;
+function openFw(){
+  $('fw-modal').classList.add('show');
+  $('fw-head').textContent = (S.board || 'Плата') + ' · ' + (S.fw || '—');
+}
+function closeFw(e){
+  if(e && e.target !== e.currentTarget) return;
+  $('fw-modal').classList.remove('show');
+}
+async function fwCheck(){
+  $('fw-note').textContent = 'Проверяем GitHub…';
+  fwAsset = null;
+  $('fw-flash-btn').style.display = 'none';
+  try{
+    const r = await fetch('https://api.github.com/repos/wargaelanor/leafapp/releases?per_page=30',
+      {cache:'no-store', signal:fetchTimeout(15000)});
+    if(!r.ok) throw 0;
+    const releases = await r.json();
+    const kind = (S.fw.indexOf('TCALL') >= 0 || (S.board||'').indexOf('T-Call') >= 0) ? 'TCALL' : 'CMD';
+    const suffix = '-' + kind + '.bin';
+    outer:
+    for(const rl of releases){
+      if(rl.draft || rl.prerelease) continue;
+      for(const a of (rl.assets || [])){
+        if(a.name && a.name.startsWith('LeafControl-FW-') && a.name.endsWith(suffix)){
+          fwAsset = {
+            name: a.name,
+            url: a.browser_download_url,
+            size: a.size,
+            version: a.name.slice('LeafControl-FW-'.length).replace(suffix, ''),
+          };
+          break outer;
+        }
+      }
+    }
+    if(!fwAsset){ $('fw-note').textContent = 'Прошивка для этой платы в релизах не найдена.'; return; }
+    $('fw-note').textContent = 'Доступно: ' + fwAsset.version + ' · ' +
+      Math.round(fwAsset.size / 1024) + ' КБ. Установлено: ' + (S.fw || '—');
+    $('fw-flash-btn').style.display = 'inline-flex';
+  }catch(e){
+    $('fw-note').textContent = 'GitHub недоступен — проверьте интернет у платы/телефона.';
+  }
+}
+async function fwFlash(){
+  if(!fwAsset) return;
+  fwProgress(0);
+  $('fw-note').textContent = 'Скачивание ' + fwAsset.version + '…';
+  try{
+    const r = await fetch(fwAsset.url, {cache:'no-store'});
+    if(!r.ok) throw 0;
+    const blob = await r.blob();
+    await otaUploadBlob(blob, fwAsset.name);
+  }catch(e){
+    fwProgress(0);
+    $('fw-note').textContent = 'Не удалось скачать прошивку.';
+  }
+}
+function fwFilePicked(inp){
+  const f = inp.files && inp.files[0];
+  if(!f) return;
+  otaUploadBlob(f, f.name).catch(()=>{});
+}
+function fwProgress(p){
+  $('ota-progress').style.display = p == null ? 'none' : 'block';
+  $('fw-bar-fill').style.width = p + '%';
+  if(p != null) $('fw-note').textContent = 'Загрузка в плату: ' + p + '% — не отключайте питание';
+}
+function otaUploadBlob(blob, name){
+  return new Promise((resolve, reject) => {
+    const fd = new FormData();
+    fd.append('firmware', blob, name);
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/ota_update');
+    xhr.upload.onprogress = e => { if(e.lengthComputable) fwProgress(Math.round(e.loaded * 100 / e.total)); };
+    xhr.onload = () => {
+      if(xhr.status >= 200 && xhr.status < 300){ fwDone(); resolve(); }
+      else { $('fw-note').textContent = 'Плата отклонила прошивку (HTTP ' + xhr.status + ')'; fwProgress(0); reject(); }
+    };
+    xhr.onerror = () => { $('fw-note').textContent = 'Ошибка сети при загрузке.'; fwProgress(0); reject(); };
+    xhr.send(fd);
+  });
+}
+function fwDone(){
+  fwProgress(100);
+  $('fw-note').textContent = 'Загружено. Плата перезагружается…';
+  toast('Прошивка загружена');
+  let tries = 0;
+  const timer = setInterval(async () => {
+    tries++;
+    try{
+      const r = await fetch('/api/status', {cache:'no-store', signal:fetchTimeout(3000)});
+      if(r.ok){
+        const j = await r.json();
+        if(j && j.fw){
+          clearInterval(timer);
+          $('fw-note').textContent = 'Готово: ' + j.fw;
+          $('fw-head').textContent = (j.board || '') + ' · ' + j.fw;
+        }
+      }
+    }catch(e){ /* still rebooting */ }
+    if(tries > 40) clearInterval(timer);
+  }, 3000);
+}
+
+// ---------- boot ----------
+function isBoardHost(){
+  const h=location.hostname.toLowerCase();
+  if(h==='leaf.local'||h==='leaf'||h==='localhost'||h==='127.0.0.1') return true;
+  const p=h.split('.').map(Number);
+  if(p.length!==4||p.some(n=>!Number.isInteger(n)||n<0||n>255)) return false;
+  return p[0]===10 || p[0]===127 ||
+         (p[0]===192&&p[1]===168) ||
+         (p[0]===172&&p[1]>=16&&p[1]<=31) ||
+         (p[0]===169&&p[1]===254);
+}
+function enableBoardUi(){
+  mode='local'; onBoard=true;
+  $('more-mode').textContent='Локально (плата)';
+  $('more-settings-label').textContent='Настройки платы';
+  $('more-ota').style.display='flex';
+  $('more-developer').style.display='flex';
+  $('more-lite').style.display='flex';
+  $('more-diag').style.display='flex';
+  // The board records distance from the odometer, not a GPS track, so the
+  // track switch would be a dead control here.
+  const trackToggle=$('trip-toggle');
+  if(trackToggle) trackToggle.style.display='none';
+  // Push the phone's tariff window (default 00:00-07:00) to the board once the
+  // page is up, so a fresh board splits energy the same way the app does.
+  setTimeout(syncTariffToBoard, 1500);
+}
+async function boot(){
+  if(DEMO){ demoStart(); return; }
+  const savedSp = localStorage.getItem('leafsp');
+  if(savedSp){ $('sp-slider').value = savedSp; $('sp-val').textContent = savedSp; spTouched = true; }
+  setDuration(parseInt(localStorage.getItem('leafdur'),10));
+  render();
+  tripOpenDB().then(db=>{ tripDB=db; return tripCleanupOrphans(); })
+    .then(()=>tripPrune())
+    .then(()=>refreshTripsScreen()).catch(()=>{});
+  chargeOpenDB().then(db=>{ chgDB=db; return chargeCleanupOrphans(); })
+    .then(()=>chgPrune())
+    .then(()=>refreshChargesScreen()).catch(()=>{});
+  // Ask the browser to keep the stored history instead of evicting it when the
+  // phone runs low on space.
+  if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{});
+  setInterval(()=>{ tripTick(); chargeTick(); updateBadge(); }, 15000); // stale/idle check even when no messages arrive
+  if('serviceWorker' in navigator && location.protocol==='https:'){
+    navigator.serviceWorker.register('sw.js').catch(()=>{});
+  }
+  // A private/local origin is itself enough to expose board-only navigation.
+  // /api/status can take several seconds while a busy CAN queue is drained, so
+  // never hide OTA/developer controls merely because a short probe timed out.
+  if(isBoardHost()) enableBoardUi();
+  // Confirm the board API, otherwise fall back to MQTT on public hosting.
+  try{
+    const ac=new AbortController();
+    setTimeout(()=>ac.abort(),20000);
+    const r=await fetch('/api/status',{signal:ac.signal,cache:'no-store'});
+    if(r.ok){ enableBoardUi(); pollLocal(); setInterval(pollLocal,3000);
+      return; }
+  }catch(e){}
+  if(onBoard){ pollLocal(); setInterval(pollLocal,3000); return; }
+  if(loadCfg()){ mqttConnect(); $('more-mode').textContent='MQTT'; }
+  else { updateBadge(); $('more-mode').textContent='Не настроено — нажмите Настройки'; openSettings(); }
+}
+updateTracksToggle();
+boot();
+</script>
+</body>
+</html>
