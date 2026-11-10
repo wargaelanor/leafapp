@@ -1409,9 +1409,92 @@ class Api(BaseHTTPRequestHandler):
 
         if path.startswith("/api/admin/users/") and method == "POST" and path.endswith("/password"):
             return self.admin_reset_password(path)
+
+        if path == "/api/admin/users" and method == "POST":
+            data = self.body()
+            username = (data.get("username") or "").strip().lower()
+            password = data.get("password") or ""
+            if not re.fullmatch(r"[a-z0-9_.-]{3,32}", username):
+                return self.err(400, "логин: 3-32 символа, латиница, цифры, . _ -")
+            if len(password) < 8:
+                return self.err(400, "пароль короче 8 символов")
+            with db_lock, connect() as c:
+                if c.execute("SELECT 1 FROM users WHERE username=?", (username,)).fetchone():
+                    return self.err(409, "такой логин уже занят")
+                cur = c.execute(
+                    "INSERT INTO users(username, pass_hash, role, created_at) VALUES(?,?,?,?)",
+                    (username, hash_password(password), "owner", now()),
+                )
+                log_event(c, None, "admin_created_user", {"username": username})
+            return self.json(200, {"ok": True, "id": cur.lastrowid,
+                                   "username": username, "password": password})
+
+        if path.startswith("/api/admin/users/") and method == "DELETE":
+            try:
+                uid = int(path.rsplit("/", 1)[-1])
+            except ValueError:
+                return self.err(400, "bad id")
+            with db_lock, connect() as c:
+                row = c.execute("SELECT username, role FROM users WHERE id=?", (uid,)).fetchone()
+                if not row:
+                    return self.err(404, "user not found")
+                if row["role"] == "admin":
+                    return self.err(400, "администратора удалить нельзя")
+                # машины отвязываем и выдаём новые коды
+                devs = c.execute("SELECT id FROM devices WHERE owner_id=?", (uid,)).fetchall()
+                for d in devs:
+                    c.execute(
+                        "UPDATE devices SET owner_id=NULL, status='unclaimed', claim_code=? WHERE id=?",
+                        (make_claim_code(), d["id"]),
+                    )
+                c.execute("DELETE FROM sessions WHERE user_id=?", (uid,))
+                c.execute("DELETE FROM fcm_tokens WHERE user_id=?", (uid,))
+                c.execute("DELETE FROM users WHERE id=?", (uid,))
+                log_event(c, None, "admin_deleted_user",
+                          {"username": row["username"], "devices_unbound": len(devs)})
+            return self.json(200, {"ok": True, "devices_unbound": len(devs)})
+
+        if path.startswith("/api/admin/devices/") and method == "DELETE":
+            try:
+                did = int(path.rsplit("/", 1)[-1])
+            except ValueError:
+                return self.err(400, "bad id")
+            with db_lock, connect() as c:
+                row = c.execute("SELECT login FROM devices WHERE id=?", (did,)).fetchone()
+                if not row:
+                    return self.err(404, "device not found")
+                for table in ("samples", "dev_sessions", "commands", "schedules", "maintenance"):
+                    c.execute("DELETE FROM %s WHERE device_id=?" % table, (did,))
+                c.execute("DELETE FROM devices WHERE id=?", (did,))
+                log_event(c, None, "admin_deleted_device", {"login": row["login"]})
+            return self.json(200, {"ok": True})
+
+        if path.startswith("/api/admin/devices/") and method == "POST":
+            parts = path.split("/")
+            try:
+                did = int(parts[4])
+            except (ValueError, IndexError):
+                return self.err(400, "bad id")
+            action = parts[5] if len(parts) > 5 else ""
+            if action == "assign":
+                username = (self.body().get("username") or "").strip().lower()
+                with db_lock, connect() as c:
+                    urow = c.execute("SELECT id, role FROM users WHERE username=?", (username,)).fetchone()
+                    if not urow:
+                        return self.err(404, "user not found")
+                    if not c.execute("SELECT 1 FROM devices WHERE id=?", (did,)).fetchone():
+                        return self.err(404, "device not found")
+                    c.execute("UPDATE devices SET owner_id=?, status='active', claim_code=NULL WHERE id=?",
+                              (urow["id"], did))
+                    log_event(c, did, "admin_assigned_device", {"username": username})
+                return self.json(200, {"ok": True, "owner": username})
+
         if path == "/api/admin/users" and method == "GET":
             with db_lock, connect() as c:
-                rows = c.execute("SELECT id,username,role,created_at FROM users ORDER BY id").fetchall()
+                rows = c.execute(
+                    "SELECT u.id,u.username,u.role,u.created_at, "
+                    "(SELECT COUNT(*) FROM devices d WHERE d.owner_id=u.id) AS devices "
+                    "FROM users u ORDER BY u.id").fetchall()
             return self.json(200, {"users": [dict(r) for r in rows]})
 
         if path == "/api/admin/events" and method == "GET":
