@@ -13,6 +13,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import sqlite3
 import threading
@@ -179,6 +180,8 @@ def init_db() -> None:
             c.execute("ALTER TABLE devices ADD COLUMN config_json TEXT")
         if "config_ts" not in cols:
             c.execute("ALTER TABLE devices ADD COLUMN config_ts INTEGER DEFAULT 0")
+        if "claim_code" not in cols:
+            c.execute("ALTER TABLE devices ADD COLUMN claim_code TEXT")
         row = c.execute("SELECT id FROM users WHERE username=?", (ADMIN_USER,)).fetchone()
         if not row and ADMIN_PASSWORD:
             c.execute(
@@ -212,6 +215,34 @@ def verify_password(password: str, stored: str) -> bool:
         return False
 
 
+def make_claim_code() -> str:
+    """Код привязки: 16 символов, группами по 4."""
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    raw = "".join(secrets.choice(alphabet) for _ in range(16))
+    return "-".join(raw[i:i + 4] for i in range(0, 16, 4))
+
+
+def normalize_code(code: str) -> str:
+    return "".join(ch for ch in (code or "").upper() if ch.isalnum())
+
+
+def cleanup_unused_accounts(c) -> int:
+    """Удаляет владельцев без машин, созданных больше 3 суток назад."""
+    cutoff = now() - 3 * 86400
+    rows = c.execute(
+        "SELECT u.id FROM users u WHERE u.role='owner' AND u.created_at < ? "
+        "AND NOT EXISTS (SELECT 1 FROM devices d WHERE d.owner_id=u.id)",
+        (cutoff,),
+    ).fetchall()
+    for r in rows:
+        c.execute("DELETE FROM sessions WHERE user_id=?", (r["id"],))
+        c.execute("DELETE FROM fcm_tokens WHERE user_id=?", (r["id"],))
+        c.execute("DELETE FROM users WHERE id=?", (r["id"],))
+    if rows:
+        log_event(c, None, "accounts_cleaned", {"count": len(rows)})
+    return len(rows)
+
+
 def log_event(c: sqlite3.Connection, device_id, kind: str, payload: dict) -> None:
     c.execute(
         "INSERT INTO events(device_id, kind, payload, ts) VALUES(?,?,?,?)",
@@ -235,6 +266,7 @@ def row_to_device(r: sqlite3.Row) -> dict:
         "state": json.loads(r["state_json"]) if r["state_json"] else None,
         "state_ts": r["state_ts"],
         "poll_s": POLL_S,
+        "claim_code": r["claim_code"],
     }
 
 
@@ -387,6 +419,10 @@ class Api(BaseHTTPRequestHandler):
 
     def api(self, method: str, path: str, q: dict):
         # ---------- auth
+        if path == "/api/auth/register" and method == "POST":
+            return self.register()
+        if path == "/api/claim" and method == "POST":
+            return self.claim_device()
         if path == "/api/auth/login" and method == "POST":
             return self.login()
         if path == "/api/auth/logout" and method == "POST":
@@ -514,6 +550,57 @@ class Api(BaseHTTPRequestHandler):
 
     # ---------- auth
 
+    def register(self):
+        """Свободная регистрация владельца: свой логин и пароль, машины добавляются кодом."""
+        data = self.body()
+        username = (data.get("username") or "").strip().lower()
+        password = data.get("password") or ""
+        if not re.fullmatch(r"[a-z0-9_.-]{3,32}", username):
+            return self.err(400, "логин: 3–32 символа, латиница, цифры, . _ -")
+        if len(password) < 8:
+            return self.err(400, "пароль короче 8 символов")
+        with db_lock, connect() as c:
+            if c.execute("SELECT 1 FROM users WHERE username=?", (username,)).fetchone():
+                return self.err(409, "такой логин уже занят")
+            cur = c.execute(
+                "INSERT INTO users(username, pass_hash, role, created_at) VALUES(?,?,?,?)",
+                (username, hash_password(password), "owner", now()),
+            )
+            uid = cur.lastrowid
+            token = secrets.token_urlsafe(32)
+            c.execute("INSERT INTO sessions(token,user_id,created_at,expires_at) VALUES(?,?,?,?)",
+                      (token, uid, now(), now() + SESSION_DAYS * 86400))
+            log_event(c, None, "account_registered", {"username": username})
+        cookie = f"leaf_session={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={SESSION_DAYS*86400}"
+        self.json(200, {"ok": True, "user": {"id": uid, "username": username, "role": "owner"}},
+                  {"Set-Cookie": cookie})
+
+    def claim_device(self):
+        """Привязка платы к аккаунту по коду с её экрана."""
+        u = self.require_user()
+        if not u:
+            return
+        code = normalize_code(self.body().get("code"))
+        if len(code) < 16:
+            return self.err(400, "код слишком короткий")
+        with db_lock, connect() as c:
+            rows = c.execute(
+                "SELECT * FROM devices WHERE owner_id IS NULL AND claim_code IS NOT NULL"
+            ).fetchall()
+            match = None
+            for r in rows:
+                if normalize_code(r["claim_code"]) == code:
+                    match = r
+                    break
+            if not match:
+                return self.err(404, "код не найден или уже использован")
+            c.execute(
+                "UPDATE devices SET owner_id=?, status='active', claim_code=NULL WHERE id=?",
+                (u["id"], match["id"]),
+            )
+            log_event(c, match["id"], "device_claimed", {"by": u["username"]})
+        self.json(200, {"ok": True, "device_id": match["id"], "login": match["login"]})
+
     def login(self):
         data = self.body()
         username = (data.get("username") or "").strip()
@@ -560,36 +647,42 @@ class Api(BaseHTTPRequestHandler):
     # ---------- board
 
     def device_enroll(self):
+        """Регистрация платы. Возвращает токен устройства и код привязки."""
         data = self.body()
+        serial = (data.get("serial") or "").strip()
         login = (data.get("login") or "").strip().lower()
-        password = data.get("password") or ""
-        if not login or len(password) < 8:
-            return self.err(400, "нужны login и password (>=8)")
-        out = {}
+        fw = data.get("fw") or ""
+        name = data.get("name") or "Leaf"
         with db_lock, connect() as c:
-            existing = c.execute("SELECT * FROM devices WHERE login=?", (login,)).fetchone()
-            if existing:
-                if not verify_password(password, c.execute(
-                        "SELECT pass_hash FROM users WHERE id=?", (existing["owner_id"],)).fetchone()["pass_hash"]):
-                    return self.err(403, "логин занят")
-                out = {"device_token": existing["device_token"], "status": existing["status"],
-                       "device_id": existing["id"]}
-            else:
-                cur = c.execute(
-                    "INSERT INTO users(username,pass_hash,role,created_at) VALUES(?,?,?,?)",
-                    (login, hash_password(password), "owner", now()),
-                )
-                owner_id = cur.lastrowid
-                token = secrets.token_hex(24)
-                cur = c.execute(
-                    "INSERT INTO devices(login,name,serial,fw,owner_id,device_token,status,created_at,last_seen)"
-                    " VALUES(?,?,?,?,?,?,?,?,?)",
-                    (login, data.get("name") or "Leaf", data.get("serial"), data.get("fw"),
-                     owner_id, token, "pending", now(), now()),
-                )
-                out = {"device_token": token, "status": "pending", "device_id": cur.lastrowid}
-                log_event(c, cur.lastrowid, "device_enrolled", {"login": login, "serial": data.get("serial")})
-        self.json(200, out)
+            row = None
+            if serial:
+                row = c.execute("SELECT * FROM devices WHERE serial=?", (serial,)).fetchone()
+            if not row and login:
+                row = c.execute("SELECT * FROM devices WHERE login=?", (login,)).fetchone()
+            if row:
+                c.execute("UPDATE devices SET fw=?, last_seen=? WHERE id=?", (fw, now(), row["id"]))
+                return self.json(200, {
+                    "device_token": row["device_token"],
+                    "status": row["status"],
+                    "device_id": row["id"],
+                    "claim_code": row["claim_code"] or "",
+                })
+            base = login or ("dev-" + re.sub(r"[^a-z0-9]", "", (serial or secrets.token_hex(4)).lower()))
+            unique = base
+            n = 0
+            while c.execute("SELECT 1 FROM devices WHERE login=?", (unique,)).fetchone():
+                n += 1
+                unique = "%s%d" % (base, n)
+            token = secrets.token_hex(24)
+            code = make_claim_code()
+            cur = c.execute(
+                "INSERT INTO devices(login,name,serial,fw,owner_id,device_token,status,created_at,last_seen,claim_code)"
+                " VALUES(?,?,?,?,NULL,?,?,?,?,?)",
+                (unique, name, serial or None, fw, token, "unclaimed", now(), now(), code),
+            )
+            log_event(c, cur.lastrowid, "device_enrolled", {"serial": serial, "code": code})
+        self.json(200, {"device_token": token, "status": "unclaimed",
+                        "device_id": cur.lastrowid, "claim_code": code})
 
     def device_heartbeat(self):
         dev = self.device()
@@ -1358,6 +1451,18 @@ def scheduler_loop():
         time.sleep(15)
 
 
+def accounts_cleanup_loop():
+    while True:
+        try:
+            with db_lock, connect() as c:
+                n = cleanup_unused_accounts(c)
+                if n:
+                    print("cleanup: removed %d unused accounts" % n, flush=True)
+        except Exception as exc:  # noqa: BLE001
+            print("accounts cleanup error", repr(exc), flush=True)
+        time.sleep(1800)
+
+
 def samples_cleanup():
     keep_days = int(os.environ.get("LEAF_KEEP_DAYS", "365"))
     while True:
@@ -1373,6 +1478,7 @@ def main():
     init_db()
     threading.Thread(target=scheduler_loop, daemon=True).start()
     threading.Thread(target=samples_cleanup, daemon=True).start()
+    threading.Thread(target=accounts_cleanup_loop, daemon=True).start()
     port = int(os.environ.get("LEAF_PORT", "8080"))
     srv = ThreadingHTTPServer(("0.0.0.0", port), Api)
     print(f"LeafControl API on :{port}, db={DB_PATH}", flush=True)

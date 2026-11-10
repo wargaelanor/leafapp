@@ -38,6 +38,25 @@ button:disabled{opacity:.45}
     <input id="p" type="password" autocomplete="current-password">
     <div class="hint" id="hint"></div>
     <button type="submit" id="b">Войти</button>
+    <div style="margin-top:14px;text-align:center">
+      <a href="#" id="toReg" style="color:var(--accent);font-size:14px;text-decoration:none">Нет аккаунта? Зарегистрироваться</a>
+    </div>
+  </form>
+
+  <form class="form" id="regForm" style="display:none">
+    <h1>Leaf Control</h1>
+    <div class="sub">Создайте аккаунт — машины добавите кодом с платы</div>
+    <label>Логин</label>
+    <input id="ru" autocomplete="username" autocapitalize="off" placeholder="латиница, цифры, 3–32 символа">
+    <label>Пароль</label>
+    <input id="rp" type="password" autocomplete="new-password" placeholder="минимум 8 символов">
+    <label>Пароль ещё раз</label>
+    <input id="rp2" type="password" autocomplete="new-password">
+    <div class="hint" id="rhint"></div>
+    <button type="submit" id="rb">Создать аккаунт</button>
+    <div style="margin-top:14px;text-align:center">
+      <a href="#" id="toLogin" style="color:var(--accent);font-size:14px;text-decoration:none">Уже есть аккаунт — войти</a>
+    </div>
   </form>
 <script>
 const $ = (id) => document.getElementById(id);
@@ -58,6 +77,40 @@ $('f').addEventListener('submit', async (e) => {
   } catch (err) {
     hint(err.message);
     $('b').disabled = false;
+  }
+});
+
+const f = document.getElementById('f');
+const rf = document.getElementById('regForm');
+document.getElementById('toReg').onclick = (e) => {
+  e.preventDefault(); f.style.display = 'none'; rf.style.display = 'block'; rf.style.maxWidth = '380px';
+};
+document.getElementById('toLogin').onclick = (e) => {
+  e.preventDefault(); rf.style.display = 'none'; f.style.display = 'block';
+};
+rf.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const h = document.getElementById('rhint');
+  h.textContent = '';
+  if (document.getElementById('rp').value !== document.getElementById('rp2').value) {
+    h.textContent = 'Пароли не совпадают'; return;
+  }
+  document.getElementById('rb').disabled = true;
+  try {
+    const r = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: document.getElementById('ru').value.trim(),
+        password: document.getElementById('rp').value
+      })
+    });
+    let j = null; try { j = await r.json(); } catch {}
+    if (!r.ok) throw new Error((j && j.error) || 'Не удалось создать аккаунт');
+    location.href = '/';
+  } catch (err) {
+    h.textContent = err.message;
+    document.getElementById('rb').disabled = false;
   }
 });
 </script>
