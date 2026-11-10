@@ -7,6 +7,7 @@
 
 #include "canLeafZE1.h"
 #include "tripLog.h"
+#include <Update.h>
 #include "configuration.h"
 
 // Р“Р»РѕР±Р°Р»СЊРЅС‹Рµ Р·РЅР°С‡РµРЅРёСЏ, РєРѕС‚РѕСЂС‹Рµ РІРµРґС‘С‚ РѕСЃРЅРѕРІРЅРѕР№ СЃРєРµС‚С‡.
@@ -372,7 +373,8 @@ static bool sendState() {
            (double)evData.odometerKm,
            cabinTemp, evData.ambientTemp,
            evData.batteryTemp, packV, packKw, 0.0,
-           isHvacOn ? 1 : 0, isChargingNow ? 1 : 0, (lockState == 1) ? 1 : 0,
+           isHvacOn ? 1 : 0, (isChargingNow || tripLogIsCharging()) ? 1 : 0,
+           (lockState == 1) ? 1 : 0,
            (doorFL || doorFR || doorRL || doorRR || doorTrunk) ? 1 : 0,
            evData.soh, 0.0,
            (unsigned long)busAgeSeconds());
@@ -440,6 +442,89 @@ static void applyConfig(const char* argsJson) {
   sendConfig();
 }
 
+// ---------------------------------------------------------------- прошивка
+
+// Скачивает .bin с сервера и прошивает плату, затем перезагружается.
+// Проверяет код ответа и длину: битый или неполный файл в flash не пишется.
+static bool flashFromUrl(const char* url) {
+  String host, path;
+  uint16_t port = 443;
+  bool tls = splitUrl(url, host, port, path);
+  WiFiClientSecure secure;
+  WiFiClient plain;
+  Client* cli = tls ? (Client*)&secure : (Client*)&plain;
+  if (tls) secure.setInsecure();
+  if (!cli->connect(host.c_str(), port)) {
+    Serial.println("[srv] ota: connect failed");
+    return false;
+  }
+  cli->setTimeout(15000);
+  String req = String("GET ") + path + " HTTP/1.1\r\nHost: " + host +
+               "\r\nConnection: close\r\nUser-Agent: LeafControl\r\n\r\n";
+  cli->print(req);
+
+  // ---- заголовки
+  String status = cli->readStringUntil('\n');
+  int code = status.length() > 12 ? status.substring(9, 12).toInt() : 0;
+  long contentLen = -1;
+  while (cli->connected()) {
+    String line = cli->readStringUntil('\n');
+    if (line == "\r" || line.length() == 0) break;
+    if (line.startsWith("Content-Length:")) contentLen = line.substring(15).toInt();
+  }
+  if (code != 200) {
+    Serial.printf("[srv] ota: http %d\n", code);
+    cli->stop();
+    return false;
+  }
+  if (contentLen > 0) {
+    if (!Update.begin((size_t)contentLen)) {
+      Serial.printf("[srv] ota: begin failed (need %ld)\n", contentLen);
+      cli->stop();
+      return false;
+    }
+  } else if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
+    Serial.println("[srv] ota: begin failed");
+    cli->stop();
+    return false;
+  }
+
+  uint8_t buf[1024];
+  size_t total = 0;
+  unsigned long lastData = millis();
+  while (cli->connected() || cli->available()) {
+    size_t n = cli->readBytes(buf, sizeof(buf));
+    if (n) {
+      if (Update.write(buf, n) != n) {
+        Serial.println("[srv] ota: write failed");
+        Update.abort();
+        cli->stop();
+        return false;
+      }
+      total += n;
+      lastData = millis();
+    } else {
+      delay(5);
+      if (millis() - lastData > 30000UL) break;
+    }
+  }
+  cli->stop();
+
+  if (contentLen > 0 && total != (size_t)contentLen) {
+    Serial.printf("[srv] ota: short read %u of %ld\n", (unsigned)total, contentLen);
+    Update.abort();
+    return false;
+  }
+  if (!Update.end(true)) {
+    Serial.printf("[srv] ota: end failed (%u bytes)\n", (unsigned)total);
+    return false;
+  }
+  Serial.printf("[srv] ota: flashed %u bytes, rebooting\n", (unsigned)total);
+  delay(800);
+  ESP.restart();
+  return true;
+}
+
 static bool syncRequest() {
   float soc = evData.instrumentSOC >= 0 ? evData.instrumentSOC : currentSOC;
   float packV = evData.packVoltage;
@@ -459,15 +544,17 @@ static bool syncRequest() {
            "{\"ts\":%lu,\"soc\":%.1f,\"odo\":%.0f,\"cabin\":%.1f,\"amb\":%.1f,"
            "\"batt\":%.1f,\"pack_v\":%.1f,\"pack_kw\":%.2f,\"v12\":%.1f,"
            "\"hvac\":%d,\"charging\":%d,\"locked\":%d,\"doors\":%d,\"soh\":%d,\"spd\":%.1f,"
-           "\"bus_age_s\":%lu,\"link\":\"wifi\",\"rssi\":%d,\"fw\":\"server-sync\",\"ack\":[%s]}",
+           "\"plug\":%d,\"bus_age_s\":%lu,\"link\":\"wifi\",\"rssi\":%d,\"fw\":\"server-sync\",\"ack\":[%s]}",
            (unsigned long)ts,
            soc >= 0 ? soc : -1.0,
            (double)evData.odometerKm,
            cabinTemp, evData.ambientTemp,
            evData.batteryTemp, packV, packKw, 0.0,
-           isHvacOn ? 1 : 0, isChargingNow ? 1 : 0, (lockState == 1) ? 1 : 0,
+           isHvacOn ? 1 : 0, (isChargingNow || tripLogIsCharging()) ? 1 : 0,
+           (lockState == 1) ? 1 : 0,
            (doorFL || doorFR || doorRL || doorRR || doorTrunk) ? 1 : 0,
            evData.soh, 0.0,
+           (tripLogIsCharging() || isChargingNow) ? 1 : 0,
            (unsigned long)busAgeSeconds(), WiFi.RSSI(), ackList.c_str());
 
   String resp;
@@ -489,7 +576,11 @@ static bool syncRequest() {
         if (brace >= 0) args = resp.substring(brace, resp.lastIndexOf('}') > brace ? resp.lastIndexOf('}') : resp.length());
       }
       Serial.printf("[srv] cmd: %s %s\n", name, args.c_str());
-      if (!strcmp(name, "set_config")) applyConfig(args.c_str());
+      if (!strcmp(name, "fw_update")) {
+        char u[160];
+        if (jsonString(args, "\"url\"", u, sizeof(u))) flashFromUrl(u);
+      }
+      else if (!strcmp(name, "set_config")) applyConfig(args.c_str());
       else if (cmdHandler) cmdHandler(name, args.c_str());
       if (id > 0 && pendingAckCount < 8) pendingAck[pendingAckCount++] = (int)id;
     }
