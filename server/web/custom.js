@@ -449,6 +449,17 @@
     const inputStyle = 'width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--text)';
 
     fields.innerHTML =
+      '<div style="font-size:12px;color:var(--muted);margin-bottom:6px">Режим работы</div>' +
+      `<label style="display:flex;align-items:flex-start;gap:10px;padding:8px 0">
+         <input type="radio" name="cfgmode" value="1" ${cfg.remote_mode === 1 ? 'checked' : ''} style="width:18px;height:18px;margin-top:2px">
+         <span style="font-size:14px">Сервер — лёгкий интерфейс, постоянная связь
+           <span style="display:block;font-size:11px;color:var(--muted)">экономит ресурсы платы, звонки работают</span></span>
+       </label>` +
+      `<label style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)">
+         <input type="radio" name="cfgmode" value="0" ${cfg.remote_mode === 0 ? 'checked' : ''} style="width:18px;height:18px;margin-top:2px">
+         <span style="font-size:14px">Без подключения — полный web
+           <span style="display:block;font-size:11px;color:var(--muted)">вся страница на плате, в интернет не выходит</span></span>
+       </label>` +
       NUMBERS.map(([k, t, h]) => `
         <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:10px">${t}
           <input data-num="${k}" type="number" value="${cfg[k] !== undefined ? cfg[k] : ''}" style="${inputStyle}">
@@ -479,6 +490,8 @@
       $$('#cfg-fields [data-text]').forEach(el => {
         if (el.value) jobs.push([el.dataset.text, el.value]);
       });
+      const modeEl = document.querySelector('#cfg-fields input[name=cfgmode]:checked');
+      if (modeEl) jobs.unshift(['remote_mode', Number(modeEl.value)]);
       let ok = 0;
       for (const [key, value] of jobs) {
         try { await api('/api/config', { key, value }); ok++; } catch {}

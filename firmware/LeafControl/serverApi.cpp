@@ -373,9 +373,10 @@ static void sendState() {
 static void sendConfig() {
   char body[420];
   snprintf(body, sizeof(body),
-           "{\"charge_limit\":%d,\"locking\":%d,\"sleep\":%d,\"sleep_after\":%d,"
+           "{\"remote_mode\":%d,\"charge_limit\":%d,\"locking\":%d,\"sleep\":%d,\"sleep_after\":%d,"
            "\"wake_fast\":%d,\"wake_slow\":%d,\"uds\":%d,\"uds_tpms\":%d,"
            "\"modem\":%d,\"apn\":\"%s\"}",
+           (int)getRemoteTransport(),
            getChargeLimitPct(), getLockingEnabled() ? 1 : 0, getSleepEnabled() ? 1 : 0,
            getSleepAfterHours(), getWakeFastMinutes(), getWakeSlowMinutes(),
            getUdsEnabled() ? 1 : 0, getUdsTpmsEnabled() ? 1 : 0,
@@ -397,7 +398,12 @@ static void applyConfig(const char* argsJson) {
   int ival = atoi(vp);
   bool bval = (ival != 0) || (strncmp(vp, "true", 4) == 0);
 
-  if (!strcmp(key, "charge_limit")) setChargeLimitPct(ival);
+  if (!strcmp(key, "remote_mode")) {
+    RemoteTransport mode = bval ? RemoteTransport::SERVER : RemoteTransport::LOCAL;
+    setRemoteTransport(mode);
+    setUiLite(mode == RemoteTransport::SERVER);
+  }
+  else if (!strcmp(key, "charge_limit")) setChargeLimitPct(ival);
   else if (!strcmp(key, "locking")) setLockingEnabled(bval);
   else if (!strcmp(key, "sleep")) setSleepEnabled(bval);
   else if (!strcmp(key, "sleep_after")) setSleepAfterHours(ival);
