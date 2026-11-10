@@ -406,6 +406,10 @@ class Api(BaseHTTPRequestHandler):
             if path == "/settings":
                 return self._send(302, b"", "text/plain", {"Location": "/"})
             if path == "/app.apk":
+                # APK живёт на этом сервере (кладётся вместе с релизом);
+                # редирект на GitHub остаётся запасным вариантом.
+                if os.path.isfile(os.path.join(WEB_DIR, "app.apk")):
+                    return self.serve_static("app.apk")
                 return self._send(302, b"", "text/plain", {"Location": APK_URL})
             if path == "/ui":
                 return self.json(200, {"ok": True})
