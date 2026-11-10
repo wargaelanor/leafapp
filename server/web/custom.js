@@ -936,16 +936,18 @@
         const on = !!d.online;
         const age = d.last_seen ? Math.max(0, Math.round(Date.now() / 1000 - d.last_seen)) : -1;
         const fw = d.fw || '';
+        const who = d.name || d.login || 'плата';
         if (on) {
-          label.textContent = wide ? ('на связи · ' + (age >= 0 ? human(age) + ' назад' : '') + (fw ? ' · ' + fw : ''))
-                                   : 'на связи';
+          label.textContent = wide ? (who + ' · на связи · ' + (age >= 0 ? human(age) + ' назад' : '') + (fw ? ' · ' + fw : ''))
+                                   : (who + ' · на связи');
           b.style.color = 'var(--accent)';
         } else {
-          label.textContent = wide ? ('нет связи' + (age >= 0 ? ' · ' + human(age) : '') + (fw ? ' · ' + fw : ''))
-                                   : ('нет связи' + (age >= 0 ? ' ' + human(age) : ''));
+          label.textContent = wide ? (who + ' · нет связи' + (age >= 0 ? ' · ' + human(age) : '') + (fw ? ' · ' + fw : ''))
+                                   : (who + ' · нет связи');
           b.style.color = '#d9534f';
         }
-        b.title = (on ? 'Плата на связи' : 'Плата не на связи') +
+        b.title = who + (d.login ? ' (' + d.login + ')' : '') + ': ' +
+          (on ? 'плата на связи' : 'плата не на связи') +
           (age >= 0 ? ', ' + human(age) + ' назад' : '') + (fw ? ', прошивка ' + fw : '');
       } catch (e) {
         label.textContent = wide ? 'сервер недоступен' : 'нет сервера';
