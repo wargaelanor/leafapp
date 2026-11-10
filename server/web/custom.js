@@ -652,30 +652,44 @@
         ? pend.map(d => `
           <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)">
             <div style="flex:1">${d.login}
-              <div style="font-size:12px;color:var(--muted)">${d.serial || ''} · ${d.fw || ''}</div></div>
-            <button data-ok="${d.id}" style="border:0;border-radius:8px;background:var(--accent);color:#fff;padding:8px 12px">Одобрить</button>
-            <button data-no="${d.id}" style="border:0;border-radius:8px;background:var(--surface-2);color:var(--danger);padding:8px 12px">Отклонить</button>
+              <div style="font-size:12px;color:var(--muted)">${d.serial || ''} · ${d.fw || ''}${d.claim_code ? ' · код ' + d.claim_code : ''}</div></div>
+            <button data-ok="${d.id}" style="border:0;border-radius:8px;background:var(--accent);color:#fff;padding:8px 12px">Привязать</button>
+            <button data-no="${d.id}" style="border:0;border-radius:8px;background:var(--surface-2);color:var(--danger);padding:8px 12px">Удалить</button>
           </div>`).join('')
         : '<div style="font-size:13px;color:var(--muted)">Заявок нет</div>';
 
       $$('#adm-pending [data-ok]').forEach(b => b.onclick = async () => {
-        await api('/api/admin/devices/' + b.dataset.ok + '/approve', {});
-        toast('Устройство одобрено');
-        loadAdmin();
+        const username = prompt('К какому пользователю привязать? (логин)');
+        if (!username) return;
+        try {
+          await api('/api/admin/devices/' + b.dataset.ok + '/assign', { username });
+          toast('Машина привязана к ' + username);
+          loadAdmin();
+        } catch (e) { alert(e.message); }
       });
       $$('#adm-pending [data-no]').forEach(b => b.onclick = async () => {
-        await api('/api/admin/devices/' + b.dataset.no + '/reject', {});
-        toast('Устройство отклонено');
+        if (!confirm('Удалить устройство вместе с историей?')) return;
+        await api('/api/admin/devices/' + b.dataset.no, undefined, 'DELETE');
+        toast('Устройство удалено');
         loadAdmin();
       });
 
       const u = await api('/api/admin/users');
-      $('#adm-users').innerHTML = (u.users || []).map(x => `
+      const users = u.users || [];
+      $('#adm-users').innerHTML = users.map(x => `
         <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)">
           <div style="flex:1">${x.username}
-            <div style="font-size:12px;color:var(--muted)">${x.role}</div></div>
+            <div style="font-size:12px;color:var(--muted)">${x.role} · машин: ${x.devices || 0}</div></div>
           <button data-pw="${x.id}" style="border:0;border-radius:8px;background:var(--surface-2);color:var(--text);padding:8px 12px">Пароль</button>
-        </div>`).join('');
+          ${x.role === 'admin' ? '' : `<button data-del-user="${x.id}" style="border:0;border-radius:8px;background:var(--surface-2);color:var(--danger);padding:8px 12px">Удалить</button>`}
+        </div>`).join('') + `
+        <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
+          <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Создать клиента</div>
+          <input id="adm-new-user" placeholder="логин" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--text);margin-bottom:6px">
+          <input id="adm-new-pass" placeholder="пароль (мин. 8)" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--text);margin-bottom:6px">
+          <button id="adm-create" style="width:100%;padding:11px;border:0;border-radius:8px;background:var(--accent);color:#fff;font-weight:600">Создать и выдать</button>
+        </div>`;
+
       $$('#adm-users [data-pw]').forEach(b => b.onclick = async () => {
         const pwd = prompt('Новый пароль (минимум 8 символов):');
         if (!pwd) return;
@@ -684,14 +698,54 @@
           toast('Пароль изменён');
         } catch (e) { alert(e.message); }
       });
+      $$('#adm-users [data-del-user]').forEach(b => b.onclick = async () => {
+        if (!confirm('Удалить аккаунт? Его машины отвяжутся и получат новые коды.')) return;
+        try {
+          const r = await api('/api/admin/users/' + b.dataset.delUser, undefined, 'DELETE');
+          toast('Аккаунт удалён, отвязано машин: ' + (r.devices_unbound || 0));
+          loadAdmin();
+        } catch (e) { alert(e.message); }
+      });
+      const createBtn = document.getElementById('adm-create');
+      if (createBtn) createBtn.onclick = async () => {
+        const username = (document.getElementById('adm-new-user').value || '').trim();
+        const password = document.getElementById('adm-new-pass').value || '';
+        if (!username || password.length < 8) { alert('Логин и пароль (мин. 8)'); return; }
+        try {
+          await api('/api/admin/users', { username, password });
+          alert('Клиент создан.\n\nЛогин: ' + username + '\nПароль: ' + password +
+                '\n\nПередайте эти данные клиенту. Машину он добавит кодом с платы.');
+          loadAdmin();
+        } catch (e) { alert(e.message); }
+      };
 
       const all = await api('/api/admin/devices?status=all');
       $('#adm-devices').innerHTML = (all.devices || []).map(d => `
         <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)">
           <div style="flex:1">${d.login}
-            <div style="font-size:12px;color:var(--muted)">${d.serial || ''} · ${d.owner || ''}</div></div>
+            <div style="font-size:12px;color:var(--muted)">${d.serial || ''} · ${d.owner || 'без владельца'}${d.claim_code ? ' · код ' + d.claim_code : ''}</div></div>
           <div style="font-size:12px;color:${d.online ? 'var(--accent)' : 'var(--muted)'}">${d.online ? 'на связи' : 'офлайн'}</div>
+          <button data-assign="${d.id}" style="border:0;border-radius:8px;background:var(--surface-2);color:var(--text);padding:6px 10px;font-size:12px">Привязать</button>
+          <button data-del-dev="${d.id}" style="border:0;border-radius:8px;background:var(--surface-2);color:var(--danger);padding:6px 10px;font-size:12px">Удалить</button>
         </div>`).join('');
+
+      $$('#adm-devices [data-assign]').forEach(b => b.onclick = async () => {
+        const username = prompt('Логин пользователя:');
+        if (!username) return;
+        try {
+          await api('/api/admin/devices/' + b.dataset.assign + '/assign', { username });
+          toast('Привязано');
+          loadAdmin();
+        } catch (e) { alert(e.message); }
+      });
+      $$('#adm-devices [data-del-dev]').forEach(b => b.onclick = async () => {
+        if (!confirm('Удалить устройство и всю его историю?')) return;
+        try {
+          await api('/api/admin/devices/' + b.dataset.delDev, undefined, 'DELETE');
+          toast('Удалено');
+          loadAdmin();
+        } catch (e) { alert(e.message); }
+      });
     } catch (e) {
       $('#adm-pending').innerHTML = '<div style="font-size:12px;color:var(--muted)">' + e.message + '</div>';
     }
