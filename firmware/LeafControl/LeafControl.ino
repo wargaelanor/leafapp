@@ -465,7 +465,7 @@ void handleApiTime() {
 static Preferences setupPrefs;
 
 static bool setupDone() {
-  if (!setupPrefs.begin("leafsetup", true)) return true;  // нет NVS — не мешаем
+  if (!setupPrefs.begin("leafsetup", true)) return false;  // нет записи — первый запуск
   bool done = setupPrefs.getBool("done", false);
   setupPrefs.end();
   return done;
