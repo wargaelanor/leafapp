@@ -459,10 +459,11 @@ void handleApiTime() {
 }
 
 void handleRootEntry() {
-  // Режим "Сервер" всегда отдаёт лёгкий интерфейс: полный нужен только
-  // для локальной работы без интернета.
-  bool lite = getUiLite() || getRemoteTransport() == RemoteTransport::SERVER;
-  if (lite) handleLite(); else handleRoot();
+  // Интерфейс однозначно определяется режимом:
+  //   LOCAL  — полный локальный web;
+  //   SERVER — лёгкая страница, чтобы не тратить ресурсы платы.
+  if (getRemoteTransport() == RemoteTransport::SERVER) handleLite();
+  else handleRoot();
 }
 
 // /ui?mode=lite|full вЂ” remembers the choice in NVS so it survives a reboot.
@@ -1152,6 +1153,7 @@ void handleSettingsSave() {
   int remoteMode = server.arg("remote_mode").toInt();
   if (remoteMode >= 0 && remoteMode <= 1) {
     setRemoteTransport(static_cast<RemoteTransport>(remoteMode));
+    setUiLite(remoteMode == static_cast<int>(RemoteTransport::SERVER));
   }
 
 
@@ -2163,6 +2165,7 @@ void setup() {
                 BOARD_NAME, (unsigned)ESP.getPsramSize(), (unsigned)ESP.getFlashChipSize());
   WiFi.onEvent(wifiEvent);
   initConfiguration();
+  setUiLite(getRemoteTransport() == RemoteTransport::SERVER);
   clockRestore();
   modemInit();
 
