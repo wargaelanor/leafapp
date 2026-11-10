@@ -589,11 +589,23 @@ async function drawCharts() {
   if (!cur) return;
   let pts = [];
   try { pts = (await api('/api/hist?device=' + cur.id + '&hours=24')).points || []; } catch { return; }
-  const soc = pts.map(p => Number(p.soc)).filter(v => isFinite(v) && v >= 0);
-  const bat = pts.map(p => Number(p.batt)).filter(v => isFinite(v) && v > -50);
+  const avg = (arr, n) => {
+    if (arr.length <= n) return arr;
+    const out = [];
+    const step = arr.length / n;
+    for (let i = 0; i < n; i++) {
+      const a = Math.floor(i * step), b = Math.max(a + 1, Math.floor((i + 1) * step));
+      let sum = 0, cnt = 0;
+      for (let j = a; j < b && j < arr.length; j++) { sum += arr[j]; cnt++; }
+      out.push(sum / cnt);
+    }
+    return out;
+  };
+  const soc = avg(pts.map(p => Number(p.soc)).filter(v => isFinite(v) && v >= 0), 120);
+  const bat = avg(pts.map(p => Number(p.batt)).filter(v => isFinite(v) && v > -50), 120);
   ['chSoc', 'chSoc2'].forEach(id => $(id) && sparkline($(id), soc, '%'));
   ['chBat', 'chBat2'].forEach(id => $(id) && sparkline($(id), bat, '°C'));
-  if ($('chSocAge')) $('chSocAge').textContent = pts.length ? pts.length + ' точек' : '';
+  if ($('chSocAge')) $('chSocAge').textContent = pts.length ? pts.length + ' измерений' : '';
 }
 
 /* ---------- admin ---------- */
