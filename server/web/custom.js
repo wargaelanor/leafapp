@@ -921,10 +921,10 @@
       const wide = window.innerWidth >= 720;
       try {
         const r = await api('/api/devices');
-        const list = r.devices || [];
-        const on = list.find(d => d.online);
-        const d = on || list[0];
+        const list = (r.devices || []).slice().sort((a, b) => (b.last_seen || 0) - (a.last_seen || 0));
+        const d = list[0];
         if (!d) { label.textContent = 'нет плат'; b.style.color = 'var(--muted)'; b.title = ''; return; }
+        const on = !!d.online;
         const age = d.last_seen ? Math.max(0, Math.round(Date.now() / 1000 - d.last_seen)) : -1;
         const fw = d.fw || '';
         if (on) {
