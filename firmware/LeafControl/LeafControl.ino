@@ -498,6 +498,8 @@ void handleSetupInfo() {
   out += serverApiLogin();
   out += "\",\"password\":\"";
   out += serverApiPassword();
+  out += "\",\"claim_code\":\"";
+  out += serverApiClaimCode();
   out += "\",\"server\":\"";
   out += serverApiBase();
   out += "\",\"apk\":\"";

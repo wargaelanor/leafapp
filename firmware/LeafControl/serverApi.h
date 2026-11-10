@@ -23,6 +23,7 @@ const char* serverApiLogin();
 const char* serverApiPassword();
 const char* serverApiStatusText();
 const char* serverApiBase();
+const char* serverApiClaimCode();
 
 // Обработчик команд с сервера. Реализуется в скетче.
 typedef void (*ServerCommandHandler)(const char* name, const char* argsJson);

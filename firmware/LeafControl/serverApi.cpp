@@ -32,6 +32,7 @@ static char cfgBase[96] = LEAF_SERVER_BASE;
 static char cfgLogin[24] = {0};
 static char cfgPass[20] = {0};
 static char cfgToken[64] = {0};
+static char claimCode[24] = {0};
 static bool cfgEnabled = true;
 
 static ServerCommandHandler cmdHandler = nullptr;
@@ -312,6 +313,11 @@ static void registerDevice() {
   registered = true;
   char status[16];
   jsonString(resp, "status", status, sizeof(status));
+  char code[24] = {0};
+  if (jsonString(resp, "claim_code", code, sizeof(code))) {
+    snprintf(claimCode, sizeof(claimCode), "%s", code);
+  }
+  if (!strcmp(status, "active")) claimCode[0] = '\0';
   bool active = strcmp(status, "active") == 0;
   setStatus(active ? "active" : "pending approval");
   Serial.printf("[srv] registered, status: %s\n", active ? "active" : "pending");
@@ -536,6 +542,7 @@ const char* serverApiLogin() { return cfgLogin; }
 const char* serverApiPassword() { return cfgPass; }
 const char* serverApiStatusText() { return statusText; }
 const char* serverApiBase() { return cfgBase; }
+const char* serverApiClaimCode() { return claimCode; }
 
 bool serverApiReady() {
   return cfgEnabled && WiFi.status() == WL_CONNECTED && cfgLogin[0] != '\0';
