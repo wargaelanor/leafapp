@@ -228,9 +228,17 @@ static int request(const char* method, const String& pathAndQuery, const char* b
   return code;
 }
 
+static void setStatus(const char* s);  // forward
+
 static bool postJson(const String& path, const char* body, String& resp) {
   int code = request("POST", path, body, resp);
   if (code >= 200 && code < 300) return true;
+  // Токен отвергнут сервером — забываем его и регистрируемся заново.
+  if (code == 401 || code == 403) {
+    saveToken("");
+    registered = false;
+    setStatus("re-enroll");
+  }
   if (code > 0) Serial.printf("[srv] POST %s -> %d: %s\n", path.c_str(), code, resp.substring(0, 160).c_str());
   else Serial.printf("[srv] POST %s -> transport error %d\n", path.c_str(), code);
   return false;
