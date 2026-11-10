@@ -128,8 +128,12 @@ static void attachTask(void*) {
   setState(ModemState::STARTING);
   Serial.println("[modem] attach start (SIM800)");
 
-  // Call-only mode never needs a data connection, even without Wi-Fi.
-  bool needData = (WiFi.status() != WL_CONNECTED) && !callOnlyMode();
+  // Данные нужны, когда нет реального канала до сервера: Wi-Fi может быть
+  // подключён к точке доступа без интернета, тогда поднимаем GPRS.
+  unsigned long okMs = serverApiLastOkMs();
+  bool wifiHasNet = (WiFi.status() == WL_CONNECTED) && okMs != 0 &&
+                    (millis() - okMs) < 120000UL;
+  bool needData = !wifiHasNet && !callOnlyMode();
   if (needData && strlen(apnFor()) == 0) {
     attachFailed("[modem] APN empty — cannot attach");
     return;

@@ -881,10 +881,12 @@ static void serverNetOnce() {
 
   static unsigned long lastSyncMs = 0;
   unsigned long interval = (WiFi.RSSI() < -80) ? 15000UL : 8000UL;
+  static bool linkOk = false;
   bool syncOk = false;
   if (now - lastSyncMs >= interval) {
     lastSyncMs = now;
     syncOk = syncRequest();
+    linkOk = syncOk;
     if (syncOk) {
       lastOkMs = millis();
       failCount = 0;
@@ -898,7 +900,7 @@ static void serverNetOnce() {
   // ping: сервер обновляет last_seen и версию прошивки.
   static unsigned long lastPingMs = 0;
   bool pingDue = (lastPingMs == 0) || (now - lastPingMs >= 60000UL) ||
-                 (!syncOk && (now - lastPingMs >= 20000UL));
+                 (!linkOk && (now - lastPingMs >= 20000UL));
   if (pingDue && WiFi.status() == WL_CONNECTED) {
     if (sendPing()) {
       lastPingMs = now;
