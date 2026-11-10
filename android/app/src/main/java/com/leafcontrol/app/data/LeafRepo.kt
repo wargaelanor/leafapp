@@ -2,7 +2,6 @@ package com.leafcontrol.app.data
 
 import android.content.Context
 import com.leafcontrol.app.net.LocalApi
-import com.leafcontrol.app.net.MqttWssClient
 import com.leafcontrol.app.net.ServerApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -18,7 +17,6 @@ object LeafRepo {
     val trips = MutableStateFlow<List<Trip>>(emptyList())
     val charges = MutableStateFlow<List<Charge>>(emptyList())
     val monitorText = MutableStateFlow("Мониторинг выключен")
-    val mqttConnected = MutableStateFlow(false)
 
     /** Result of the last command attempt; consumed once by the UI. */
     val commandResult = MutableSharedFlow<String>(extraBufferCapacity = 4)
@@ -33,16 +31,8 @@ object LeafRepo {
     @Volatile
     var climateTotalMin: Int = 0
 
-    @Volatile
-    var mqtt: MqttWssClient? = null
-
     private var appContext: Context? = null
     private var lastCacheMs = 0L
-
-    // Retained topic metric/s/v3/connected is the board's will. Use it so
-    // retained metrics are not presented as live after the board went offline.
-    @Volatile
-    private var boardOnline = true
 
     fun init(context: Context) {
         appContext = context.applicationContext
@@ -60,70 +50,12 @@ object LeafRepo {
     }
 
     fun setLocal(s: LeafState) {
-        boardOnline = true
         state.value = s
         cache(s)
     }
 
-    fun onMqttConnected() {
-        boardOnline = true
-        mqttConnected.value = true
-        state.update { it.copy(connected = true, transport = "mqtt") }
-    }
-
-    fun setMqttConnected(ok: Boolean) {
-        mqttConnected.value = ok
-    }
-
     fun setDisconnected(transport: String) {
-        if (transport == "mqtt") mqttConnected.value = false
         state.update { it.copy(connected = false, transport = transport) }
-        cache(state.value)
-    }
-
-    /** Parse one ovms/<user>/<vehicle>/metric/... message. */
-    fun onMqttMetric(topic: String, payload: String) {
-        val base = "ovms/${Settings.mqttUser}/${Settings.vehicleId.ifEmpty { "leaf" }}/metric/"
-        if (!topic.startsWith(base)) return
-        val m = topic.removePrefix(base)
-        val num = payload.toDoubleOrNull()
-        val now = System.currentTimeMillis()
-        if (m == "s/v3/connected") {
-            boardOnline = payload == "yes"
-            state.update { it.copy(connected = boardOnline, transport = "mqtt") }
-            return
-        }
-        state.update { s ->
-            val n = when (m) {
-                "v/b/soc" -> s.copy(soc = num ?: s.soc)
-                "v/b/range/instrument" -> s.copy(range = num?.toInt() ?: s.range)
-                "v/b/temp" -> s.copy(batteryTemp = num ?: s.batteryTemp)
-                "v/b/soh" -> s.copy(soh = num?.toInt() ?: s.soh)
-                "v/b/gids" -> s.copy(gids = num?.toInt() ?: s.gids)
-                "v/b/voltage" -> s.copy(voltage = num ?: s.voltage)
-                "v/b/current" -> s.copy(current = num ?: s.current)
-                "v/b/power" -> s.copy(power = num ?: s.power)
-                "v/b/celldelta" -> s.copy(cellDelta = num?.toInt() ?: s.cellDelta)
-                "v/e/cabintemp" -> s.copy(cabin = num ?: s.cabin)
-                "v/e/ambient" -> s.copy(ambient = num ?: s.ambient)
-                "v/e/setpoint" -> s.copy(setpoint = num ?: s.setpoint)
-                "v/e/fan" -> s.copy(fan = num?.toInt() ?: s.fan)
-                "v/e/heat" -> s.copy(heat = payload == "yes")
-                "v/e/cool" -> s.copy(cool = payload == "yes")
-                "v/e/vent" -> s.copy(vent = num?.toInt() ?: s.vent)
-                "v/e/hvac/timer" -> s.copy(hvacTimer = num?.toInt() ?: s.hvacTimer)
-                "v/c/charging" -> s.copy(charging = payload == "yes")
-                "v/c/state" -> s.copy(charger = payload)
-                "v/e/hvac" -> s.copy(hvac = payload == "yes")
-                "v/e/locked" -> s.copy(locked = if (payload == "yes") 1 else 0)
-                "v/e/on" -> s.copy(on = if (payload == "yes") 1 else 0)
-                "v/e/headlights" -> s.copy(lights = payload == "yes")
-                "v/p/odometer" -> s.copy(odometer = num?.toInt() ?: s.odometer)
-                "v/vin" -> s.copy(vin = payload)
-                else -> s
-            }
-            n.copy(lastUpdateMs = now, connected = boardOnline, transport = "mqtt")
-        }
         cache(state.value)
     }
 
@@ -153,11 +85,6 @@ object LeafRepo {
 
     suspend fun commandLocal(context: Context, path: String): Boolean =
         LocalApi.command(context, path)
-
-    fun commandRemote(payload: String): Boolean {
-        val c = mqtt ?: return false
-        return c.publishCommand(payload)
-    }
 
     fun recordCost(whDay: Double, whNight: Double, energyWh: Double): Double {
         val day = state.value.tariffDay.takeIf { it > 0.0 } ?: Settings.tariffDay

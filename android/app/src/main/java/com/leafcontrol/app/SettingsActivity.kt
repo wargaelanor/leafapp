@@ -90,11 +90,6 @@ class SettingsActivity : ComponentActivity() {
         var autoUpdate by remember { mutableStateOf(Settings.autoUpdate) }
 
         var mode by remember { mutableStateOf(Settings.mode) }
-        var mqttHost by remember { mutableStateOf(Settings.mqttHost) }
-        var mqttPort by remember { mutableStateOf(Settings.mqttPort.toString()) }
-        var mqttUser by remember { mutableStateOf(Settings.mqttUser) }
-        var mqttPass by remember { mutableStateOf(Settings.mqttPass) }
-        var vehicleId by remember { mutableStateOf(Settings.vehicleId) }
         var serverUrl by remember { mutableStateOf(Settings.serverUrl) }
         var serverUser by remember { mutableStateOf(Settings.serverUser) }
         var serverPass by remember { mutableStateOf(Settings.serverPass) }
@@ -135,7 +130,7 @@ class SettingsActivity : ComponentActivity() {
 
             Group("Связь") {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("server" to "Сервер", "auto" to "Авто", "local" to "Локально", "mqtt" to "MQTT").forEach { (value, label) ->
+                    listOf("server" to "Сервер", "auto" to "Авто", "local" to "Локально").forEach { (value, label) ->
                         FilterChip(
                             selected = mode == value,
                             onClick = {
@@ -191,54 +186,9 @@ class SettingsActivity : ComponentActivity() {
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("Проверить сервер") }
-                if (mode == "mqtt") {
-                OutlinedTextField(
-                    value = mqttHost,
-                    onValueChange = { mqttHost = it },
-                    label = { Text("MQTT-сервер") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                )
-                OutlinedTextField(
-                    value = mqttPort,
-                    onValueChange = { mqttPort = it.filter(Char::isDigit).take(5) },
-                    label = { Text("Порт") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                )
-                OutlinedTextField(
-                    value = mqttUser,
-                    onValueChange = { mqttUser = it },
-                    label = { Text("Пользователь") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                )
-                OutlinedTextField(
-                    value = mqttPass,
-                    onValueChange = { mqttPass = it },
-                    label = { Text("Пароль") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                )
-                OutlinedTextField(
-                    value = vehicleId,
-                    onValueChange = { vehicleId = it },
-                    label = { Text("Vehicle ID") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                )
-                }
                 OutlinedButton(
                     onClick = {
                         Settings.mode = mode
-                        Settings.mqttHost = mqttHost
-                        mqttPort.toIntOrNull()?.let { if (it in 1..65535) Settings.mqttPort = it }
-                        Settings.mqttUser = mqttUser
-                        Settings.mqttPass = mqttPass
-                        Settings.vehicleId = vehicleId
                         if (Settings.monitorEnabled) LeafMonitorService.reload(ctx)
                         Toast.makeText(ctx, "Связь сохранена", Toast.LENGTH_SHORT).show()
                     },

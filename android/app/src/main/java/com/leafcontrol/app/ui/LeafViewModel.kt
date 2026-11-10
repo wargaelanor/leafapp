@@ -85,7 +85,7 @@ class LeafViewModel(app: Application) : AndroidViewModel(app) {
         }
         val app = getApplication<Application>()
         val local = state.value.transport == "local" && state.value.connected
-        if (Settings.mode != "mqtt" && local) {
+        if (local) {
             viewModelScope.launch {
                 val code = com.leafcontrol.app.net.LocalApi.commandCode(app, path)
                 val ok = code != null && (code in 200..299 || code == 303)
@@ -99,8 +99,8 @@ class LeafViewModel(app: Application) : AndroidViewModel(app) {
                 if (ok) LeafRepo.refreshHistory(app)
             }
         } else {
-            // The service reports the real outcome: sent locally, published to
-            // MQTT, queued until the broker connects, or failed.
+            // The service reports the real outcome: sent locally, sent to the
+            // server, queued until the board connects, or failed.
             LeafMonitorService.command(app, path, payload)
         }
     }

@@ -17,7 +17,6 @@ import com.leafcontrol.app.data.LeafState
 import com.leafcontrol.app.data.Settings
 import com.leafcontrol.app.data.Trip
 import com.leafcontrol.app.net.LocalApi
-import com.leafcontrol.app.net.MqttWssClient
 import com.leafcontrol.app.net.ServerApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -69,7 +68,6 @@ class LeafMonitorService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var monitorJob: Job? = null
-    private var mqttClient: MqttWssClient? = null
     private var recorder = Recorder()
     private var prevCharging = false
     private var prevPlugged = false
@@ -78,12 +76,6 @@ class LeafMonitorService : Service() {
     private var startedForeground = false
     @Volatile private var monitoring = false
 
-    // Commands issued while MQTT is not connected yet; flushed on connect.
-    private val pendingCommands = ArrayList<String>()
-    private val pendingLock = Any()
-
-    // Invalidates callbacks from a client that has already been replaced.
-    @Volatile private var mqttGeneration = 0
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -102,8 +94,8 @@ class LeafMonitorService : Service() {
             }
             ACTION_COMMAND -> {
                 ensureForeground("Команда…")
-                // A shortcut can arrive while the service is not running. Start
-                // the monitor so MQTT commands have a chance to connect too.
+                // A shortcut can arrive while the service is not running:
+                // start the monitor so the command has a transport.
                 if (!monitoring && Settings.monitorEnabled) startMonitor()
                 val path = intent.getStringExtra(EXTRA_PATH) ?: ""
                 val payload = intent.getStringExtra(EXTRA_PAYLOAD) ?: ""
@@ -160,90 +152,56 @@ class LeafMonitorService : Service() {
 
     private fun startMonitor() {
         monitoring = true
-        LeafRepo.setMqttConnected(false)
         monitorJob?.cancel()
         monitorJob = scope.launch {
             val mode = Settings.mode
             when (mode) {
                 "local" -> runLocal()
                 "server" -> runServer()
-                "mqtt" -> runMqtt()
                 else -> runAuto()
             }
         }
     }
 
     private suspend fun runAuto() = coroutineScope {
-        // Local first; if the board is not on this Wi-Fi, MQTT takes over.
-        // The local network is still probed while MQTT carries telemetry, so the
-        // app returns to the board's own Wi-Fi without a service restart.
+        // Локально, если плата в этой же сети; иначе — через сервер.
         var syncedAt = 0L
         var lastScanMs = 0L
-        var mqttJob: Job? = null
-
-        fun stopMqtt() {
-            mqttJob?.cancel()
-            mqttJob = null
-            mqttGeneration++
-            val client = mqttClient
-            mqttClient = null
-            LeafRepo.mqtt = null
-            if (client != null) {
-                client.stop()
-                LeafRepo.setMqttConnected(false)
+        while (monitoring) {
+            val s = LocalApi.status(this@LeafMonitorService)
+            if (s != null) {
+                onState(s)
+                updateForeground("Локально · ${s.soc.takeIf { it >= 0 }?.toInt() ?: "—"}%")
+                if (System.currentTimeMillis() - syncedAt > 300_000L) {
+                    syncedAt = System.currentTimeMillis()
+                    syncHistory()
+                }
+                val pollMs = if (s.on == 1 || s.charging || s.hvac) 4_000L else 20_000L
+                delay(pollMs)
+                continue
             }
-        }
 
-        try {
-            while (monitoring) {
-                val s = LocalApi.status(this@LeafMonitorService)
-                if (s != null) {
-                    if (mqttJob != null) {
-                        stopMqtt()
-                        LeafRepo.monitorText.value = "Локально"
-                    }
-                    onState(s)
-                    updateForeground("Локально · ${s.soc.takeIf { it >= 0 }?.toInt() ?: "—"}%")
-                    if (System.currentTimeMillis() - syncedAt > 300_000L) {
-                        syncedAt = System.currentTimeMillis()
-                        syncHistory()
-                    }
-                    // Live while the car is active (ready / charging / climate
-                    // running): 4 s keeps V/A/SOC moving in near real time.
-                    // Parked and asleep: back off to the old 20 s cadence.
-                    val pollMs = if (s.on == 1 || s.charging || s.hvac) 4_000L else 20_000L
-                    delay(pollMs)
+            val now = System.currentTimeMillis()
+            if (now - lastScanMs > 120_000L) {
+                lastScanMs = now
+                val board = BoardDiscovery.scanSubnet(this@LeafMonitorService, 400)
+                if (board != null) {
+                    Settings.localHost = board.host
+                    Settings.localPort = board.port
+                    updateForeground("Найдена плата: ${board.host}")
                     continue
                 }
-
-                val now = System.currentTimeMillis()
-                if (now - lastScanMs > 120_000L) {
-                    lastScanMs = now
-                    val board = BoardDiscovery.scanSubnet(this@LeafMonitorService, 400)
-                    if (board != null) {
-                        Settings.localHost = board.host
-                        Settings.localPort = board.port
-                        updateForeground("Найдена плата: ${board.host}")
-                        continue
-                    }
-                }
-                if (mqttJob?.isActive != true) LeafRepo.setDisconnected("local")
-
-                if (Settings.mqttUser.isNotEmpty()) {
-                    if (mqttJob?.isActive != true) {
-                        updateForeground("Локально нет · MQTT…")
-                        mqttJob = launch { runMqtt() }
-                    }
-                    // Keep looking for the board's Wi-Fi while MQTT is in use.
-                    delay(25_000)
-                    continue
-                }
-
-                updateForeground("Нет связи с платой")
-                delay(30_000)
             }
-        } finally {
-            stopMqtt()
+            LeafRepo.setDisconnected("local")
+
+            if (ServerApi.configured()) {
+                updateForeground("Локально нет · сервер…")
+                runServer()
+                continue
+            }
+
+            updateForeground("Нет связи с платой")
+            delay(30_000)
         }
     }
 
@@ -321,63 +279,8 @@ class LeafMonitorService : Service() {
         }
     }
 
-    private suspend fun runMqtt() {
-        if (Settings.mqttUser.isEmpty()) {
-            LeafRepo.setMqttConnected(false)
-            updateForeground("MQTT не настроен")
-            return
-        }
-        updateForeground("MQTT · подключение…")
-        mqttClient?.stop()
-        val gen = ++mqttGeneration
-        val client = MqttWssClient(
-            host = Settings.mqttHost,
-            port = Settings.mqttPort,
-            path = Settings.mqttPath,
-            user = Settings.mqttUser,
-            pass = Settings.mqttPass,
-            vehicleId = Settings.vehicleId,
-            onConnected = { ok ->
-                scope.launch {
-                    if (gen != mqttGeneration) return@launch
-                    LeafRepo.setMqttConnected(ok)
-                    if (ok) {
-                        updateForeground("MQTT · подключено")
-                        LeafRepo.monitorText.value = "MQTT · подключено"
-                        LeafRepo.onMqttConnected()
-                        flushPendingCommands()
-                    } else {
-                        updateForeground("MQTT · нет связи")
-                        LeafRepo.setDisconnected("mqtt")
-                    }
-                }
-            },
-            onMetric = { topic, payload ->
-                LeafRepo.onMqttMetric(topic, payload)
-                val s = LeafRepo.state.value
-                onState(s)
-                recorder.sample(s, System.currentTimeMillis())
-            },
-        )
-        mqttClient = client
-        LeafRepo.mqtt = client
-        try {
-            client.start()
-            while (monitoring) {
-                delay(15_000)
-                val s = LeafRepo.state.value
-                recorder.sample(s, System.currentTimeMillis())
-                handleState(s)
-                if (s.connected) updateForeground("MQTT · ${s.soc.takeIf { it >= 0 }?.toInt() ?: "—"}% · ${s.power.toInt()} кВт")
-            }
-        } finally {
-            client.stop()
-            if (mqttClient === client) {
-                mqttClient = null
-                LeafRepo.mqtt = null
-            }
-            LeafRepo.setMqttConnected(false)
-        }
+    private fun reportCommand(text: String) {
+        LeafRepo.commandResult.tryEmit(text)
     }
 
     private fun sendCommand(path: String, payload: String) {
@@ -389,17 +292,12 @@ class LeafMonitorService : Service() {
                 reportCommand(if (ok) "Команда отправлена на сервер" else "Сервер не принял команду")
                 return@launch
             }
-            // Local first: the board answers immediately when the phone is on
-            // the same Wi-Fi. If that fails, wait for MQTT (the service may
-            // have just been started by a home-screen shortcut).
             var sent = false
-            if (Settings.mode != "mqtt" && path.isNotEmpty()) {
+            if (path.isNotEmpty()) {
                 sent = LeafRepo.commandLocal(this@LeafMonitorService, path)
                 if (!sent) {
                     // The saved host may be stale (e.g. 192.168.4.1 from the
-                    // board's own AP). Find the board on this Wi-Fi right now
-                    // and retry once instead of falling back to MQTT for
-                    // another five minutes.
+                    // board's own AP). Find the board on this Wi-Fi and retry.
                     val board = withContext(Dispatchers.IO) {
                         BoardDiscovery.scanSubnet(this@LeafMonitorService, 350)
                     }
@@ -412,61 +310,10 @@ class LeafMonitorService : Service() {
             }
             if (sent) {
                 reportCommand("Команда отправлена")
-                return@launch
-            }
-            if (Settings.mode == "local") {
-                reportCommand("Плата не ответила")
-                return@launch
-            }
-            if (payload.isEmpty()) {
-                reportCommand("Плата не ответила")
-                return@launch
-            }
-            if (!Settings.monitorEnabled) {
-                reportCommand("Мониторинг выключен")
-                return@launch
-            }
-            if (Settings.mqttUser.isEmpty()) {
-                reportCommand("MQTT не настроен")
-                return@launch
-            }
-            var waited = 0
-            while (!LeafRepo.mqttConnected.value && monitoring && waited < 12_000) {
-                delay(500)
-                waited += 500
-            }
-            if (LeafRepo.commandRemote(payload)) {
-                reportCommand("Команда отправлена")
             } else {
-                queueCommand(payload)
-                reportCommand("Команда в очереди — уйдёт после подключения")
+                reportCommand("Плата не отвечает: подключитесь к её Wi-Fi или включите режим «Сервер»")
             }
         }
-    }
-
-    private fun reportCommand(text: String) {
-        LeafRepo.commandResult.tryEmit(text)
-    }
-
-    /** Keep a command until the MQTT session is ready instead of dropping it. */
-    private fun queueCommand(payload: String) {
-        synchronized(pendingLock) {
-            if (pendingCommands.contains(payload)) return
-            if (pendingCommands.size >= 20) pendingCommands.removeAt(0)
-            pendingCommands.add(payload)
-        }
-    }
-
-    private fun flushPendingCommands() {
-        val batch = synchronized(pendingLock) { pendingCommands.toList() }
-        if (batch.isEmpty()) return
-        var sentAny = false
-        for (payload in batch) {
-            if (!LeafRepo.commandRemote(payload)) break
-            synchronized(pendingLock) { pendingCommands.remove(payload) }
-            sentAny = true
-        }
-        if (sentAny) reportCommand("Команда отправлена")
     }
 
     private suspend fun syncHistory() {
@@ -543,12 +390,7 @@ class LeafMonitorService : Service() {
 
     private fun stopMonitor() {
         monitoring = false
-        mqttGeneration++
-        LeafRepo.setMqttConnected(false)
         monitorJob?.cancel()
-        mqttClient?.stop()
-        LeafRepo.mqtt = null
-        mqttClient = null
         LeafRepo.setDisconnected("offline")
         LeafRepo.monitorText.value = "Мониторинг остановлен"
     }
@@ -559,7 +401,7 @@ class LeafMonitorService : Service() {
         super.onDestroy()
     }
 
-    /** Records trips/charges from MQTT telemetry when the board is remote. */
+    /** Records trips/charges from the telemetry stream. */
     private inner class Recorder {
         private var chargeStart = 0L
         private var chargeSocStart: Int? = null
@@ -580,9 +422,9 @@ class LeafMonitorService : Service() {
 
         fun sample(s: LeafState, now: Long) {
             if (!s.connected) return
-            // The board writes its own history in local mode; only record from
-            // MQTT telemetry, otherwise the list would contain duplicates.
-            if (s.transport != "mqtt") {
+            // The board writes its own history in local mode, so the app does
+            // not duplicate it; server mode is recorded locally.
+            if (s.transport == "local") {
                 lastSampleMs = now
                 if (s.odometer > 0) lastOdo = s.odometer
                 return

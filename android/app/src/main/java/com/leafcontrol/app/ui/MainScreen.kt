@@ -150,7 +150,6 @@ private val tabs = listOf(
 @Composable
 fun MainScreen(vm: LeafViewModel = viewModel()) {
     val state by vm.state.collectAsStateWithLifecycle()
-    val mqttConnected by LeafRepo.mqttConnected.collectAsStateWithLifecycle()
     val trips by vm.trips.collectAsStateWithLifecycle()
     val charges by vm.charges.collectAsStateWithLifecycle()
     val snack = remember { SnackbarHostState() }
@@ -210,8 +209,7 @@ fun MainScreen(vm: LeafViewModel = viewModel()) {
                         } else {
                             MoreScreen(
                                 state = state,
-                                mqttConnected = mqttConnected,
-                                onSettings = { vm.openSettings() },
+                                                onSettings = { vm.openSettings() },
                                 onCheckUpdate = { vm.checkUpdate() },
                             )
                         }
@@ -1303,7 +1301,6 @@ private fun HistoryValue(value: String, label: String) {
 @Composable
 private fun MoreScreen(
     state: LeafState,
-    mqttConnected: Boolean,
     onSettings: () -> Unit,
     onCheckUpdate: () -> Unit,
 ) {
@@ -1320,7 +1317,7 @@ private fun MoreScreen(
         item { MoreRow(Icons.Outlined.Info, "О приложении", "Возможности и версия") { showAbout = true } }
         item { SectionTitle("ПЛАТА") }
         item {
-            MoreRow(Icons.Outlined.Wifi, "Настройки платы", "Wi-Fi, MQTT, тариф — прямо в приложении") {
+            MoreRow(Icons.Outlined.Wifi, "Настройки платы", "Wi-Fi, модем, тариф — прямо в приложении") {
                 ctx.startActivity(Intent(ctx, BoardSettingsActivity::class.java))
             }
         }
@@ -1344,26 +1341,9 @@ private fun MoreScreen(
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     val modeLabel = when (Settings.mode) {
                         "local" -> "Локально"
-                        "mqtt" -> "MQTT"
+                        "server" -> "Сервер"
                         else -> "Авто"
                     }
-                    val mqttConfigured = Settings.mqttUser.isNotEmpty()
-                    val mqttUsed = Settings.mode == "mqtt" ||
-                        (Settings.mode == "auto" &&
-                            (state.transport == "mqtt" || (mqttConfigured && !state.connected)))
-                    StatusRow(
-                        "MQTT-сервер",
-                        when {
-                            !mqttUsed -> "не используется"
-                            mqttConnected -> "подключён"
-                            else -> "нет связи"
-                        },
-                        when {
-                            !mqttUsed -> null
-                            mqttConnected -> true
-                            else -> false
-                        },
-                    )
                     StatusRow(
                         "Плата",
                         if (state.connected) "на связи" else "нет данных",
@@ -1449,8 +1429,8 @@ private fun AboutDialog(state: LeafState, onDismiss: () -> Unit) {
                         "• История поездок и зарядок, стоимость по тарифу, экспорт CSV и очистка\n" +
                         "• Уведомления: зарядка, пистолет, низкий заряд, офлайн, завершение поездки\n" +
                         "• Офлайн-режим: последние данные и история доступны без интернета\n" +
-                        "• Локальная плата или MQTT, автоматический поиск платы в сети\n" +
-                        "• Настройки платы целиком из приложения (Wi-Fi, MQTT, OVMS, модем, тариф)\n" +
+        "  Прямая связь с платой и через ваш сервер, без посредников\n" +
+        "  Управление связью целиком из приложения (сервер, локально, авто)\n" +
                         "• Обновление прошивки платы прямо из приложения\n" +
                         "• Автообновление приложения из GitHub\n" +
                         "• Ярлыки: открыть/закрыть двери, климат вкл/выкл\n" +

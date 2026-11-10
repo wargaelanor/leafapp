@@ -92,18 +92,6 @@ private class BoardConfigDraft(c: JSONObject) {
     var hostName by mutableStateOf(c.optString("host_name", "leaf"))
     var apSsid by mutableStateOf(c.optString("ap_ssid"))
     var apPassword by mutableStateOf("")
-    var mqttServer by mutableStateOf(c.optString("mqtt_server"))
-    var mqttPort by mutableStateOf(c.optInt("mqtt_port", 8883).toString())
-    var mqttUser by mutableStateOf(c.optString("mqtt_user"))
-    var mqttPassword by mutableStateOf("")
-    var mqttVid by mutableStateOf(c.optString("mqtt_vehicle_id"))
-    var mqttTls by mutableStateOf(c.optBoolean("mqtt_tls"))
-    var hass by mutableStateOf(c.optBoolean("hass_discovery"))
-    var ovmsServer by mutableStateOf(c.optString("ovms_server"))
-    var ovmsPort by mutableStateOf(c.optInt("ovms_port", 6870).toString())
-    var ovmsTls by mutableStateOf(c.optBoolean("ovms_tls"))
-    var ovmsPassword by mutableStateOf("")
-    var ovmsModulePassword by mutableStateOf("")
     var modemEnabled by mutableStateOf(c.optBoolean("modem_enable"))
     var modemApn by mutableStateOf(c.optString("modem800_apn"))
     var modemUser by mutableStateOf(c.optString("modem800_user"))
@@ -121,7 +109,6 @@ private class BoardConfigDraft(c: JSONObject) {
     var chargeLimit by mutableStateOf(c.optInt("charge_limit_pct", 0))
     val wifiPassSet = c.optBoolean("wifi_password_set")
     val apPassSet = c.optBoolean("ap_password_set")
-    val mqttPassSet = c.optBoolean("mqtt_password_set")
     val fw = c.optString("fw")
     val board = c.optString("board")
 
@@ -136,18 +123,6 @@ private class BoardConfigDraft(c: JSONObject) {
         o.put("host_name", hostName.trim().ifEmpty { "leaf" })
         o.put("ap_ssid", apSsid.trim())
         if (apPassword.isNotEmpty()) o.put("ap_password", apPassword)
-        o.put("mqtt_server", mqttServer.trim())
-        o.put("mqtt_port", mqttPort.toIntOrNull() ?: 8883)
-        o.put("mqtt_user", mqttUser.trim())
-        if (mqttPassword.isNotEmpty()) o.put("mqtt_password", mqttPassword)
-        o.put("mqtt_vehicle_id", mqttVid.trim())
-        o.put("mqtt_tls", mqttTls)
-        o.put("hass_discovery", hass)
-        o.put("ovms_server", ovmsServer.trim())
-        o.put("ovms_port", ovmsPort.toIntOrNull() ?: 6870)
-        o.put("ovms_tls", ovmsTls)
-        if (ovmsPassword.isNotEmpty()) o.put("ovms_password", ovmsPassword)
-        if (ovmsModulePassword.isNotEmpty()) o.put("ovms_module_password", ovmsModulePassword)
         o.put("modem_enable", modemEnabled)
         o.put("modem800_apn", modemApn.trim())
         o.put("modem800_user", modemUser.trim())
@@ -267,9 +242,9 @@ private fun BoardSettingsScreen() {
                     ) { c.apPassword = it }
                 }
 
-                SectionCard("MQTT / удалённый доступ") {
+                SectionCard("Связь с сервером") {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf(0 to "Выключен", 1 to "MQTT", 2 to "OVMS V2").forEach { (id, label) ->
+                        listOf(0 to "Без подключения", 1 to "Сервер").forEach { (id, label) ->
                             FilterChip(
                                 selected = c.remoteMode == id,
                                 onClick = { c.remoteMode = id },
@@ -277,24 +252,11 @@ private fun BoardSettingsScreen() {
                             )
                         }
                     }
-                    LabeledField("Сервер", c.mqttServer) { c.mqttServer = it }
-                    LabeledField("Порт", c.mqttPort, KeyboardType.Number) { c.mqttPort = it }
-                    LabeledField("Пользователь", c.mqttUser) { c.mqttUser = it }
-                    PasswordField(
-                        "Пароль" + if (c.mqttPassSet) " (задан — пусто = не менять)" else "",
-                        c.mqttPassword,
-                    ) { c.mqttPassword = it }
-                    LabeledField("Vehicle ID (топики)", c.mqttVid) { c.mqttVid = it }
-                    SwitchRow("TLS (wss/8883)", c.mqttTls) { c.mqttTls = it }
-                    SwitchRow("Home Assistant discovery", c.hass) { c.hass = it }
-                }
-
-                SectionCard("OVMS Server V2") {
-                    LabeledField("Сервер", c.ovmsServer) { c.ovmsServer = it }
-                    LabeledField("Порт", c.ovmsPort, KeyboardType.Number) { c.ovmsPort = it }
-                    SwitchRow("TLS", c.ovmsTls) { c.ovmsTls = it }
-                    PasswordField("Пароль (пусто = не менять)", c.ovmsPassword) { c.ovmsPassword = it }
-                    PasswordField("Пароль модуля (пусто = не менять)", c.ovmsModulePassword) { c.ovmsModulePassword = it }
+                    Text(
+                        "«Сервер»: плата отправляет данные и принимает команды через ваш сервер. " +
+                            "«Без подключения»: только локальная страница и приём звонков.",
+                        fontSize = 12.sp,
+                    )
                 }
 
                 SectionCard("Модем (SIM800)") {
