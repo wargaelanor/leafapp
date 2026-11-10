@@ -344,7 +344,7 @@ static void sendState() {
   snprintf(body, sizeof(body),
            "{\"ts\":%lu,\"soc\":%.1f,\"odo\":%.0f,\"cabin\":%.1f,\"amb\":%.1f,"
            "\"batt\":%.1f,\"pack_v\":%.1f,\"pack_kw\":%.2f,\"v12\":%.1f,"
-           "\"hvac\":%d,\"charging\":%d,\"locked\":%d,\"doors\":%d,\"bus_age_s\":%lu}",
+           "\"hvac\":%d,\"charging\":%d,\"locked\":%d,\"doors\":%d,\"soh\":%d,\"spd\":%.1f,\"bus_age_s\":%lu}",
            (unsigned long)ts,
            soc >= 0 ? soc : -1.0,
            (double)evData.odometerKm,
@@ -352,6 +352,7 @@ static void sendState() {
            evData.batteryTemp, packV, packKw, 0.0,
            isHvacOn ? 1 : 0, isChargingNow ? 1 : 0, (lockState == 1) ? 1 : 0,
            (doorFL || doorFR || doorRL || doorRR || doorTrunk) ? 1 : 0,
+           evData.soh, 0.0,
            (unsigned long)busAgeSeconds());
 
   String resp;
