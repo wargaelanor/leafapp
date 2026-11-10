@@ -9,6 +9,7 @@
 #include "tripLog.h"
 #include <Update.h>
 #include "configuration.h"
+#include "serverCa.h"
 
 // Р“Р»РѕР±Р°Р»СЊРЅС‹Рµ Р·РЅР°С‡РµРЅРёСЏ, РєРѕС‚РѕСЂС‹Рµ РІРµРґС‘С‚ РѕСЃРЅРѕРІРЅРѕР№ СЃРєРµС‚С‡.
 extern float currentSOC;
@@ -175,7 +176,7 @@ static int request(const char* method, const String& pathAndQuery, const char* b
   WiFiClient plain;
   Client* cli = nullptr;
   if (tls) {
-    secure.setInsecure();
+    secure.setCACert(SERVER_CA_PEM);
     secure.setTimeout(6000);
     secure.setHandshakeTimeout(8);
     cli = &secure;
@@ -552,7 +553,7 @@ static bool flashFromUrl(const char* url) {
   WiFiClientSecure secure;
   WiFiClient plain;
   Client* cli = tls ? (Client*)&secure : (Client*)&plain;
-  if (tls) secure.setInsecure();
+  if (tls) secure.setCACert(SERVER_CA_PEM);
   if (!cli->connect(host.c_str(), port)) {
     Serial.println("[srv] ota: connect failed");
     return false;

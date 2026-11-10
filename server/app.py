@@ -204,6 +204,31 @@ def init_db() -> None:
             )
 
 
+
+# --- защита от перебора пароля: 8 неудач за 5 минут на IP ------------------
+LOGIN_FAILS: dict[str, list] = {}
+LOGIN_LOCK = threading.Lock()
+LOGIN_MAX_FAILS = 8
+LOGIN_WINDOW_S = 300
+
+
+def login_blocked(ip: str) -> bool:
+    with LOGIN_LOCK:
+        ts = [t for t in LOGIN_FAILS.get(ip, []) if now() - t < LOGIN_WINDOW_S]
+        LOGIN_FAILS[ip] = ts
+        return len(ts) >= LOGIN_MAX_FAILS
+
+
+def login_failed(ip: str) -> None:
+    with LOGIN_LOCK:
+        LOGIN_FAILS.setdefault(ip, []).append(now())
+
+
+def login_ok(ip: str) -> None:
+    with LOGIN_LOCK:
+        LOGIN_FAILS.pop(ip, None)
+
+
 def hash_password(password: str, salt: bytes | None = None) -> str:
     salt = salt or secrets.token_bytes(16)
     digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 200_000)
@@ -322,6 +347,18 @@ class Api(BaseHTTPRequestHandler):
                 k, v = part.split("=", 1)
                 out[k.strip()] = v.strip()
         return out
+
+    def is_secure_request(self) -> bool:
+        """Запрос пришёл по HTTPS (напрямую или через прокси Keenetic)."""
+        proto = (self.headers.get("X-Forwarded-Proto") or "").lower().strip()
+        if proto:
+            return proto == "https"
+        host = (self.headers.get("Host") or "").lower().strip()
+        return SERVER_BASE.startswith("https://") and host and host in SERVER_BASE.lower()
+
+    def session_cookie(self, token: str) -> str:
+        secure = "; Secure" if self.is_secure_request() else ""
+        return f"leaf_session={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={SESSION_DAYS * 86400}{secure}"
 
     # ---------- auth helpers
 
@@ -594,7 +631,7 @@ class Api(BaseHTTPRequestHandler):
             c.execute("INSERT INTO sessions(token,user_id,created_at,expires_at) VALUES(?,?,?,?)",
                       (token, uid, now(), now() + SESSION_DAYS * 86400))
             log_event(c, None, "account_registered", {"username": username})
-        cookie = f"leaf_session={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={SESSION_DAYS*86400}"
+        cookie = self.session_cookie(token)
         self.json(200, {"ok": True, "user": {"id": uid, "username": username, "role": "owner"}},
                   {"Set-Cookie": cookie})
 
@@ -625,6 +662,9 @@ class Api(BaseHTTPRequestHandler):
         self.json(200, {"ok": True, "device_id": match["id"], "login": match["login"]})
 
     def login(self):
+        ip = (self.client_address[0] if self.client_address else "?")
+        if login_blocked(ip):
+            return self.err(429, "слишком много попыток входа, подождите 5 минут")
         data = self.body()
         username = (data.get("username") or "").strip()
         password = data.get("password") or ""
@@ -639,7 +679,8 @@ class Api(BaseHTTPRequestHandler):
                 (token, r["id"], now(), now() + SESSION_DAYS * 86400),
             )
             log_event(c, None, "login_ok", {"username": username})
-        cookie = f"leaf_session={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={SESSION_DAYS*86400}"
+        login_ok(ip)
+        cookie = self.session_cookie(token)
         self.json(200, {"ok": True, "user": {"id": r["id"], "username": r["username"], "role": r["role"]}},
                   {"Set-Cookie": cookie})
 
