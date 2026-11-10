@@ -585,20 +585,24 @@
 
   function addMoreRows() {
     const box = moreContainer();
-    if (!box || box.querySelector('[data-lc-logout]')) return;
+    if (!box) return;
 
-    if (userRole === 'admin') {
+    if (userRole === 'admin' && !box.querySelector('[data-lc-admin]')) {
       const adminRow = makeRow('Администрирование', 'устройства, пользователи, журнал', showAdmin);
       adminRow.setAttribute('data-lc-admin', '1');
-      box.appendChild(adminRow);
+      const logout = box.querySelector('[data-lc-logout]');
+      if (logout) box.insertBefore(adminRow, logout);
+      else box.appendChild(adminRow);
     }
 
-    const logoutRow = makeRow('Выйти', 'сменить пользователя', async () => {
-      try { await api('/api/auth/logout', {}); } catch {}
-      location.href = '/login';
-    });
-    logoutRow.setAttribute('data-lc-logout', '1');
-    box.appendChild(logoutRow);
+    if (!box.querySelector('[data-lc-logout]')) {
+      const logoutRow = makeRow('Выйти', 'сменить пользователя', async () => {
+        try { await api('/api/auth/logout', {}); } catch {}
+        location.href = '/login';
+      });
+      logoutRow.setAttribute('data-lc-logout', '1');
+      box.appendChild(logoutRow);
+    }
   }
 
   function addAdminScreen() {
