@@ -865,8 +865,10 @@
       }
       box.innerHTML = items.map(it => `
         <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)">
-          <div style="flex:1">${it.name}
-            <div style="font-size:12px;color:var(--muted)">${(it.size / 1048576).toFixed(2)} МБ</div></div>
+          <div style="flex:1">
+            <a href="${it.url}" target="_blank" rel="noopener"
+               style="color:var(--accent);text-decoration:none">${it.name}</a>
+            <div style="font-size:12px;color:var(--muted)">${(it.size / 1048576).toFixed(2)} МБ · нажмите имя, чтобы скачать</div></div>
           <button data-fw="${it.name}" style="border:0;border-radius:8px;background:var(--accent);color:#fff;padding:8px 12px">Установить</button>
         </div>`).join('');
       $$('#fw-list [data-fw]').forEach(b => b.onclick = () => installFirmware(b.dataset.fw));
