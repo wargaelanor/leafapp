@@ -438,6 +438,8 @@ class Api(BaseHTTPRequestHandler):
         # ---------- board endpoints (no user session)
         if path == "/api/device/enroll" and method == "POST":
             return self.device_enroll()
+        if path == "/api/device/sync" and method == "POST":
+            return self.device_sync()
         if path == "/api/device/state" and method == "POST":
             return self.device_state()
         if path == "/api/device/heartbeat" and method == "POST":
@@ -695,6 +697,52 @@ class Api(BaseHTTPRequestHandler):
                 (now(), data.get("link"), data.get("rssi"), data.get("bus_age_s"), dev["id"]),
             )
         self.json(200, {"ok": True, "poll_s": POLL_S})
+
+    def device_sync(self):
+        """Один запрос на цикл: состояние + подтверждения + очередь команд."""
+        dev = self.device()
+        if not dev:
+            return self.err(401, "bad device token")
+        data = self.body()
+        ts = int(data.pop("ts", now()))
+        acks = data.pop("ack", []) or []
+        link = data.pop("link", None)
+        rssi = data.pop("rssi", None)
+        bus_age = data.pop("bus_age_s", None)
+        fw = data.pop("fw", None)
+
+        with db_lock, connect() as c:
+            c.execute(
+                "UPDATE devices SET state_json=?, state_ts=?, last_seen=?, last_link=?, last_rssi=?,"
+                " bus_age_s=?, fw=COALESCE(?, fw) WHERE id=?",
+                (json.dumps(data, ensure_ascii=False), ts, now(), link, rssi,
+                 bus_age, fw, dev["id"]),
+            )
+            last = c.execute(
+                "SELECT ts FROM samples WHERE device_id=? ORDER BY ts DESC LIMIT 1", (dev["id"],)
+            ).fetchone()
+            if not last or ts - last["ts"] >= 5:
+                c.execute("INSERT INTO samples(device_id, ts, payload) VALUES(?,?,?)",
+                          (dev["id"], ts, json.dumps(data, ensure_ascii=False)))
+            for aid in acks[:8]:
+                try:
+                    c.execute("UPDATE commands SET status='done', acked_at=? WHERE id=? AND device_id=?",
+                              (now(), int(aid), dev["id"]))
+                except (TypeError, ValueError):
+                    pass
+            row = c.execute(
+                "SELECT * FROM commands WHERE device_id=? AND status='queued' ORDER BY id LIMIT 1",
+                (dev["id"],),
+            ).fetchone()
+            cmd = None
+            if row:
+                c.execute("UPDATE commands SET status='delivered', delivered_at=? WHERE id=?",
+                          (now(), row["id"]))
+                cmd = {"id": row["id"], "name": row["name"],
+                       "args": json.loads(row["args"]) if row["args"] else {}}
+            want_cfg = (now() - (dev["config_ts"] or 0)) > 300
+            online = True
+        self.json(200, {"ok": True, "cmd": cmd, "poll_s": 5, "config": want_cfg, "online": online})
 
     def device_state(self):
         dev = self.device()
