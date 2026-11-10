@@ -504,7 +504,7 @@ void serverApiCommandPump() {
     bool done = (activeSequence == CanSequence::NONE);
     bool timeout = (millis() - inflightAt) > 30000UL;
     if (!done && !timeout) return;
-    mailboxComplete(done);
+    mailboxComplete(done && !lastSequenceFailed);
     return;
   }
   if (!inboxReady) return;
@@ -527,8 +527,10 @@ void serverApiCommandPump() {
     return;
   }
   if (cmdHandler) cmdHandler(cmd.name, cmd.args);
-  if (commandNeedsSequence(cmd.name) && activeSequence == CanSequence::NONE) {
-    mailboxComplete(false);
+  if (!commandNeedsSequence(cmd.name)) {
+    mailboxComplete(true);           // настройки, синхронизация конфига и т. п.
+  } else if (activeSequence == CanSequence::NONE) {
+    mailboxComplete(false);          // последовательность не запустилась
   }
 }
 

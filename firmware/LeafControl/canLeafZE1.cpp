@@ -578,6 +578,9 @@ void handleReceivedMessage(uint32_t identifier, uint8_t* data, uint8_t len) {
 // Sequence State Machine
 extern bool carIsAwake;
 CanSequence activeSequence = CanSequence::NONE;
+// true, если последняя последовательность оборвалась (TX / шина),
+// а не дошла до конца. Нужно, чтобы не подтверждать серверу успех зря.
+bool lastSequenceFailed = false;
 
 enum class SeqPhase {
     IDLE,
@@ -737,6 +740,7 @@ bool startSequence(CanSequence seq, unsigned long currentTimeMs) {
     repeatCount = 0;
     sendFailCount = 0;
     carIsAwake = false;
+    lastSequenceFailed = false;
     nextCANEventTime = currentTimeMs;
     return true;
 #endif
@@ -756,6 +760,7 @@ CanSeqResult manageCANSequence(unsigned long currentTimeMs) {
             if (!sendCAN(wakeup_data)) {
                 activeSequence = CanSequence::NONE;
                 currentPhase = SeqPhase::IDLE;
+                lastSequenceFailed = true;
                 return CanSeqResult::SEQUENCE_FINISHED;
             }
             wakeAttempts = 1;
@@ -767,6 +772,7 @@ CanSeqResult manageCANSequence(unsigned long currentTimeMs) {
             if (!sendCAN(hvac_init)) {
                 activeSequence = CanSequence::NONE;
                 currentPhase = SeqPhase::IDLE;
+                lastSequenceFailed = true;
                 return CanSeqResult::SEQUENCE_FINISHED;
             }
             // Continue into seq_refresh as well. A single OVMS wake pair is
@@ -812,6 +818,7 @@ CanSeqResult manageCANSequence(unsigned long currentTimeMs) {
                             Serial.println("### Sequence aborted: CAN TX failing ###");
                             activeSequence = CanSequence::NONE;
                             currentPhase = SeqPhase::IDLE;
+                            lastSequenceFailed = true;
                             return CanSeqResult::SEQUENCE_FINISHED;
                         }
                         nextCANEventTime = currentTimeMs + 200;

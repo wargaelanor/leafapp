@@ -115,6 +115,7 @@ enum class CanSequence {
 enum class CanSeqResult { IDLE, PROCESSING, WAKE_SUCCESS, WAKE_TIMEOUT, SEQUENCE_FINISHED };
 
 extern CanSequence activeSequence;
+extern bool lastSequenceFailed;
 
 // Sequence Payload Modifier Callback Type
 typedef void (*SequencePayloadModifier)(uint8_t* data, uint8_t len);
