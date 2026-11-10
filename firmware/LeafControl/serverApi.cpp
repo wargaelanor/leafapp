@@ -624,6 +624,20 @@ static bool flashFromUrl(const char* url) {
   return true;
 }
 
+// Лёгкий признак жизни: сервер видит, что плата на связи и какая у неё
+// прошивка, даже если полная синхронизация состояния не проходит.
+static bool sendPing() {
+  char body[220];
+  snprintf(body, sizeof(body),
+           "{\"fw\":\"%s\",\"link\":\"%s\",\"rssi\":%d,\"uptime\":%lu}",
+           leafFwVersion,
+           WiFi.status() == WL_CONNECTED ? "wifi" : "none",
+           WiFi.RSSI(),
+           (unsigned long)(millis() / 1000UL));
+  String resp;
+  return postJson("/api/device/ping", body, resp);
+}
+
 static bool syncRequest() {
   // Тело = обычное состояние плюс связка, прошивка и подтверждения команд.
   String payload = stateJson();
@@ -867,15 +881,28 @@ static void serverNetOnce() {
 
   static unsigned long lastSyncMs = 0;
   unsigned long interval = (WiFi.RSSI() < -80) ? 15000UL : 8000UL;
+  bool syncOk = false;
   if (now - lastSyncMs >= interval) {
     lastSyncMs = now;
-    bool ok = syncRequest();
-    if (ok) {
+    syncOk = syncRequest();
+    if (syncOk) {
       lastOkMs = millis();
       failCount = 0;
       if (recCount > 0) sendOneRecord();
     } else if (failCount < 255 && ++failCount >= 3) {
       retryAt = now + 30000UL;
+    }
+  }
+
+  // Раз в минуту (и сразу после неудачной синхронизации) отправляем короткий
+  // ping: сервер обновляет last_seen и версию прошивки.
+  static unsigned long lastPingMs = 0;
+  bool pingDue = (lastPingMs == 0) || (now - lastPingMs >= 60000UL) ||
+                 (!syncOk && (now - lastPingMs >= 20000UL));
+  if (pingDue && WiFi.status() == WL_CONNECTED) {
+    if (sendPing()) {
+      lastPingMs = now;
+      lastOkMs = millis();
     }
   }
 

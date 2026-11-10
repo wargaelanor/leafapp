@@ -24,10 +24,10 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.09.141-TCALL"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.09.143-TCALL"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: two MCP2515 CAN buses + SIM800"
 #else
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.09.141-CMD"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.09.143-CMD"
 #define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: stable scroll, Wi-Fi scan"
 #endif
 
@@ -881,6 +881,34 @@ void handleReboot() {
   rebootPendingAt = millis() + 1500;
   rebootPendingReason = 6;
   server.send(200, "application/json", "{\"ok\":true,\"reboot\":true}");
+}
+
+// Состояние связи: режим, канал, когда последний раз был успешный обмен
+// с сервером. Отдельный лёгкий ответ, чтобы страница не зависела от /api/status.
+void handleLinkStatus() {
+  bool serverMode = (getRemoteTransport() == RemoteTransport::SERVER);
+  unsigned long ok = serverApiLastOkMs();
+  String out = "{\"mode\":\"";
+  out += serverMode ? "server" : "local";
+  out += "\",\"last_ok_s\":";
+  out += ok ? String((millis() - ok) / 1000UL) : String(-1);
+  out += ",\"status\":\"";
+  out += serverApiStatusText();
+  out += "\",\"server\":\"";
+  out += serverApiBase();
+  out += "\",\"wifi\":";
+  out += (WiFi.status() == WL_CONNECTED) ? 1 : 0;
+  out += ",\"rssi\":";
+  out += String(WiFi.RSSI());
+  out += ",\"modem_en\":";
+  out += getModemEnable() ? 1 : 0;
+  out += ",\"modem\":\"";
+  out += modemGetStateStr();
+  out += "\",\"apn\":\"";
+  out += getModem800Apn();
+  out += "\"}";
+  server.sendHeader("Cache-Control", "no-store");
+  server.send(200, "application/json", out);
 }
 
 // Modem diagnostics: POST запускает проверку в отдельной задаче, GET отдаёт
@@ -2380,7 +2408,8 @@ for (size_t i = 0; i < WEBAPP_ASSET_COUNT; i++) {
       server.on("/api/developer/replay/disarm", HTTP_POST, handleReplayDisarm);
       server.on("/api/developer/vin_probe", HTTP_POST, handleVinProbe);
       server.on("/api/vin_probe", HTTP_POST, handleVinProbePublic);
-      server.on("/api/modem_probe", HTTP_POST, handleModemProbeStart);
+      server.on("/api/link", HTTP_GET, handleLinkStatus);
+  server.on("/api/modem_probe", HTTP_POST, handleModemProbeStart);
   server.on("/api/modem_probe", HTTP_GET, handleModemProbe);
       server.on("/api/modem_power", HTTP_POST, handleModemPower);
       server.on("/api/trips", HTTP_GET, handleTripsList);

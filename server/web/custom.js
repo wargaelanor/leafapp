@@ -893,6 +893,44 @@
     } catch (e) { hint.textContent = e.message; }
   }
 
+  /* ---------- индикатор связи с платой ---------- */
+  function addLinkBadge() {
+    if (document.getElementById('link-badge')) return;
+    const b = document.createElement('div');
+    b.id = 'link-badge';
+    b.style.cssText = 'position:fixed;right:14px;bottom:14px;z-index:9999;font:12px/1.2 -apple-system,Segoe UI,Roboto,Arial;' +
+      'padding:7px 12px;border-radius:999px;background:rgba(120,120,128,.16);color:var(--muted);' +
+      'pointer-events:none;backdrop-filter:blur(8px);box-shadow:0 2px 10px rgba(0,0,0,.08)';
+    document.body.appendChild(b);
+
+    const human = (s) => s < 60 ? (s + ' с') : (s < 3600 ? (Math.round(s / 60) + ' мин') : (Math.round(s / 3600) + ' ч'));
+
+    async function tick() {
+      try {
+        const r = await api('/api/devices');
+        const list = r.devices || [];
+        const on = list.find(d => d.online);
+        const d = on || list[0];
+        if (!d) { b.textContent = 'нет привязанных плат'; b.style.color = 'var(--muted)'; return; }
+        const age = d.last_seen ? Math.max(0, Math.round(Date.now() / 1000 - d.last_seen)) : -1;
+        if (on) {
+          b.textContent = 'плата на связи · ' + (age >= 0 ? human(age) + ' назад' : '') +
+            (d.fw ? ' · ' + d.fw : '');
+          b.style.color = 'var(--accent)';
+        } else {
+          b.textContent = 'нет связи с платой' + (age >= 0 ? ' · ' + human(age) : '') +
+            (d.fw ? ' · ' + d.fw : '');
+          b.style.color = '#d9534f';
+        }
+      } catch (e) {
+        b.textContent = 'сервер недоступен';
+        b.style.color = '#d9534f';
+      }
+    }
+    tick();
+    setInterval(tick, 20000);
+  }
+
   /* ---------- запуск ---------- */
   function init() {
     cleanMore();
@@ -902,6 +940,7 @@
     addAdminScreen();
     addClaimScreen();
     addFirmwareScreen();
+    addLinkBadge();
     interceptMore();
     bindCards();
     loadRole().then(() => addMoreRows());

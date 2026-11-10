@@ -441,6 +441,8 @@ class Api(BaseHTTPRequestHandler):
         # ---------- board endpoints (no user session)
         if path == "/api/device/enroll" and method == "POST":
             return self.device_enroll()
+        if path == "/api/device/ping" and method == "POST":
+            return self.device_ping()
         if path == "/api/device/sync" and method == "POST":
             return self.device_sync()
         if path == "/api/device/state" and method == "POST":
@@ -700,6 +702,22 @@ class Api(BaseHTTPRequestHandler):
                 (now(), data.get("link"), data.get("rssi"), data.get("bus_age_s"), dev["id"]),
             )
         self.json(200, {"ok": True, "poll_s": POLL_S})
+
+    def device_ping(self):
+        """Лёгкий признак жизни: версия прошивки и канал связи, без телеметрии."""
+        dev = self.device()
+        if not dev:
+            return self.err(401, "bad device token")
+        d = self.body()
+        fw = (d.get("fw") or "").strip()[:64]
+        with db_lock, connect() as c:
+            c.execute(
+                "UPDATE devices SET last_seen=?, last_link=COALESCE(?, last_link),"
+                " last_rssi=COALESCE(?, last_rssi), fw=COALESCE(?, fw)"
+                " WHERE id=?",
+                (now(), d.get("link"), d.get("rssi"), fw or None, dev["id"]),
+            )
+        return self.json(200, {"ok": True, "ts": int(now())})
 
     def device_sync(self):
         """Один запрос на цикл: состояние + подтверждения + очередь команд."""
