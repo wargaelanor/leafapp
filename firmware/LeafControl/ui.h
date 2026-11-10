@@ -31,7 +31,7 @@ static void sendNonEmpty(WebServer& server, const String& value) {
 }
 
 // Board settings page — NissanConnect style
-void sendSettingsPage(WebServer& server, bool mqttConnected, bool ovmsConnected, const char* saveResult) {
+void sendSettingsPage(WebServer& server, const char* saveResult) {
   server.setContentLength(CONTENT_LENGTH_UNKNOWN);
   server.sendHeader("Cache-Control", "no-store, no-cache, must-revalidate");
   server.send(200, "text/html", "");
@@ -151,102 +151,13 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, bool ovmsConnected,
     "<div class='remote-options'>"));
   RemoteTransport remoteMode = getRemoteTransport();
   server.sendContent(F("<label class='remote-choice'><input type='radio' name='remote_mode' value='0'"));
-  if (remoteMode == RemoteTransport::OFF) server.sendContent(F(" checked"));
-  server.sendContent(F("><span>Без подключения</span></label>\n"
+  if (remoteMode == RemoteTransport::LOCAL) server.sendContent(F(" checked"));
+  server.sendContent(F("><span>Без подключения — полный интерфейс</span></label>\n"
     "<label class='remote-choice'><input type='radio' name='remote_mode' value='1'"));
-  if (remoteMode == RemoteTransport::MQTT) server.sendContent(F(" checked"));
-  server.sendContent(F("><span>MQTT-брокер</span></label>\n"
-    "<label class='remote-choice'><input type='radio' name='remote_mode' value='2'"));
-  if (remoteMode == RemoteTransport::OVMS_V2) server.sendContent(F(" checked"));
-  server.sendContent(F("><span>OVMS Server V2</span></label>\n"
-    "<label class='remote-choice'><input type='radio' name='remote_mode' value='3'"));
-  if (remoteMode == RemoteTransport::CALL) server.sendContent(F(" checked"));
-  server.sendContent(F("><span>Только звонок</span></label></div>\n"
-    "<div class='remote-panel' data-remote-panel='1' hidden>\n"
-    "<div class='remote-panel-title'>MQTT-брокер</div>\n"));
-
-  server.sendContent(F("<div class='status-line'>"));
-  if (strlen(getMqttServer()) == 0) {
-    server.sendContent(F("<i class='none'></i>Не настроен"));
-  } else if (mqttConnected) {
-    server.sendContent(F("<i class='on'></i>Подключено"));
-  } else {
-    server.sendContent(F("<i class='off'></i>Нет подключения"));
-  }
-  server.sendContent(F("</div><a class='broker-link' href='https://dash.wqtt.ru/broker/' target='_blank' rel='noopener'>Открыть панель брокера</a>\n"));
-
+  if (remoteMode == RemoteTransport::SERVER) server.sendContent(F(" checked"));
+  server.sendContent(F("><span>Сервер — лёгкий интерфейс и постоянная связь</span></label>\n"));
   server.sendContent(F(
-    "<label for='mqtt_server'>Сервер (IP или имя хоста)</label>\n"
-    "<input type='text' id='mqtt_server' name='mqtt_server' value='"
-  ));
-  sendNonEmpty(server, htmlEscapeAttr(getMqttServer()));
-  server.sendContent(F(
-    "' placeholder='m5.wqtt.ru' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='off'>\n"
-    "<label for='mqtt_port'>Порт</label>\n"
-    "<input type='number' id='mqtt_port' name='mqtt_port' min='1' max='65535' value='"
-  ));
-  server.sendContent(String(getMqttPort()));
-  server.sendContent(F(
-    "' placeholder='15868'>\n"
-    "<label for='mqtt_user'>Пользователь</label>\n"
-    "<input type='text' id='mqtt_user' name='mqtt_user' value='"
-  ));
-  sendNonEmpty(server, htmlEscapeAttr(getMqttUser()));
-  server.sendContent(F(
-    "' placeholder='u_XXXXXX' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='off'>\n"
-    "<label for='mqtt_vehicle_id'>Vehicle ID для MQTT</label>\n"
-    "<input type='text' id='mqtt_vehicle_id' name='mqtt_vehicle_id' value='"
-  ));
-  sendNonEmpty(server, htmlEscapeAttr(getMqttVehicleId()));
-  server.sendContent(F(
-    "' placeholder='MYLEAF' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='off'>\n"
-    "<div class='hint'>Этот ID попадает в топики <code>ovms/&lt;user&gt;/&lt;id&gt;/...</code>. "
-    "У OVMS Server V2 свой отдельный ID ниже — менять один, чтобы не сломать другой, больше не нужно.</div>\n"
-    "<label for='mqtt_password'>Пароль (пусто — не менять)</label>\n"
-    "<input type='password' id='mqtt_password' name='mqtt_password' value='' placeholder='••••••••' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='new-password' lang='en'>\n"
-    "<label class='chk'><input type='checkbox' name='mqtt_tls' value='1'"
-  ));
-  if (getMqttTls()) server.sendContent(F(" checked"));
-  server.sendContent(F(
-    "> Использовать TLS (порт 8883)</label>\n"
-    "<label class='chk'><input type='checkbox' name='hass_discovery' value='1'"
-  ));
-  if (getHassDiscoveryEnabled()) server.sendContent(F(" checked"));
-  server.sendContent(F(
-    "> Автонастройка Home Assistant</label>\n"
-    "</div>\n"
-    "<div class='remote-panel' data-remote-panel='2' hidden>\n"
-    "<div class='remote-panel-title'>OVMS Server V2</div>\n"
-    "<label for='vehicle_id'>Vehicle ID</label><input type='text' id='vehicle_id' name='vehicle_id' value='"
-  ));
-  sendNonEmpty(server, htmlEscapeAttr(getVehicleId()));
-  server.sendContent(F("' placeholder='MYLEAF' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='off'>\n"
-    "<label for='ovms_server'>Сервер</label><input type='text' id='ovms_server' name='ovms_server' value='"));
-  sendNonEmpty(server, htmlEscapeAttr(getOvmsServer()));
-  server.sendContent(F("' placeholder='api.openvehicles.com' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='off'>\n"
-    "<label for='ovms_port'>Порт</label><input type='number' id='ovms_port' name='ovms_port' min='1' max='65535' value='"));
-  server.sendContent(String(getOvmsPort()));
-  server.sendContent(F("'>\n"
-    "<label for='ovms_password'>Server password (пусто — не менять)</label>"
-    "<input type='password' id='ovms_password' name='ovms_password' value='' placeholder='••••••••' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='new-password' lang='en'>\n"
-    "<label for='ovms_module_password'>Пароль модуля (пусто — не менять)</label>"
-    "<input type='password' id='ovms_module_password' name='ovms_module_password' value='' placeholder='••••••••' autocapitalize='off' autocorrect='off' spellcheck='false' autocomplete='new-password' lang='en'>\n"
-    "<label class='chk'><input type='checkbox' name='ovms_tls' value='1'"));
-  if (getOvmsTls()) server.sendContent(F(" checked"));
-  server.sendContent(F("> Использовать TLS</label>\n"
-    "<div class='status-line'>"));
-  if (strlen(getOvmsServer()) == 0 || strlen(getOvmsPassword()) == 0) {
-    server.sendContent(F("<i class='none'></i>Не настроен"));
-  } else if (ovmsConnected) {
-    server.sendContent(F("<i class='on'></i>Подключено"));
-  } else {
-    server.sendContent(F("<i class='off'></i>Нет подключения"));
-  }
-  server.sendContent(F("</div>\n"
-    "<div class='hint'>Server password — пароль автомобиля на сервере. Пароль модуля должен совпадать с полем Module Password в приложении и включает paranoid-шифрование данных и команд.</div>\n"
-    "<div class='hint'>TLS доступен через Wi-Fi. Текущий SIM800 TCP-клиент поддерживает OVMS V2 только без TLS.</div>\n"
-    "</div>\n"
-    "<div class='remote-panel' data-remote-panel='3' hidden>\n"
+    "<div class='remote-panel' data-remote-panel='all'>\n"
     "<div class='remote-panel-title'>Только звонок</div>\n"
     "<div class='hint'>Управление идёт только голосовым звонком с разрешённого номера: климат включается и выключается по звонку, приложение и интернет-сервисы не используются. "
     "Модем между звонками спит и просыпается сам при входящем вызове, поэтому расход энергии минимальный. "
@@ -433,7 +344,7 @@ void sendSettingsPage(WebServer& server, bool mqttConnected, bool ovmsConnected,
     "<div id='reboot-note' style='font-size:12px;color:#8e8e93;min-height:16px;margin-top:8px'></div>\n"
     "</div></details></div>\n"
     "<div style='padding:0 16px'><a href='/' class='btn btn-back'>Назад</a></div>\n"
-    "<script>function showRemote(){var r=document.querySelector('input[name=remote_mode]:checked'),v=r?r.value:'0';document.querySelectorAll('[data-remote-panel]').forEach(function(p){p.hidden=p.dataset.remotePanel!==v})}document.querySelectorAll('input[name=remote_mode]').forEach(function(r){r.addEventListener('change',showRemote)});showRemote();document.querySelectorAll('.section').forEach(function(s){s.addEventListener('toggle',function(){if(!s.open)return;document.querySelectorAll('.section[open]').forEach(function(o){if(o!==s)o.open=false});history.replaceState(null,'','#'+s.dataset.section)})});var h=location.hash.slice(1),d=h&&document.querySelector('[data-section=\"'+h+'\"]');if(d)d.open=true;function showWifiPasswords(cb){document.querySelectorAll('input[type=password][id^=wifi_password]').forEach(function(i){i.type=cb.checked?'text':'password'})}(function(){var b=document.getElementById('reboot-btn');if(!b)return;var t=null,n=document.getElementById('reboot-note');function stop(){if(t){clearTimeout(t);t=null;b.textContent='Удерживайте 3 секунды'}}function start(e){e.preventDefault();b.textContent='Держите…';t=setTimeout(function(){t=null;b.textContent='Перезагружаем…';n.textContent='плата перезагрузится через несколько секунд';fetch('/reboot',{method:'POST',headers:{'X-Requested-With':'leaf'}}).catch(function(){})},3000)}b.addEventListener('pointerdown',start);['pointerup','pointerleave','pointercancel'].forEach(function(ev){b.addEventListener(ev,stop)})})();function scanWifi(){var box=document.getElementById('wifi_scan_list');if(!box)return;box.textContent='Сканируем…';fetch('/api/wifi_scan',{cache:'no-store'}).then(function(r){return r.json()}).then(function(list){if(!Array.isArray(list)||!list.length){box.textContent='Сети не найдены';return;}box.innerHTML='';list.forEach(function(n){var b=document.createElement('button');b.type='button';b.textContent=(n.ssid||'(без имени)')+' · '+n.rssi+' dBm'+(n.enc?' · 🔒':'');b.onclick=function(){var i=document.getElementById('wifi_ssid');if(i){i.value=n.ssid||'';i.focus();}var p=document.getElementById('wifi_password');if(p)p.focus();box.textContent='Выбрано: '+(n.ssid||'');};box.appendChild(b);});}).catch(function(){box.textContent='Ошибка сканирования';});}</script>\n"
+    "<script>function showRemote(){var r=document.querySelector('input[name=remote_mode]:checked'),v=r?r.value:'0';document.querySelectorAll('[data-remote-panel]').forEach(function(p){p.hidden=(p.dataset.remotePanel!==v&&p.dataset.remotePanel!=='all')})}document.querySelectorAll('input[name=remote_mode]').forEach(function(r){r.addEventListener('change',showRemote)});showRemote();document.querySelectorAll('.section').forEach(function(s){s.addEventListener('toggle',function(){if(!s.open)return;document.querySelectorAll('.section[open]').forEach(function(o){if(o!==s)o.open=false});history.replaceState(null,'','#'+s.dataset.section)})});var h=location.hash.slice(1),d=h&&document.querySelector('[data-section=\"'+h+'\"]');if(d)d.open=true;function showWifiPasswords(cb){document.querySelectorAll('input[type=password][id^=wifi_password]').forEach(function(i){i.type=cb.checked?'text':'password'})}(function(){var b=document.getElementById('reboot-btn');if(!b)return;var t=null,n=document.getElementById('reboot-note');function stop(){if(t){clearTimeout(t);t=null;b.textContent='Удерживайте 3 секунды'}}function start(e){e.preventDefault();b.textContent='Держите…';t=setTimeout(function(){t=null;b.textContent='Перезагружаем…';n.textContent='плата перезагрузится через несколько секунд';fetch('/reboot',{method:'POST',headers:{'X-Requested-With':'leaf'}}).catch(function(){})},3000)}b.addEventListener('pointerdown',start);['pointerup','pointerleave','pointercancel'].forEach(function(ev){b.addEventListener(ev,stop)})})();function scanWifi(){var box=document.getElementById('wifi_scan_list');if(!box)return;box.textContent='Сканируем…';fetch('/api/wifi_scan',{cache:'no-store'}).then(function(r){return r.json()}).then(function(list){if(!Array.isArray(list)||!list.length){box.textContent='Сети не найдены';return;}box.innerHTML='';list.forEach(function(n){var b=document.createElement('button');b.type='button';b.textContent=(n.ssid||'(без имени)')+' · '+n.rssi+' dBm'+(n.enc?' · 🔒':'');b.onclick=function(){var i=document.getElementById('wifi_ssid');if(i){i.value=n.ssid||'';i.focus();}var p=document.getElementById('wifi_password');if(p)p.focus();box.textContent='Выбрано: '+(n.ssid||'');};box.appendChild(b);});}).catch(function(){box.textContent='Ошибка сканирования';});}</script>\n"
     "</div></div></body></html>\n"
   ));
 

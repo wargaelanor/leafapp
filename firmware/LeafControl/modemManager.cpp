@@ -6,7 +6,6 @@
 #include "modemHw.h"
 #include "modemPins.h"
 #include "canLeafZE1.h"
-#include "mqttInterface.h"
 
 static const uint32_t WIFI_GRACE_MS = 120000;
 static const uint32_t WIFI_DROP_ATTACH_MS = 60000;
@@ -73,7 +72,7 @@ static bool hwGprsConnect(const char* apn, const char* u, const char* p) {
 static bool hwGprsDisconnect() { return modem800::hwGprsDisconnect(); }
 
 static bool callOnlyMode() {
-  return getRemoteTransport() == RemoteTransport::CALL;
+  return getRemoteTransport() == RemoteTransport::LOCAL;
 }
 
 // In call-only mode the modem must run even if the generic modem switch is off:
@@ -230,7 +229,6 @@ static void stopTask(void*) {
 static void standbyTask(void*) {
   setState(ModemState::STOPPING);
   Serial.println("[modem] closing GPRS; keeping GSM registered for calls");
-  mqttDisconnect();
   hwGprsDisconnect();
   modem800::hwPrepareVoiceCalls();
   // Call-only mode: let the module sleep between calls. It wakes by itself on
@@ -347,7 +345,6 @@ void modemTick() {
       if (modem800::hwIncomingCaller(&caller, 700)) {
         pendingCaller = caller;
         Serial.printf("[call] incoming caller %s detected by AT+CLCC\n", caller.c_str());
-        mqttDisconnect();
         startTask(callTask);
         return;
       }

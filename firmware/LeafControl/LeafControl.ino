@@ -15,9 +15,7 @@
 #include "udsLeaf.h"
 #include "ui.h"
 #include "webapp_html.h"
-#include "mqttInterface.h"
 #include "serverApi.h"
-#include "ovmsV2Client.h"
 #include "modemManager.h"
 #include "canLogger.h"
 #include "tripLog.h"
@@ -181,14 +179,12 @@ uint16_t hvacTimerRemainingMinutes() {
 void cancelHvacTimer() {
   hvacTimerEndsMs = 0;
   hvacTimerStopPending = false;
-  mqttUpdateHvacTimer(0);
 }
 
 void armHvacTimer(uint16_t minutes) {
   cancelHvacTimer();
   if (minutes > 0) {
     hvacTimerEndsMs = millis() + (unsigned long)minutes * 60000UL;
-    mqttUpdateHvacTimer(minutes);
   }
 }
 
@@ -315,26 +311,7 @@ void restoreFromRtc() {
   doorTrunk = rtcState.cachedDoors & 0x10;
   headlightsState = rtcState.cachedDoors & 0x20;
 
-  // Push restored values into MQTT dirty flags so reconnect sync republishes them
-  if (currentSOC >= 0) mqttUpdateSOC(currentSOC);
-  if (cabinTemp > -30) mqttUpdateCabinTemp(cabinTemp);
-  mqttUpdateCharging(isChargingNow, currentChargerState);
-  mqttUpdateHVAC(isHvacOn);
-  if (currentSetpoint >= 0) mqttUpdateHVACSetpoint(currentSetpoint);
-  if (currentFanSpeed >= 0) mqttUpdateFanSpeed(currentFanSpeed);
-  mqttUpdateHeatingMode(isHeatingEnabled, isCoolingEnabled);
-  mqttUpdateVentilationMode(currentVentilationMode);
-  if (lockState >= 0) mqttUpdateLock(lockState == 1);
-  if (evData.soh > 0) mqttUpdateSOH(evData.soh);
-  if (evData.gids > 0) mqttUpdateGids(evData.gids);
-  if (evData.packDataValid) mqttUpdatePackStatus(evData.packVoltage, evData.packCurrent);
-  if (evData.ambientTemp > -90) mqttUpdateAmbient(evData.ambientTemp);
-  if (evData.vehicleOn >= 0) mqttUpdateVehicleOn(evData.vehicleOn == 1);
-  if (evData.odometerKm > 0) mqttUpdateOdometer(evData.odometerKm);
-  if (strlen(evData.vin) == 17) mqttUpdateVin(evData.vin);
-  mqttUpdateDoors(doorFL, doorFR, doorRL, doorRR, doorTrunk);
-  mqttUpdateHeadlights(headlightsState);
-}
+  }
 
 // Save current state to RTC memory
 void saveToRtc() {
@@ -482,7 +459,10 @@ void handleApiTime() {
 }
 
 void handleRootEntry() {
-  if (getUiLite()) handleLite(); else handleRoot();
+  // Режим "Сервер" всегда отдаёт лёгкий интерфейс: полный нужен только
+  // для локальной работы без интернета.
+  bool lite = getUiLite() || getRemoteTransport() == RemoteTransport::SERVER;
+  if (lite) handleLite(); else handleRoot();
 }
 
 // /ui?mode=lite|full вЂ” remembers the choice in NVS so it survives a reboot.
@@ -646,7 +626,7 @@ void handleApiStatus() {
     "\"bmslen\":%u,\"bmsgot\":%u,\"bmsgrp\":%u,\"bmsff\":%lu,"
     "\"bmsage\":%lu,\"bmsfail\":%lu,\"bmsreq\":%u,\"bmscd\":%lu,"
     "\"modem\":\"%s\",\"uptime\":%lu,\"epoch\":%lu,\"free_heap\":%lu,\"psram\":%u,\"psram_free\":%u,\"reset_reason\":%d,\"software_restart\":%u,"
-    "\"remote_mode\":%d,\"ui_lite\":%d,\"mqtt_connected\":%d,\"ovms_v2_connected\":%d,\"ovms_v2_paranoid\":%d,"
+    "\"remote_mode\":%d,\"ui_lite\":%d,"
     "\"wifi_status\":%d,\"wifi_rssi\":%d,\"wifi_profile\":%u,\"wifi_disconnect\":%d,"
     "\"wifi_down_s\":%lu,"
     "\"ap_clients\":%u,"
@@ -689,8 +669,7 @@ void handleApiStatus() {
     modemGetStateStr(), (unsigned long)(millis() / 1000UL), (unsigned long)boardEpoch(),
     (unsigned long)ESP.getFreeHeap(), (unsigned)ESP.getPsramSize(), (unsigned)ESP.getFreePsram(),
     (int)esp_reset_reason(), (unsigned int)lastSoftwareRestart,
-    (int)getRemoteTransport(), getUiLite() ? 1 : 0, mqttIsConnected() ? 1 : 0, ovmsV2IsConnected() ? 1 : 0,
-    ovmsV2ParanoidIsActive() ? 1 : 0,
+    (int)getRemoteTransport(), getUiLite() ? 1 : 0,
     (int)WiFi.status(), WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0,
     (unsigned int)(currentWifiProfile + 1), lastWifiDisconnectReason,
     (unsigned long)(wifiStaDownSinceMs ? (millis() - wifiStaDownSinceMs) / 1000UL : 0UL),
@@ -1100,8 +1079,6 @@ void handleOtaUpload() {
     // for its whole timeout (~30 s at -90 dBm). During that stall the upload
     // reader gets no data, the server gives up, and the transfer dies at a
     // random offset. Abort the remote links outright instead of waiting.
-    mqttDisconnect();
-    ovmsV2Disconnect();
     if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
       Update.printError(Serial);
     }
@@ -1166,51 +1143,17 @@ void setupArduinoOTA() {
 
 void handleSettings() {
   const char* result = server.hasArg("saved") ? "Saved. Rebooting..." : nullptr;
-  sendSettingsPage(server, mqttIsConnected(), ovmsV2IsConnected(), result);
+  sendSettingsPage(server, result);
 }
 
 void handleSettingsSave() {
   Serial.println("### Settings saved via Web UI ###");
 
   int remoteMode = server.arg("remote_mode").toInt();
-  if (remoteMode >= 0 && remoteMode <= 2) {
+  if (remoteMode >= 0 && remoteMode <= 1) {
     setRemoteTransport(static_cast<RemoteTransport>(remoteMode));
   }
 
-  String serverAddr = server.arg("mqtt_server");
-  serverAddr.trim();
-  setMqttServer(serverAddr.c_str());
-
-  long port = server.arg("mqtt_port").toInt();
-  if (port >= 1 && port <= 65535) {
-    setMqttPort((int)port);
-  }
-
-  String user = server.arg("mqtt_user");
-  user.trim();
-  setMqttUser(user.c_str());
-
-  // Empty password field = keep current password
-  if (server.hasArg("mqtt_password") && server.arg("mqtt_password").length() > 0) {
-    setMqttPassword(server.arg("mqtt_password").c_str());
-  }
-
-  String vid = server.arg("vehicle_id");
-  vid.trim();
-  if (vid.length() > 0) {
-    setVehicleId(vid.c_str());
-  }
-
-  // MQTT topics have their own vehicle id so the two transports can differ.
-  // Empty field = keep the current value (the form always sends it, but an
-  // older page might not).
-  if (server.hasArg("mqtt_vehicle_id")) {
-    String mqttVid = server.arg("mqtt_vehicle_id");
-    mqttVid.trim();
-    if (mqttVid.length() > 0) {
-      setMqttVehicleId(mqttVid.c_str());
-    }
-  }
 
   // Wi-Fi STA (empty SSID = STA disabled)
   String wifiSsid = server.arg("wifi_ssid");
@@ -1221,18 +1164,6 @@ void handleSettingsSave() {
     setWifiPassword(server.arg("wifi_password").c_str());
   }
 
-  String ovmsServer = server.arg("ovms_server");
-  ovmsServer.trim();
-  setOvmsServer(ovmsServer.c_str());
-  int ovmsPort = server.arg("ovms_port").toInt();
-  if (ovmsPort >= 1 && ovmsPort <= 65535) setOvmsPort(ovmsPort);
-  if (server.hasArg("ovms_password") && server.arg("ovms_password").length() > 0) {
-    setOvmsPassword(server.arg("ovms_password").c_str());
-  }
-  if (server.hasArg("ovms_module_password") && server.arg("ovms_module_password").length() > 0) {
-    setOvmsModulePassword(server.arg("ovms_module_password").c_str());
-  }
-  setOvmsTls(server.hasArg("ovms_tls"));
   String wifiSsid2 = server.arg("wifi_ssid2");
   wifiSsid2.trim();
   setWifiSSID2(wifiSsid2.c_str());
@@ -1257,8 +1188,6 @@ void handleSettingsSave() {
     }
   }
 
-  setMqttTls(server.hasArg("mqtt_tls"));
-  setHassDiscoveryEnabled(server.hasArg("hass_discovery"));
   setLockingEnabled(server.hasArg("locking_enabled"));
 
   setSleepEnabled(server.hasArg("sleep_enable"));
@@ -1323,14 +1252,6 @@ void handleSettingsSave() {
         (uint8_t)server.arg("night_to").toInt());
   }
 
-  Serial.print("mqtt_server=");
-  Serial.print(getMqttServer());
-  Serial.print(" mqtt_port=");
-  Serial.print(getMqttPort());
-  Serial.print(" vehicle_id=");
-  Serial.print(getVehicleId());
-  Serial.print(" mqtt_vehicle_id=");
-  Serial.print(getMqttVehicleId());
   Serial.print(" wifi_ssid=");
   Serial.print(getWifiSSID());
   Serial.print(" wifi_ssid2=");
@@ -1451,15 +1372,6 @@ void handleApiConfigGet() {
   out += "{\"fw\":\""; out += LEAF_FIRMWARE_VERSION;
   out += "\",\"board\":\""; out += BOARD_NAME;
   out += "\",\"remote_mode\":"; out += String((int)getRemoteTransport());
-  out += ",\"mqtt_server\":\""; out += getMqttServer();
-  out += "\",\"mqtt_port\":"; out += String(getMqttPort());
-  out += ",\"mqtt_user\":\""; out += getMqttUser();
-  out += "\",\"mqtt_password_set\":"; out += strlen(getMqttPassword()) > 0 ? "true" : "false";
-  out += ",\"mqtt_tls\":"; out += getMqttTls() ? "true" : "false";
-  out += ",\"hass_discovery\":"; out += getHassDiscoveryEnabled() ? "true" : "false";
-  out += ",\"mqtt_vehicle_id\":\""; out += getMqttVehicleId();
-  out += "\",\"vehicle_id\":\""; out += getVehicleId();
-  out += "\",\"mqtt_connected\":"; out += mqttIsConnected() ? "1" : "0";
   out += ",\"wifi_ssid\":\""; out += getWifiSSID();
   out += "\",\"wifi_password_set\":"; out += strlen(getWifiPassword()) > 0 ? "true" : "false";
   out += ",\"wifi_ssid2\":\""; out += getWifiSSID2();
@@ -1486,14 +1398,7 @@ void handleApiConfigGet() {
   out += ",\"modem800_apn\":\""; out += getModem800Apn();
   out += "\",\"modem800_user\":\""; out += getModem800User();
   out += "\",\"modem800_pass_set\":"; out += strlen(getModem800Pass()) > 0 ? "true" : "false";
-  out += ",\"ovms_server\":\""; out += getOvmsServer();
-  out += "\",\"ovms_port\":"; out += String(getOvmsPort());
-  out += ",\"ovms_tls\":"; out += getOvmsTls() ? "true" : "false";
-  out += ",\"ovms_password_set\":"; out += strlen(getOvmsPassword()) > 0 ? "true" : "false";
-  out += ",\"ovms_module_password_set\":"; out += strlen(getOvmsModulePassword()) > 0 ? "true" : "false";
   out += "}";
-  // Self-check: this JSON is built by hand, and a single lost quote (as in
-  // .122: missing \" before mqtt_connected) breaks every client parser while
   // the endpoint still returns 200. An odd quote count means malformed вЂ”
   // answer with a small valid object instead of poisoning the app.
   {
@@ -1529,14 +1434,6 @@ void handleApiConfigSave() {
   if (jsonHas(body, "remote_mode") && jsonInt(body, "remote_mode", n) && n >= 0 && n <= 2) {
     setRemoteTransport(static_cast<RemoteTransport>(n));
   }
-  if (jsonStr(body, "mqtt_server", s)) { s.trim(); setMqttServer(s.c_str()); }
-  if (jsonInt(body, "mqtt_port", n) && n >= 1 && n <= 65535) setMqttPort((int)n);
-  if (jsonStr(body, "mqtt_user", s)) { s.trim(); setMqttUser(s.c_str()); }
-  if (jsonStr(body, "mqtt_password", s) && s.length() > 0) setMqttPassword(s.c_str());
-  if (jsonStr(body, "vehicle_id", s)) { s.trim(); if (s.length() > 0) setVehicleId(s.c_str()); }
-  if (jsonStr(body, "mqtt_vehicle_id", s)) { s.trim(); if (s.length() > 0) setMqttVehicleId(s.c_str()); }
-  if (jsonBool(body, "mqtt_tls", b)) setMqttTls(b);
-  if (jsonBool(body, "hass_discovery", b)) setHassDiscoveryEnabled(b);
 
   if (jsonStr(body, "wifi_ssid", s)) { s.trim(); setWifiSSID(s.c_str()); }
   if (jsonStr(body, "wifi_password", s) && s.length() > 0) setWifiPassword(s.c_str());
@@ -1590,11 +1487,6 @@ void handleApiConfigSave() {
   if (jsonStr(body, "modem800_apn", s)) { s.trim(); setModem800Apn(s.c_str()); }
   if (jsonStr(body, "modem800_user", s)) { s.trim(); if (s.length() > 0) setModem800User(s.c_str()); }
   if (jsonStr(body, "modem800_pass", s) && s.length() > 0) setModem800Pass(s.c_str());
-  if (jsonStr(body, "ovms_server", s)) { s.trim(); setOvmsServer(s.c_str()); }
-  if (jsonInt(body, "ovms_port", n) && n >= 1 && n <= 65535) setOvmsPort((int)n);
-  if (jsonStr(body, "ovms_password", s) && s.length() > 0) setOvmsPassword(s.c_str());
-  if (jsonStr(body, "ovms_module_password", s) && s.length() > 0) setOvmsModulePassword(s.c_str());
-  if (jsonBool(body, "ovms_tls", b)) setOvmsTls(b);
 
   if (!noReboot) {
     rebootPendingAt = millis() + 2000;
@@ -1614,20 +1506,17 @@ void handleChargerStatus(bool isCharging, ChargerState state) {
   noteCarActivity();
   isChargingNow = isCharging;
   currentChargerState = state;
-  mqttUpdateCharging(isCharging, state);
 }
 
 void handleHVACStatus(bool isOn) {
   noteCarActivity();
   isHvacOn = isOn;
   
-  mqttUpdateHVAC(isOn);
 }
 
 void handleCabinTemp(float temp) {
   noteCarActivity();
   cabinTemp = temp;
-  mqttUpdateCabinTemp(temp);
 }
 
 void handleHVACSetpoint(float setpoint) {
@@ -1637,7 +1526,6 @@ void handleHVACSetpoint(float setpoint) {
       return;
   }
   currentSetpoint = setpoint;
-  mqttUpdateHVACSetpoint(setpoint);
 }
 
 void handleFanSpeed(float speed) {
@@ -1647,20 +1535,17 @@ void handleFanSpeed(float speed) {
       return;
   }
   currentFanSpeed = speed;
-  mqttUpdateFanSpeed(speed);
 }
 
 void handleHeatingMode(bool heating, bool cooling) {
   noteCarActivity();
   isHeatingEnabled = heating;
   isCoolingEnabled = cooling;
-  mqttUpdateHeatingMode(heating, cooling);
 }
 
 void handleVentilationMode(VentilationMode mode) {
   noteCarActivity();
   currentVentilationMode = mode;
-  mqttUpdateVentilationMode(mode);
 }
 
 void handleDoorStatus(bool fl, bool fr, bool rl, bool rr, bool trunk) {
@@ -1670,29 +1555,23 @@ void handleDoorStatus(bool fl, bool fr, bool rl, bool rr, bool trunk) {
   doorRL = rl;
   doorRR = rr;
   doorTrunk = trunk;
-  mqttUpdateDoors(fl, fr, rl, rr, trunk);
 }
 
 void handleLockStatus(bool locked) {
   noteCarActivity();
   lockState = locked ? 1 : 0;
-  mqttUpdateLock(locked);
 }
 
 void handleHeadlightsStatus(bool on) {
   noteCarActivity();
   headlightsState = on;
-  mqttUpdateHeadlights(on);
 }
 
 void handleRawSOC(float soc) {
   noteCarActivity();
   currentSOC = soc;
-  mqttUpdateSOC(soc);
 }
 
-// EV-CAN handlers (passive listener). Throttled: frames arrive at high rate.
-// Pattern: keep last MQTT-published value; next frame after throttle window retries.
 void handleEvSOH(int sohPercent) {
   noteCarActivity();
   static unsigned long lastPub = 0;
@@ -1702,7 +1581,6 @@ void handleEvSOH(int sohPercent) {
   if (lastPub != 0 && millis() - lastPub < 30000) return;
   lastPub = millis();
   lastPubbed = sohPercent;
-  mqttUpdateSOH(sohPercent);
 }
 
 void handleEvGids(int gids) {
@@ -1717,7 +1595,6 @@ void handleEvGids(int gids) {
   gidsPubLastMs = millis();
   gidsPubPending = false;
   lastPubbed = gids;
-  mqttUpdateGids(gids);
 }
 
 void handleEvPackStatus(float voltage, float current) {
@@ -1729,8 +1606,6 @@ void handleEvPackStatus(float voltage, float current) {
   evData.packPower = voltage * current / 1000.0f;
   evData.packDataValid = true;
   evData.packVoltageValid = true;
-  // Fast lane while the car is doing something (driving / charging): the
-  // MQTT subscribers see V/A move in ~real time. Idle: the old 5 s window.
   const bool active = (evData.vehicleOn == 1) || (fabsf(current) > 1.0f);
   const unsigned long window = active ? 1000UL : 5000UL;
   if (packPubLastMs != 0 && millis() - packPubLastMs < window) {
@@ -1747,7 +1622,6 @@ void handleEvPackStatus(float voltage, float current) {
   lastPubbedA = current;
   // force: while active the 1 s cadence is a heartbeat вЂ” identical values
   // are still published so the live view visibly ticks.
-  mqttUpdatePackStatus(voltage, current, active);
 }
 
 // Fires the deferred publishes scheduled by the throttled EV handlers above.
@@ -1764,26 +1638,22 @@ void managePendingPublishes() {
     packPubLastMs = now;
     const bool activeNow =
         (evData.vehicleOn == 1 || fabsf(evData.packCurrent) > 1.0f);
-    mqttUpdatePackStatus(evData.packVoltage, evData.packCurrent, activeNow);
   }
   if (gidsPubPending &&
       now - gidsPubLastMs >= 30000) {
     gidsPubPending = false;
     gidsPubLastMs = now;
-    mqttUpdateGids(evData.gids);
   }
   if (ambientPubPending && evData.ambientTemp > -90 &&
       now - ambientPubLastMs >= 60000) {
     ambientPubPending = false;
     ambientPubLastMs = now;
-    mqttUpdateAmbient(evData.ambientTemp);
   }
 }
 
 void handleOdometer(uint32_t km) {
   if (evData.odometerKm == km) return;
   evData.odometerKm = km;
-  mqttUpdateOdometer(km);
 }
 
 void handleVin(const char* vin) {
@@ -1791,7 +1661,6 @@ void handleVin(const char* vin) {
   strncpy(evData.vin, vin, sizeof(evData.vin) - 1);
   evData.vin[17] = '\0';
   Serial.printf("VIN: %s\n", evData.vin);
-  mqttUpdateVin(evData.vin);
 }
 
 void handleEvAmbient(float ambientTemp) {
@@ -1806,7 +1675,6 @@ void handleEvAmbient(float ambientTemp) {
   ambientPubLastMs = millis();
   ambientPubPending = false;
   lastPubbed = ambientTemp;
-  mqttUpdateAmbient(ambientTemp);
 }
 
 void handleEvInstrumentSOC(float soc) {
@@ -1818,7 +1686,6 @@ void handleEvInstrumentSOC(float soc) {
   if (lastPub != 0 && millis() - lastPub < 10000) return;
   lastPub = millis();
   lastPubbed = soc;
-  mqttUpdateInstrumentSoc(soc);
 }
 
 void handleEvBmsSOC(float soc) {
@@ -1831,7 +1698,6 @@ void handleEvBmsSOC(float soc) {
   if (lastPub != 0 && millis() - lastPub < 10000) return;
   lastPub = millis();
   lastPubbed = soc;
-  mqttUpdateSOC(currentSOC);
 }
 
 void handleInstrumentRange(int km) {
@@ -1843,7 +1709,6 @@ void handleInstrumentRange(int km) {
   if (lastPub != 0 && millis() - lastPub < 30000) return;
   lastPub = millis();
   lastPubbed = km;
-  mqttUpdateInstrumentRange(km);
 }
 
 void handleBatteryTemp(float temp) {
@@ -1855,7 +1720,6 @@ void handleBatteryTemp(float temp) {
   if (lastPub != 0 && millis() - lastPub < 30000) return;
   lastPub = millis();
   lastPubbed = temp;
-  mqttUpdateBatteryTemp(temp);
 }
 
 void handleEvVehicleOn(bool on) {
@@ -1865,7 +1729,6 @@ void handleEvVehicleOn(bool on) {
   int8_t v = on ? 1 : 0;
   if (evData.vehicleOn == v) return;
   evData.vehicleOn = v;
-  mqttUpdateVehicleOn(on);
 }
 
 void logSequenceStart() {
@@ -1898,13 +1761,9 @@ void handlePackVoltage(float voltage) {
 void handleCellDelta(int millivolts) {
   if (millivolts < 0 || millivolts > 1000) return;
   evData.cellDeltaMv = millivolts;
-  mqttUpdateCellDelta(millivolts);
 }
 static void sendCommandNotEnabledHttp() {
   server.send(501, "application/json", "{\"error\":\"command_not_enabled\"}");
-}
-static void sendBusyMqtt() {
-  mqttPublishStatus("Busy: previous command still running");
 }
 
 // Update data (Wake up)
@@ -1928,11 +1787,6 @@ void requestVehicleWake() {
   }
 }
 
-bool handleMqttRefresh() {
-  Serial.println("### Refresh! (MQTT) ###");
-  if (!startSeqOrBusy(CanSequence::REFRESH)) { sendBusyMqtt(); return false; }
-  return true;
-}
 
 void handleHvacOn() {
   Serial.println("### HVAC ON! ###");
@@ -1952,24 +1806,11 @@ void handleHvacOn() {
   armHvacTimer(minutes);
   setHVACTargetTemperature(setpoint);
   if (setpoint > 0.0f) {
-      handleHVACSetpoint(setpoint); // Pre-fill the UI/MQTT
   }
   server.sendHeader("Location", "/"); 
   server.send(303);
 }
 
-void handleMqttHvacOn(float setpoint, uint16_t minutes) {
-  if (setpoint != 0.0f && (setpoint < 16.0f || setpoint > 32.0f)) setpoint = 0.0f;
-  if (!validHvacMinutes(minutes)) minutes = 0;
-  Serial.print("### HVAC ON! (MQTT) Setpoint: ");
-  Serial.println(setpoint);
-  if (!startSeqOrBusy(CanSequence::HVAC_ON)) { sendBusyMqtt(); return; }
-  armHvacTimer(minutes);
-  setHVACTargetTemperature(setpoint);
-  if (setpoint > 0.0f) {
-      handleHVACSetpoint(setpoint); // Pre-fill the UI/MQTT with the requested setpoint
-  }
-}
 
 void handleHvacOff() {
   Serial.println("### HVAC OFF! ###");
@@ -1979,31 +1820,8 @@ void handleHvacOff() {
   server.send(303);
 }
 
-void handleMqttHvacOff() {
-  Serial.println("### HVAC OFF! (MQTT) ###");
-  if (!startSeqOrBusy(CanSequence::HVAC_OFF)) { sendBusyMqtt(); return; }
-  cancelHvacTimer();
-}
 
-void handleMqttLock() {
-  if (!getLockingEnabled()) {
-    Serial.println("### Lock Doors: Feature disabled (MQTT) ###");
-    mqttPublishStatus("Door locking is disabled. Enable it via CLI: set locking_enabled true");
-    return;
-  }
-  Serial.println("### Lock Doors! (MQTT) ###");
-  if (!startSeqOrBusy(CanSequence::LOCK_DOORS)) { sendBusyMqtt(); return; }
-}
 
-void handleMqttUnlock() {
-  if (!getLockingEnabled()) {
-    Serial.println("### Unlock Doors: Feature disabled (MQTT) ###");
-    mqttPublishStatus("Door locking is disabled. Enable it via CLI: set locking_enabled true");
-    return;
-  }
-  Serial.println("### Unlock Doors! (MQTT) ###");
-  if (!startSeqOrBusy(CanSequence::UNLOCK_DOORS)) { sendBusyMqtt(); return; }
-}
 
 void handleChargeOn() {
   Serial.println("### Charge ON! ###");
@@ -2034,14 +1852,9 @@ void handleLock() {
   server.sendHeader("Location", "/"); server.send(303);
 }
 
-void handleMqttChargeOn() {
-  Serial.println("### Charge ON! (MQTT) ###");
-  if (!startSeqOrBusy(CanSequence::CHARGE_ON)) { sendBusyMqtt(); return; }
-}
 
 void handleChargeOff() {
   Serial.println("### Charge OFF! ###");
-  // ZE1 stop-charge = the 0x1DB MITM on EV-CAN (OVMS approach). The board
   // must see the car's LBC frames for the replacement to be built, which is
   // the case while charging. Without EV-CAN the command cannot work at all -
   // say so instead of a misleading "accepted".
@@ -2055,14 +1868,6 @@ void handleChargeOff() {
   server.send(303);
 }
 
-void handleMqttChargeOff() {
-  Serial.println("### Charge OFF! (MQTT) ###");
-  if (!evCanIsUp()) {
-    mqttPublishStatus("EV-CAN not ready - cannot stop the charge");
-    return;
-  }
-  evCanArmChargeStop();
-}
 
 void handleLights() {
   Serial.println("### Lights flash! ###");
@@ -2071,30 +1876,18 @@ void handleLights() {
   server.send(303);
 }
 
-void handleMqttLights() {
-  Serial.println("### Lights flash! (MQTT) ###");
-  if (!startSeqOrBusy(CanSequence::LIGHTS)) { sendBusyMqtt(); return; }
-}
 
 void handleHornLights() {
   Serial.println("### Horn + Lights! ###");
   sendCommandNotEnabledHttp();
 }
 
-void handleMqttHornLights() {
-  Serial.println("### Horn + Lights! (MQTT) ###");
-  if (!startSeqOrBusy(CanSequence::HORN_LIGHTS)) { sendBusyMqtt(); return; }
-}
 
 void handleRhlOff() {
   Serial.println("### Lights/signal OFF! ###");
   sendCommandNotEnabledHttp();
 }
 
-void handleMqttRhlOff() {
-  Serial.println("### Lights/signal OFF! (MQTT) ###");
-  if (!startSeqOrBusy(CanSequence::RHL_OFF)) { sendBusyMqtt(); return; }
-}
 
 static const char* wifiProfileSsid(uint8_t index) {
   if (index == 0) return getWifiSSID();
@@ -2102,40 +1895,6 @@ static const char* wifiProfileSsid(uint8_t index) {
   return getWifiSSID3();
 }
 
-uint8_t handleOvmsV2Command(uint16_t command, const char* args) {
-  switch (command) {
-    case 11: // Start charge
-      return startSeqOrBusy(CanSequence::CHARGE_ON) ? 0 : 1;
-    case 18: // Wakeup car
-    case 19: // Wakeup temperature subsystem (same Leaf wakeup upstream)
-      if (!startSeqOrBusy(CanSequence::REFRESH)) return 1;
-      return 0;
-    case 20: // Lock
-      if (!getLockingEnabled()) return 1;
-      return startSeqOrBusy(CanSequence::LOCK_DOORS) ? 0 : 1;
-    case 22: // Unlock
-      if (!getLockingEnabled()) return 1;
-      return startSeqOrBusy(CanSequence::UNLOCK_DOORS) ? 0 : 1;
-    case 24: { // Leaf upstream maps Homelink buttons 0/1 to climate on/off
-      int button = atoi(args);
-      if (button == 0) return startSeqOrBusy(CanSequence::HVAC_ON) ? 0 : 1;
-      if (button == 1) return startSeqOrBusy(CanSequence::HVAC_OFF) ? 0 : 1;
-      return 2;
-    }
-    case 26: { // Remote climate control: 1=on, 0=off
-      bool enable = atoi(args) != 0;
-      if (!startSeqOrBusy(enable ? CanSequence::HVAC_ON : CanSequence::HVAC_OFF)) return 1;
-      if (!enable) cancelHvacTimer();
-      return 0;
-    }
-    case 12: // Stop charge: the 0x1DB MITM on EV-CAN (needs live LBC frames,
-             // which is exactly the situation while charging)
-      evCanArmChargeStop();
-      return 0;
-    default:
-      return 2;
-  }
-}
 
 static const char* wifiProfilePassword(uint8_t index) {
   if (index == 0) return getWifiPassword();
@@ -2495,7 +2254,6 @@ void setup() {
     wifiEnabled = true;
   }
 
-  // MQTT и OVMS Server V2 удалены: единственный внешний канал — свой сервер.
   // Hold every MCP2515 CS line HIGH before the first SPI transaction.
   // setupEvCAN() runs first and the other modules' CS pins are still floating
   // inputs at that point: a floating CS lets a not-yet-initialised controller
@@ -2663,15 +2421,6 @@ void loop() {
   }
   server.handleClient();
   if (captivePortalActive) dnsServer.processNextRequest();
-  // Remote network calls can block on a broken link. Keep
-  // HTTP responsive and command cadence deterministic while CAN is active.
-  // Never start MQTT/OVMS connect work while a firmware upload is running:
-  // a broker connect blocks the loop for seconds, which starves the HTTP
-  // server task and aborts the multipart upload mid-transfer.
-  // Without an uplink the MQTT/TLS connect attempts just block the loop for
-  // seconds each time, which makes the page crawl when the board is reached
-  // through its own access point.
-  // MQTT/OVMS больше нет: связь с сервером обслуживает serverApiTick() ниже.
   modemTick();
   if (wifiEnabled && WiFi.status() == WL_CONNECTED) {
     if (!arduinoOtaBegun) setupArduinoOTA();
@@ -2686,20 +2435,9 @@ void loop() {
     manageVinObdProbe(millis());
     manageUdsTier1(millis());
     tripLogTick();
-    // Mirror EV-detected charge sessions into MQTT: the v/c/charging metric
-    // used to be published only from the CAR-CAN charger frame, so MQTT
     // clients stayed on "no" through whole charges when the gateway slept.
     // When the CAR-CAN flag is active it drives the publishing itself (with
     // the detailed states); only fill the gap when it is silent.
-    static bool lastEvSessionCharging = false;
-    bool evSessionNow = tripLogIsCharging();
-    if (evSessionNow != lastEvSessionCharging) {
-      lastEvSessionCharging = evSessionNow;
-      if (!isChargingNow) {
-        mqttUpdateCharging(evSessionNow,
-                           evSessionNow ? ChargerState::CHARGING : ChargerState::IDLE);
-      }
-    }
     CanSeqResult seqRes = manageCANSequence(millis());
     if (seqRes == CanSeqResult::WAKE_SUCCESS) {
         Serial.println("### Car is awake! ###");
@@ -2715,12 +2453,10 @@ void loop() {
     if (hvacTimerEndsMs != 0 && (long)(millis() - hvacTimerEndsMs) >= 0) {
       hvacTimerEndsMs = 0;
       hvacTimerStopPending = true;
-      mqttUpdateHvacTimer(0);
     }
     uint16_t remainingMinutes = hvacTimerRemainingMinutes();
     if (remainingMinutes != lastPublishedHvacMinutes) {
       lastPublishedHvacMinutes = remainingMinutes;
-      mqttUpdateHvacTimer(remainingMinutes);
     }
     if (hvacTimerStopPending && activeSequence == CanSequence::NONE &&
         startSequence(CanSequence::HVAC_OFF, millis())) {
@@ -2736,7 +2472,10 @@ void loop() {
   }
   manageWiFi();
   // Связь с собственным сервером: состояние, очередь команд, история.
-  if (!otaInProgress && WiFi.status() == WL_CONNECTED) serverApiTick();
+  if (!otaInProgress && WiFi.status() == WL_CONNECTED &&
+      getRemoteTransport() == RemoteTransport::SERVER) {
+    serverApiTick();
+  }
   processSerialInput();
   managePendingPublishes();
   manageChargeLimit();
@@ -2756,7 +2495,6 @@ void loop() {
       lastIdleTickMs += secs * 1000UL;
     }
 
-    // After timer wake, stay awake for a grace window (web UI / MQTT publish).
     // 180 s: enough for the first CAN refresh + reconnect + full metric sync
     // even on the modem link, where the reconnect alone can take ~10 s.
     const unsigned long WAKE_GRACE_MS = 180000;
@@ -2769,7 +2507,6 @@ void loop() {
       Serial.printf("### Deep sleep: idle %llu s, wake in %llu min ###\n",
                     (unsigned long long)rtcState.idleSec,
                     (unsigned long long)intervalMin);
-      mqttGoingOffline();   // retained "connected = no" before power drop
       modemPowerOffNow();
       saveToRtc();
       esp_sleep_enable_timer_wakeup(intervalMin * 60ULL * 1000000ULL);

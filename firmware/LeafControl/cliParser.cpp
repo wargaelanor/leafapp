@@ -38,15 +38,7 @@ void executeCommand(char* cmd) {
         Serial.printf("  ap_ssid: %s\n", getApSSID());
         Serial.printf("  ap_password: %s\n", showSecrets ? getApPassword() : "****");
         Serial.printf("  hostName: %s\n", getHostName());
-        Serial.printf("  mqtt_server: %s\n", getMqttServer());
-        Serial.printf("  mqtt_port: %d\n", getMqttPort());
-        Serial.printf("  mqtt_user: %s\n", getMqttUser());
-        Serial.printf("  mqtt_password: %s\n", showSecrets ? getMqttPassword() : "****");
-        Serial.printf("  vehicle_id: %s\n", getVehicleId());
-        Serial.printf("  mqtt_vehicle_id: %s\n", getMqttVehicleId());
         Serial.printf("  locking_enabled: %s\n", getLockingEnabled() ? "true" : "false");
-        Serial.printf("  mqtt_tls: %s\n", getMqttTls() ? "true" : "false");
-        Serial.printf("  hass_discovery: %s\n", getHassDiscoveryEnabled() ? "true" : "false");
         Serial.printf("  sleep_enable: %s\n", getSleepEnabled() ? "true" : "false");
         Serial.printf("  uds_enable: %s\n", getUdsEnabled() ? "true" : "false");
         Serial.printf("  uds_tpms: %s\n", getUdsTpmsEnabled() ? "true" : "false");
@@ -76,15 +68,7 @@ void executeCommand(char* cmd) {
             else if (strcmp(key, "ap_ssid") == 0) Serial.println(getApSSID());
             else if (strcmp(key, "ap_password") == 0) Serial.println("****");
             else if (strcmp(key, "hostName") == 0) Serial.println(getHostName());
-            else if (strcmp(key, "mqtt_server") == 0) Serial.println(getMqttServer());
-            else if (strcmp(key, "mqtt_port") == 0) Serial.println(getMqttPort());
-            else if (strcmp(key, "mqtt_user") == 0) Serial.println(getMqttUser());
-            else if (strcmp(key, "mqtt_password") == 0) Serial.println("****");
-            else if (strcmp(key, "vehicle_id") == 0) Serial.println(getVehicleId());
-            else if (strcmp(key, "mqtt_vehicle_id") == 0) Serial.println(getMqttVehicleId());
             else if (strcmp(key, "locking_enabled") == 0) Serial.println(getLockingEnabled() ? "true" : "false");
-            else if (strcmp(key, "mqtt_tls") == 0) Serial.println(getMqttTls() ? "true" : "false");
-            else if (strcmp(key, "hass_discovery") == 0) Serial.println(getHassDiscoveryEnabled() ? "true" : "false");
             else if (strcmp(key, "sleep_enable") == 0) Serial.println(getSleepEnabled() ? "true" : "false");
             else if (strcmp(key, "uds_enable") == 0) Serial.println(getUdsEnabled() ? "true" : "false");
             else if (strcmp(key, "uds_tpms") == 0) Serial.println(getUdsTpmsEnabled() ? "true" : "false");
@@ -117,44 +101,11 @@ void executeCommand(char* cmd) {
             else if (strcmp(key, "ap_ssid") == 0) status = setApSSID(val);
             else if (strcmp(key, "ap_password") == 0) status = setApPassword(val);
             else if (strcmp(key, "hostName") == 0) status = setHostName(val);
-            else if (strcmp(key, "mqtt_server") == 0) status = setMqttServer(val);
-            else if (strcmp(key, "mqtt_port") == 0) {
-                int port = atoi(val);
-                if (port > 0 && port <= 65535) {
-                    status = setMqttPort(port);
-                } else {
-                    status = ConfigStatus::ERROR_PORT_RANGE;
-                }
-            }
-            else if (strcmp(key, "mqtt_user") == 0) status = setMqttUser(val);
-            else if (strcmp(key, "mqtt_password") == 0) status = setMqttPassword(val);
-            else if (strcmp(key, "vehicle_id") == 0) status = setVehicleId(val);
-            else if (strcmp(key, "mqtt_vehicle_id") == 0) status = setMqttVehicleId(val);
             else if (strcmp(key, "locking_enabled") == 0) {
                 if (strcmp(val, "true") == 0 || strcmp(val, "1") == 0) {
                     status = setLockingEnabled(true);
                 } else if (strcmp(val, "false") == 0 || strcmp(val, "0") == 0) {
                     status = setLockingEnabled(false);
-                } else {
-                    Serial.println("Error: Value must be 'true', 'false', '1', or '0'.");
-                    return;
-                }
-            }
-            else if (strcmp(key, "mqtt_tls") == 0) {
-                if (strcmp(val, "true") == 0 || strcmp(val, "1") == 0) {
-                    status = setMqttTls(true);
-                } else if (strcmp(val, "false") == 0 || strcmp(val, "0") == 0) {
-                    status = setMqttTls(false);
-                } else {
-                    Serial.println("Error: Value must be 'true', 'false', '1', or '0'.");
-                    return;
-                }
-            }
-            else if (strcmp(key, "hass_discovery") == 0) {
-                if (strcmp(val, "true") == 0 || strcmp(val, "1") == 0) {
-                    status = setHassDiscoveryEnabled(true);
-                } else if (strcmp(val, "false") == 0 || strcmp(val, "0") == 0) {
-                    status = setHassDiscoveryEnabled(false);
                 } else {
                     Serial.println("Error: Value must be 'true', 'false', '1', or '0'.");
                     return;
