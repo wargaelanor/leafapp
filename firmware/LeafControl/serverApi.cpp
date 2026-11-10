@@ -47,6 +47,10 @@ static uint32_t stateCounter = 0;
 static bool registered = false;
 static char statusText[48] = "off";
 
+// Идентификаторы команд, которые надо подтвердить в следующем запросе.
+static int pendingAck[8];
+static uint8_t pendingAckCount = 0;
+
 // В«РЎРІРµР¶РµСЃС‚СЊВ» РґР°РЅРЅС‹С…: РєРѕРіРґР° РІ РїРѕСЃР»РµРґРЅРёР№ СЂР°Р· РјРµРЅСЏР»РёСЃСЊ РїРѕРєР°Р·Р°РЅРёСЏ С€РёРЅС‹.
 static unsigned long lastCanActivityMs = 0;
 static float prevSocFingerprint = -1.0f;
@@ -436,6 +440,68 @@ static void applyConfig(const char* argsJson) {
   sendConfig();
 }
 
+static bool syncRequest() {
+  float soc = evData.instrumentSOC >= 0 ? evData.instrumentSOC : currentSOC;
+  float packV = evData.packVoltage;
+  float packI = evData.packCurrent;
+  float packKw = (packV > 0 && evData.packDataValid) ? (packV * packI) / 1000.0f : 0.0f;
+  time_t tnow = time(nullptr);
+  uint32_t ts = (tnow > 1600000000) ? (uint32_t)tnow : 0;
+
+  String ackList = "";
+  for (uint8_t i = 0; i < pendingAckCount; i++) {
+    if (i) ackList += ",";
+    ackList += String(pendingAck[i]);
+  }
+
+  char body[520];
+  snprintf(body, sizeof(body),
+           "{\"ts\":%lu,\"soc\":%.1f,\"odo\":%.0f,\"cabin\":%.1f,\"amb\":%.1f,"
+           "\"batt\":%.1f,\"pack_v\":%.1f,\"pack_kw\":%.2f,\"v12\":%.1f,"
+           "\"hvac\":%d,\"charging\":%d,\"locked\":%d,\"doors\":%d,\"soh\":%d,\"spd\":%.1f,"
+           "\"bus_age_s\":%lu,\"link\":\"wifi\",\"rssi\":%d,\"fw\":\"server-sync\",\"ack\":[%s]}",
+           (unsigned long)ts,
+           soc >= 0 ? soc : -1.0,
+           (double)evData.odometerKm,
+           cabinTemp, evData.ambientTemp,
+           evData.batteryTemp, packV, packKw, 0.0,
+           isHvacOn ? 1 : 0, isChargingNow ? 1 : 0, (lockState == 1) ? 1 : 0,
+           (doorFL || doorFR || doorRL || doorRR || doorTrunk) ? 1 : 0,
+           evData.soh, 0.0,
+           (unsigned long)busAgeSeconds(), WiFi.RSSI(), ackList.c_str());
+
+  String resp;
+  if (!postJson("/api/device/sync", body, resp)) return false;
+
+  pendingAckCount = 0;  // сервер получил подтверждения
+
+  if (resp.indexOf("\"cmd\":null") >= 0 || resp.indexOf("\"cmd\": null") >= 0) {
+    // команд нет
+  } else {
+    char name[28];
+    if (jsonString(resp, "\"name\"", name, sizeof(name))) {
+      int idPos = resp.indexOf("\"id\":");
+      long id = idPos >= 0 ? resp.substring(idPos + 5).toInt() : 0;
+      String args = "{}";
+      int aPos = resp.indexOf("\"args\"");
+      if (aPos >= 0) {
+        int brace = resp.indexOf('{', aPos);
+        if (brace >= 0) args = resp.substring(brace, resp.lastIndexOf('}') > brace ? resp.lastIndexOf('}') : resp.length());
+      }
+      Serial.printf("[srv] cmd: %s %s\n", name, args.c_str());
+      if (!strcmp(name, "set_config")) applyConfig(args.c_str());
+      else if (cmdHandler) cmdHandler(name, args.c_str());
+      if (id > 0 && pendingAckCount < 8) pendingAck[pendingAckCount++] = (int)id;
+    }
+  }
+
+  if (resp.indexOf("\"config\":true") >= 0 || resp.indexOf("\"config\": true") >= 0) {
+    sendConfig();
+  }
+  setStatus(registered ? "online" : "online (pending)");
+  return true;
+}
+
 static void handleCommandResponse(const String& resp) {
   // {"id": 7, "name": "clim_on", "args": {"minutes": 20}} либо {"id": null}
   if (resp.indexOf("\"id\": null") >= 0 || resp.indexOf("\"id\":null") >= 0) return;
@@ -556,38 +622,28 @@ void serverApiTick() {
   }
   unsigned long now = millis();
 
-  // После серии неудач делаем паузу: при слабом Wi-Fi частые TLS-попытки
-  // блокируют цикл, и плата перестаёт отвечать даже по локальной сети.
   static uint8_t failCount = 0;
   static unsigned long retryAt = 0;
   if (failCount >= 3 && (long)(now - retryAt) < 0) return;
 
   if (!registered || cfgToken[0] == '\0') {
-    static unsigned long lastDbgMs = 0;
-    if (now - lastDbgMs >= 20000UL) {
-      lastDbgMs = now;
-      Serial.printf("[srv] waiting registration: reg=%d token=%d wifi=%d\n",
-                    registered ? 1 : 0, cfgToken[0] ? 1 : 0, (int)WiFi.status());
-      netDiag();
-    }
     registerDevice();
     return;
   }
 
-  static unsigned long lastDbgOkMs = 0;
-  if (now - lastDbgOkMs >= 30000UL) {
-    lastDbgOkMs = now;
-    Serial.printf("[srv] tick: wifi=%d state_age=%lus poll_age=%lus\n",
-                  (int)WiFi.status(), (now - lastStateMs) / 1000UL, (now - lastPollMs) / 1000UL);
-  }
-
-  if (now - lastStateMs >= 10000UL) {
-    lastStateMs = now;
-    bool ok = sendState();
-    sendHeartbeat();
-    if (recCount > 0) sendOneRecord();
-    if (ok) failCount = 0;
-    else if (failCount < 255 && ++failCount >= 3) retryAt = now + 45000UL;
+  // Один запрос на цикл: состояние, подтверждения и очередь команд.
+  // На слабом сигнале реже, чтобы не занимать цикл рукопожатиями TLS.
+  static unsigned long lastSyncMs = 0;
+  unsigned long interval = (WiFi.RSSI() < -82) ? 10000UL : 5000UL;
+  if (now - lastSyncMs >= interval) {
+    lastSyncMs = now;
+    bool ok = syncRequest();
+    if (ok) {
+      failCount = 0;
+      if (recCount > 0) sendOneRecord();
+    } else if (failCount < 255 && ++failCount >= 3) {
+      retryAt = now + 45000UL;
+    }
   }
 
   static unsigned long lastCfgMs = 0;
@@ -595,11 +651,6 @@ void serverApiTick() {
     lastCfgMs = now;
     sendConfig();
   }
-
-  if (now - lastPollMs >= 3000UL) {
-    lastPollMs = now;
-    if (pollCommands()) failCount = 0;
-    else if (failCount < 255) failCount++;
-  }
 }
+
 
