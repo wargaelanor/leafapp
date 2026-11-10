@@ -587,6 +587,14 @@
     const box = moreContainer();
     if (!box) return;
 
+    if (!box.querySelector('[data-lc-claim]')) {
+      const claimRow = makeRow('Добавить машину', 'привязать плату по коду', showClaim);
+      claimRow.setAttribute('data-lc-claim', '1');
+      const adminRow = box.querySelector('[data-lc-admin]');
+      if (adminRow) box.insertBefore(claimRow, adminRow);
+      else box.appendChild(claimRow);
+    }
+
     if (userRole === 'admin' && !box.querySelector('[data-lc-admin]')) {
       const adminRow = makeRow('Администрирование', 'устройства, пользователи, журнал', showAdmin);
       adminRow.setAttribute('data-lc-admin', '1');
@@ -689,6 +697,66 @@
     }
   }
 
+
+  /* ---------- 5. добавление машины по коду ---------- */
+  function addClaimScreen() {
+    const screens = $('#screens');
+    if (!screens || $('#screen-claim')) return;
+    const sec = document.createElement('section');
+    sec.className = 'screen';
+    sec.id = 'screen-claim';
+    sec.innerHTML = `
+      <div class="card" style="margin-top:8px">
+        <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">Добавить машину</div></div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:12px">
+          Включите плату, откройте её страницу и посмотрите «Код привязки».
+          Введите его здесь — машина появится в аккаунте.
+        </div>
+        <input id="claim-code" placeholder="XXXX-XXXX-XXXX-XXXX" autocapitalize="characters"
+          style="width:100%;padding:14px;border-radius:10px;border:1px solid var(--line);
+                 background:var(--surface);color:var(--text);font-size:18px;letter-spacing:1px;text-align:center">
+        <button id="claim-go" style="margin-top:12px;width:100%;padding:12px;border:0;border-radius:10px;
+          background:var(--accent);color:#fff;font-weight:600">Привязать</button>
+        <div id="claim-hint" style="font-size:13px;color:var(--muted);margin-top:10px;min-height:18px"></div>
+      </div>`;
+    screens.insertBefore(sec, $('#screen-more') || null);
+  }
+
+  function showClaim() {
+    $$('.screen').forEach(s => s.classList.remove('active'));
+    const sec = $('#screen-claim');
+    if (sec) sec.classList.add('active');
+    $$('.tab').forEach(t => t.classList.remove('active'));
+    const sc = $('#screens'); if (sc) sc.scrollTop = 0;
+    const input = $('#claim-code');
+    if (input) input.value = '';
+    const h = $('#claim-hint');
+    if (h) h.textContent = '';
+    if (input) setTimeout(() => input.focus(), 100);
+  }
+
+  function bindClaimButton() {
+    const btn = $('#claim-go');
+    if (!btn || btn.dataset.lcBound === '1') return;
+    btn.dataset.lcBound = '1';
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const code = ($('#claim-code').value || '').trim();
+      const h = $('#claim-hint');
+      if (!code) return;
+      btn.disabled = true;
+      h.textContent = 'Привязываю…';
+      try {
+        await api('/api/claim', { code });
+        h.textContent = 'Готово. Машина добавлена.';
+        setTimeout(() => location.reload(), 900);
+      } catch (err) {
+        h.textContent = err.message;
+        btn.disabled = false;
+      }
+    }, true);
+  }
+
   /* ---------- запуск ---------- */
   function init() {
     cleanMore();
@@ -696,11 +764,12 @@
     addTab();
     addSettingsScreen();
     addAdminScreen();
+    addClaimScreen();
     interceptMore();
     bindCards();
     loadRole().then(() => addMoreRows());
     const obs = new MutationObserver(() => {
-      cleanMore(); interceptMore(); bindCards(); addMoreRows();
+      cleanMore(); interceptMore(); bindCards(); addMoreRows(); bindClaimButton();
     });
     obs.observe(document.body, { childList: true, subtree: true });
   }
