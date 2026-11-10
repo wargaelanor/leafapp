@@ -350,12 +350,19 @@ class Api(BaseHTTPRequestHandler):
         return out
 
     def is_secure_request(self) -> bool:
-        """Запрос пришёл по HTTPS (напрямую или через прокси Keenetic)."""
+        """Запрос пришёл по HTTPS (напрямую или через прокси Keenetic).
+
+        Keenetic терминирует TLS и переписывает Host на внутренний адрес, но
+        оставляет заголовки X-Forwarded-*. Прямой доступ по LAN (без прокси)
+        остаётся без Secure, иначе браузер не сохранит cookie на http.
+        """
         proto = (self.headers.get("X-Forwarded-Proto") or "").lower().strip()
         if proto:
             return proto == "https"
+        if self.headers.get("X-Forwarded-For") or self.headers.get("X-Forwarded-Host"):
+            return True
         host = (self.headers.get("Host") or "").lower().strip()
-        return SERVER_BASE.startswith("https://") and host and host in SERVER_BASE.lower()
+        return SERVER_BASE.startswith("https://") and bool(host) and host in SERVER_BASE.lower()
 
     def session_cookie(self, token: str) -> str:
         secure = "; Secure" if self.is_secure_request() else ""
@@ -467,7 +474,8 @@ class Api(BaseHTTPRequestHandler):
                                        "app": APP_VERSION,
                                        "host": (self.headers.get("Host") or "")[:64],
                                        "proto": (self.headers.get("X-Forwarded-Proto") or "")[:16],
-                                       "fwd_host": (self.headers.get("X-Forwarded-Host") or "")[:64]})
+                                       "fwd_host": (self.headers.get("X-Forwarded-Host") or "")[:64],
+                                       "xff": (self.headers.get("X-Forwarded-For") or "")[:48]})
             if path.startswith("/api/"):
                 return self.api(method, path, q)
             if method == "POST" and path in PWA_COMMANDS:
