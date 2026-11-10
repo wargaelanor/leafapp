@@ -3,16 +3,26 @@
 
 #include <Arduino.h>
 
-// Bench/diagnostic helper for a SIMCom modem (SIM800 or A7670E) wired to the
-// modem UART. It scans the usual baud rates, reports the first one that answers
-// "AT", then prints a few identity/SIM/network answers. It does not start a
-// data connection and does not touch the CAN buses.
+// Диагностика модема SIM800 по шагам: UART -> SIM -> регистрация в сети ->
+// GPRS (APN, PDP-контекст, IP) -> реальный TCP до сервера.
+//
+// Проверка идёт в отдельной задаче, потому что GPRS-атенн может занимать до
+// минуты. Веб-сервер в это время свободен: POST запускает проверку, GET
+// забирает результат.
+
+// Запускает проверку. Повторный вызов во время работы ничего не делает.
+void modemProbeStart();
+
+// true, пока проверка выполняется.
+bool modemProbeActive();
+
+// Последний результат в виде JSON-строки (валиден и во время работы).
 String modemProbeJson();
 
-// Pulse PWRKEY (active low) when a pin is configured in the settings.
+// Пульс PWRKEY (активный низкий уровень), когда пин задан.
 void modemProbePowerPulse();
 
-// 0 when no PWRKEY pin is configured.
+// 0, если пин PWRKEY не настроен.
 int modemProbePwrKeyPin();
 
 #endif

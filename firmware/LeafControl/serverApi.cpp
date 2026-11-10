@@ -49,6 +49,7 @@ static unsigned long lastRegisterMs = 0;
 static unsigned long failBackoffMs = 0;
 static uint32_t stateCounter = 0;
 static bool registered = false;
+static volatile unsigned long lastOkMs = 0;
 static char statusText[48] = "off";
 
 // Идентификаторы команд, которые надо подтвердить в следующем запросе.
@@ -870,6 +871,7 @@ static void serverNetOnce() {
     lastSyncMs = now;
     bool ok = syncRequest();
     if (ok) {
+      lastOkMs = millis();
       failCount = 0;
       if (recCount > 0) sendOneRecord();
     } else if (failCount < 255 && ++failCount >= 3) {
@@ -898,6 +900,8 @@ static void serverNetLoop(void* arg) {
     vTaskDelay(pdMS_TO_TICKS(200));
   }
 }
+
+unsigned long serverApiLastOkMs() { return lastOkMs; }
 
 void serverApiTick() {
   static bool started = false;

@@ -24,10 +24,10 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.09.140-TCALL"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.09.141-TCALL"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: two MCP2515 CAN buses + SIM800"
 #else
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.09.140-CMD"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.09.141-CMD"
 #define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: stable scroll, Wi-Fi scan"
 #endif
 
@@ -883,18 +883,18 @@ void handleReboot() {
   server.send(200, "application/json", "{\"ok\":true,\"reboot\":true}");
 }
 
-// Modem bench test: scans baud rates and prints the AT answers. Read-only from
-// the car's point of view, so no developer password; it only opens Serial2.
-void handleModemProbe() {
+// Modem diagnostics: POST запускает проверку в отдельной задаче, GET отдаёт
+// результат. Read-only для машины, поэтому без пароля разработчика.
+void handleModemProbeStart() {
   noteUserActivity();
-  ModemState st = modemGetState();
-  if (getModemEnable() && st != ModemState::OFF && st != ModemState::FAILED) {
-    server.send(409, "application/json", "{\"error\":\"modem_busy\"}");
-    return;
-  }
-  String body = modemProbeJson();
+  modemProbeStart();
   server.sendHeader("Cache-Control", "no-store");
-  server.send(200, "application/json", body);
+  server.send(200, "application/json", "{\"started\":true}");
+}
+
+void handleModemProbe() {
+  server.sendHeader("Cache-Control", "no-store");
+  server.send(200, "application/json", modemProbeJson());
 }
 
 void handleModemPower() {
@@ -2380,7 +2380,8 @@ for (size_t i = 0; i < WEBAPP_ASSET_COUNT; i++) {
       server.on("/api/developer/replay/disarm", HTTP_POST, handleReplayDisarm);
       server.on("/api/developer/vin_probe", HTTP_POST, handleVinProbe);
       server.on("/api/vin_probe", HTTP_POST, handleVinProbePublic);
-      server.on("/api/modem_probe", HTTP_POST, handleModemProbe);
+      server.on("/api/modem_probe", HTTP_POST, handleModemProbeStart);
+  server.on("/api/modem_probe", HTTP_GET, handleModemProbe);
       server.on("/api/modem_power", HTTP_POST, handleModemPower);
       server.on("/api/trips", HTTP_GET, handleTripsList);
       server.on("/api/charges", HTTP_GET, handleChargesList);

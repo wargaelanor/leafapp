@@ -21,6 +21,9 @@ void serverApiCommandPump();
 // true, если включена связь с сервером и есть Wi-Fi
 bool serverApiReady();
 
+// millis() последнего успешного обмена с сервером; 0 — обмена ещё не было.
+unsigned long serverApiLastOkMs();
+
 // Логин/пароль, которые плата выдала при первом запуске (для показа в UI).
 const char* serverApiLogin();
 const char* serverApiPassword();

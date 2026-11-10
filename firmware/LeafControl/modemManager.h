@@ -21,6 +21,10 @@ bool modemDataReady();
 Client* modemTcpClient();
 void modemPowerOffNow();
 bool modemGpsFix(float* lat, float* lon, float* alt, float* speed, uint32_t* ageMs);
+// Диагностика модема забирает Serial2 себе: менеджер на это время молчит.
+void modemManagerPause(bool paused);
+bool modemTaskBusy();
+
 ModemState modemGetState();
 const char* modemGetStateStr();
 

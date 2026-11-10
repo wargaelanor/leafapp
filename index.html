@@ -2568,12 +2568,18 @@ function copyText(text){
 async function diagModem(){
   const out = $('diag-modem');
   out.classList.add('show');
-  out.textContent = 'проверяем модем — до 10 секунд…';
+  out.textContent = 'проверяем модем: UART → SIM → сеть → GPRS → интернет…';
   try{
-    const r = await fetch('/api/modem_probe', {method:'POST', cache:'no-store'});
-    if(r.status === 409){ out.textContent = 'модем занят: отключите его в настройках и повторите'; return; }
-    const j = await r.json();
-    out.textContent = j.reply || (j.ok ? 'AT ответил, но без данных' : 'нет ответа');
+    await fetch('/api/modem_probe', {method:'POST', cache:'no-store'});
+    let j = null;
+    for(let i = 0; i < 80; i++){
+      await new Promise(r => setTimeout(r, 1500));
+      const res = await fetch('/api/modem_probe', {cache:'no-store'});
+      j = await res.json();
+      if(!j.running) break;
+      out.textContent = 'проверяем… ' + Math.round((i + 1) * 1.5) + ' с (GPRS может занять до минуты)';
+    }
+    out.textContent = (j && j.reply) ? j.reply : 'нет ответа';
   }catch(e){
     out.textContent = 'плата не ответила';
   }

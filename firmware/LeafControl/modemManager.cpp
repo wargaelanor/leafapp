@@ -6,6 +6,7 @@
 #include "modemHw.h"
 #include "modemPins.h"
 #include "canLeafZE1.h"
+#include "serverApi.h"
 
 static const uint32_t WIFI_GRACE_MS = 120000;
 static const uint32_t WIFI_DROP_ATTACH_MS = 60000;
@@ -41,6 +42,12 @@ static float gpsLat = 0, gpsLon = 0, gpsAlt = 0, gpsSpd = 0;
 static unsigned long gpsFixMs = 0;
 
 static void setState(ModemState s) { stateVal = (uint8_t)s; }
+
+// Диагностика модема: пока флаг поднят, менеджер не трогает UART.
+static volatile bool probePaused = false;
+
+void modemManagerPause(bool paused) { probePaused = paused; }
+bool modemTaskBusy() { return taskBusy; }
 
 static const char* apnFor() { return getModem800Apn(); }
 static const char* userFor() { return getModem800User(); }
@@ -309,6 +316,7 @@ void modemInit() {
 }
 
 void modemTick() {
+  if (probePaused) return;
   ModemState st = (ModemState)stateVal;
 
   int8_t requested = callCanRequest;
@@ -329,7 +337,11 @@ void modemTick() {
     return;
   }
 
+  // Wi-Fi может быть подключён к точке доступа без интернета. Тогда
+  // ориентируемся на реальный обмен с сервером, иначе GPRS не поднимется.
   bool wifiUp = (WiFi.status() == WL_CONNECTED);
+  unsigned long lastOk = serverApiLastOkMs();
+  bool wifiHasNet = wifiUp && lastOk != 0 && (millis() - lastOk) < 120000UL;
   unsigned long now = millis();
 
   if (callControlEnabled() && (st == ModemState::READY || st == ModemState::STANDBY) &&
@@ -351,7 +363,7 @@ void modemTick() {
     }
   }
 
-  if (wifiUp) {
+  if (wifiHasNet) {
     wifiDownSinceMs = 0;
     if (st == ModemState::READY && !taskBusy) {
       if (wifiUpSinceMs == 0) wifiUpSinceMs = now;
