@@ -3,6 +3,7 @@ package com.leafcontrol.app.data
 import android.content.Context
 import com.leafcontrol.app.net.LocalApi
 import com.leafcontrol.app.net.MqttWssClient
+import com.leafcontrol.app.net.ServerApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -127,11 +128,12 @@ object LeafRepo {
     }
 
     suspend fun refreshHistory(context: Context) {
-        val local = LocalApi.status(context)
+        val server = Settings.mode == "server"
+        val local = if (server) ServerApi.status(context) else LocalApi.status(context)
         if (local != null) {
             setLocal(local)
-            val t = LocalApi.trips(context)
-            val c = LocalApi.charges(context)
+            val t = if (server) ServerApi.trips(context) else LocalApi.trips(context)
+            val c = if (server) ServerApi.charges(context) else LocalApi.charges(context)
             if (t.isNotEmpty() || c.isNotEmpty()) {
                 withContext(Dispatchers.IO) {
                     t.forEach { HistoryDb.upsertTrip(it) }

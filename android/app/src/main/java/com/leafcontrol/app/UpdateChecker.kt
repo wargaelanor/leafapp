@@ -6,7 +6,9 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings as AndroidSettings
 import androidx.core.content.FileProvider
+import com.leafcontrol.app.data.Settings
 import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -26,6 +28,39 @@ object UpdateChecker {
     )
 
     fun check(context: Context): Update? {
+        // Updates come from the owner's server first (the same place the
+        // firmware lives); GitHub is only a fallback for a fresh install.
+        try {
+            checkServer(context)?.let { return it }
+        } catch (_: Exception) {
+        }
+        return checkGitHub(context)
+    }
+
+    /** GET {server}/api/app/latest -> {version, url, notes}. */
+    private fun checkServer(context: Context): Update? {
+        val base = Settings.serverUrl.trim().trimEnd('/')
+        if (base.isEmpty()) return null
+        val current = BuildConfig.VERSION_NAME
+        val conn = URL("$base/api/app/latest").openConnection() as HttpURLConnection
+        try {
+            conn.connectTimeout = 6000
+            conn.readTimeout = 10000
+            conn.setRequestProperty("User-Agent", "LeafControl/$current")
+            if (conn.responseCode !in 200..299) return null
+            val body = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            val o = JSONObject(body)
+            val version = o.optString("version").trim()
+            val url = o.optString("url").trim()
+            if (version.isEmpty() || url.isEmpty()) return null
+            if (!isNewer(version, current)) return null
+            return Update(version, url, o.optString("notes"))
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    private fun checkGitHub(context: Context): Update? {
         val current = BuildConfig.VERSION_NAME
         val conn = URL(API).openConnection() as HttpURLConnection
         try {

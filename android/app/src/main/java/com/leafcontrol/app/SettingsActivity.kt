@@ -44,6 +44,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
+import kotlinx.coroutines.launch
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.leafcontrol.app.data.LeafRepo
@@ -93,6 +95,10 @@ class SettingsActivity : ComponentActivity() {
         var mqttUser by remember { mutableStateOf(Settings.mqttUser) }
         var mqttPass by remember { mutableStateOf(Settings.mqttPass) }
         var vehicleId by remember { mutableStateOf(Settings.vehicleId) }
+        var serverUrl by remember { mutableStateOf(Settings.serverUrl) }
+        var serverUser by remember { mutableStateOf(Settings.serverUser) }
+        var serverPass by remember { mutableStateOf(Settings.serverPass) }
+        var serverProbe by remember { mutableStateOf("") }
         var tariffDay by remember { mutableStateOf(Settings.tariffDay.toString()) }
         var tariffNight by remember { mutableStateOf(Settings.tariffNight.toString()) }
         var nightFrom by remember { mutableStateOf(Settings.nightFrom.toString()) }
@@ -106,6 +112,7 @@ class SettingsActivity : ComponentActivity() {
         var lowThreshold by remember { mutableStateOf(Settings.lowSocThreshold.toString()) }
 
         val leafState by LeafRepo.state.collectAsStateWithLifecycle()
+        val scope = rememberCoroutineScope()
 
         val notificationPermission =
             rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
@@ -128,7 +135,7 @@ class SettingsActivity : ComponentActivity() {
 
             Group("Связь") {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("auto" to "Авто", "local" to "Локально", "mqtt" to "MQTT").forEach { (value, label) ->
+                    listOf("auto" to "Авто", "server" to "Сервер", "local" to "Локально", "mqtt" to "MQTT").forEach { (value, label) ->
                         FilterChip(
                             selected = mode == value,
                             onClick = {
@@ -146,6 +153,44 @@ class SettingsActivity : ComponentActivity() {
                         )
                     }
                 }
+                OutlinedTextField(
+                    value = serverUrl,
+                    onValueChange = { serverUrl = it },
+                    label = { Text("Сервер (адрес)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = serverUser,
+                    onValueChange = { serverUser = it },
+                    label = { Text("Логин на сервере") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = serverPass,
+                    onValueChange = { serverPass = it },
+                    label = { Text("Пароль") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                )
+                if (serverProbe.isNotEmpty()) {
+                    Text(serverProbe, fontSize = 12.sp)
+                }
+                OutlinedButton(
+                    onClick = {
+                        Settings.serverUrl = serverUrl
+                        Settings.serverUser = serverUser
+                        Settings.serverPass = serverPass
+                        serverProbe = "проверяем…"
+                        scope.launch {
+                            serverProbe = com.leafcontrol.app.net.ServerApi.probe(ctx)
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Проверить сервер") }
                 OutlinedTextField(
                     value = mqttHost,
                     onValueChange = { mqttHost = it },

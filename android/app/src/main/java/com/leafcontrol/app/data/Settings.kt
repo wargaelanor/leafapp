@@ -36,6 +36,29 @@ object Settings {
         get() = p.getString("mqtt_host", "m5.wqtt.ru") ?: "m5.wqtt.ru"
         set(v) = p.edit().putString("mqtt_host", v.trim()).apply()
 
+    /** LeafControl server (the same address the PWA uses). */
+    var serverUrl: String
+        get() = p.getString("server_url", "https://leaf.wargaelanor.keenetic.link")
+            ?: "https://leaf.wargaelanor.keenetic.link"
+        set(v) = p.edit().putString("server_url", v.trim().trimEnd('/')).apply()
+
+    var serverUser: String
+        get() = p.getString("server_user", "") ?: ""
+        set(v) = p.edit().putString("server_user", v.trim()).apply()
+
+    var serverPass: String
+        get() = p.getString("server_pass", "") ?: ""
+        set(v) = p.edit().putString("server_pass", v).apply()
+
+    /** Session cookie of the server login (leaf_session=...). */
+    var serverCookie: String
+        get() = p.getString("server_cookie", "") ?: ""
+        set(v) = p.edit().putString("server_cookie", v).apply()
+
+    var serverCookieTs: Long
+        get() = p.getLong("server_cookie_ts", 0L)
+        set(v) = p.edit().putLong("server_cookie_ts", v).apply()
+
     var mqttPort: Int
         get() = p.getInt("mqtt_port", 15871)
         set(v) = p.edit().putInt("mqtt_port", v).apply()

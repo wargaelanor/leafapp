@@ -39,7 +39,7 @@ APP_NOTES = os.environ.get("LEAF_APP_NOTES", "Режим «Сервер» в п�
 
 APK_URL = os.environ.get(
     "LEAF_APK_URL",
-    "https://github.com/wargaelanor/leafapp/releases/download/android-v1.35/LeafControl-1.35-debug.apk",
+    "https://github.com/wargaelanor/leafapp/releases/download/android-v1.36/LeafControl-1.36-debug.apk",
 )
 
 # Команды, которые шлёт PWA (те же пути, что у платы).

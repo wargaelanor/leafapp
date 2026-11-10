@@ -18,6 +18,7 @@ import com.leafcontrol.app.data.Settings
 import com.leafcontrol.app.data.Trip
 import com.leafcontrol.app.net.LocalApi
 import com.leafcontrol.app.net.MqttWssClient
+import com.leafcontrol.app.net.ServerApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -165,6 +166,7 @@ class LeafMonitorService : Service() {
             val mode = Settings.mode
             when (mode) {
                 "local" -> runLocal()
+                "server" -> runServer()
                 "mqtt" -> runMqtt()
                 else -> runAuto()
             }
@@ -242,6 +244,43 @@ class LeafMonitorService : Service() {
             }
         } finally {
             stopMqtt()
+        }
+    }
+
+    /**
+     * Server mode: the app talks to the LeafControl server, the server talks to
+     * the board. Works from any network, including mobile data.
+     */
+    private suspend fun runServer() {
+        updateForeground("Сервер")
+        var syncedAt = 0L
+        var failures = 0
+        while (monitoring) {
+            if (!ServerApi.configured()) {
+                LeafRepo.setDisconnected("server")
+                updateForeground("Сервер не настроен")
+                delay(30_000)
+                continue
+            }
+            val s = ServerApi.status(this)
+            if (s != null) {
+                failures = 0
+                onState(s)
+                LeafRepo.monitorText.value = if (s.connected) "Сервер" else "Сервер · плата не на связи"
+                val soc = s.soc.takeIf { it >= 0 }?.toInt()?.toString() ?: "—"
+                updateForeground("Сервер · $soc%")
+                if (System.currentTimeMillis() - syncedAt > 300_000L) {
+                    syncedAt = System.currentTimeMillis()
+                    syncHistory()
+                }
+                // 8 s while the car is active, 20 s when it is parked.
+                delay(if (s.on == 1 || s.charging || s.hvac) 8_000L else 20_000L)
+            } else {
+                failures++
+                LeafRepo.setDisconnected("server")
+                updateForeground(if (failures > 2) "Сервер недоступен" else "Сервер…")
+                delay(if (failures > 2) 30_000L else 8_000L)
+            }
         }
     }
 
@@ -343,6 +382,13 @@ class LeafMonitorService : Service() {
 
     private fun sendCommand(path: String, payload: String) {
         scope.launch {
+            // Server mode: the server queues the command for the board, so it
+            // works from any network and needs no direct access to the car.
+            if (Settings.mode == "server" && path.isNotEmpty()) {
+                val ok = ServerApi.command(this@LeafMonitorService, path)
+                reportCommand(if (ok) "Команда отправлена на сервер" else "Сервер не принял команду")
+                return@launch
+            }
             // Local first: the board answers immediately when the phone is on
             // the same Wi-Fi. If that fails, wait for MQTT (the service may
             // have just been started by a home-screen shortcut).
@@ -424,8 +470,8 @@ class LeafMonitorService : Service() {
     }
 
     private suspend fun syncHistory() {
-        val t = LocalApi.trips(this)
-        val c = LocalApi.charges(this)
+        val t = if (Settings.mode == "server") ServerApi.trips(this) else LocalApi.trips(this)
+        val c = if (Settings.mode == "server") ServerApi.charges(this) else LocalApi.charges(this)
         if (t.isNotEmpty() || c.isNotEmpty()) {
             t.forEach { HistoryDb.upsertTrip(it) }
             c.forEach { HistoryDb.upsertCharge(it) }
