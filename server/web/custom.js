@@ -518,6 +518,15 @@
     $$('.more-item').forEach(el => {
       if (el.dataset.lcHooked) return;
       const t = el.textContent || '';
+      if (t.includes('Обновление прошивки')) {
+        el.dataset.lcHooked = '1';
+        el.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          showFirmware();
+        }, true);
+        return;
+      }
       if (t.includes('Настройки платы')) {
         el.dataset.lcHooked = '1';
         el.addEventListener('click', (e) => {
@@ -811,6 +820,77 @@
     }, true);
   }
 
+
+  /* ---------- 6. обновление прошивки ---------- */
+  function addFirmwareScreen() {
+    const screens = $('#screens');
+    if (!screens || $('#screen-fw')) return;
+    const sec = document.createElement('section');
+    sec.className = 'screen';
+    sec.id = 'screen-fw';
+    sec.innerHTML = `
+      <div class="card" style="margin-top:8px">
+        <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">Обновление прошивки</div></div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:10px">
+          Файл скачивается на плату с сервера и прошивается. Плата перезагрузится,
+          настройки и привязка сохранятся.
+        </div>
+        <div id="fw-list"></div>
+        <div id="fw-hint" style="font-size:12px;color:var(--muted);margin-top:10px;min-height:18px"></div>
+      </div>`;
+    screens.insertBefore(sec, $('#screen-more') || null);
+  }
+
+  function showFirmware() {
+    if (userRole !== 'admin') { toast('Обновление делает администратор'); return; }
+    $$('.screen').forEach(s => s.classList.remove('active'));
+    const sec = $('#screen-fw');
+    if (sec) sec.classList.add('active');
+    $$('.tab').forEach(t => t.classList.remove('active'));
+    const sc = $('#screens'); if (sc) sc.scrollTop = 0;
+    loadFirmware();
+  }
+
+  async function loadFirmware() {
+    const box = $('#fw-list');
+    const hint = $('#fw-hint');
+    if (!box) return;
+    box.innerHTML = '<div style="font-size:13px;color:var(--muted)">Читаю список…</div>';
+    try {
+      const r = await api('/api/admin/firmware');
+      const items = r.items || [];
+      if (!items.length) {
+        box.innerHTML = '<div style="font-size:13px;color:var(--muted)">На сервере нет файлов прошивки.</div>';
+        return;
+      }
+      box.innerHTML = items.map(it => `
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)">
+          <div style="flex:1">${it.name}
+            <div style="font-size:12px;color:var(--muted)">${(it.size / 1048576).toFixed(2)} МБ</div></div>
+          <button data-fw="${it.name}" style="border:0;border-radius:8px;background:var(--accent);color:#fff;padding:8px 12px">Установить</button>
+        </div>`).join('');
+      $$('#fw-list [data-fw]').forEach(b => b.onclick = () => installFirmware(b.dataset.fw));
+      hint.textContent = '';
+    } catch (e) {
+      box.innerHTML = '<div style="font-size:12px;color:var(--muted)">' + e.message + '</div>';
+    }
+  }
+
+  async function installFirmware(file) {
+    const hint = $('#fw-hint');
+    if (!confirm('Прошить плату файлом ' + file + '?')) return;
+    try {
+      const devs = await api('/api/devices');
+      const list = devs.devices || [];
+      const dev = list.find(d => d.online) || list[0];
+      if (!dev) throw new Error('нет устройств');
+      const r = await api('/api/admin/firmware/update', { device: dev.id, file });
+      hint.textContent = r.pushed
+        ? 'Команда отправлена. Плата скачает файл и перезагрузится.'
+        : 'Плата офлайн — команда в очереди, начнётся при связи.';
+    } catch (e) { hint.textContent = e.message; }
+  }
+
   /* ---------- запуск ---------- */
   function init() {
     cleanMore();
@@ -819,6 +899,7 @@
     addSettingsScreen();
     addAdminScreen();
     addClaimScreen();
+    addFirmwareScreen();
     interceptMore();
     bindCards();
     loadRole().then(() => addMoreRows());
