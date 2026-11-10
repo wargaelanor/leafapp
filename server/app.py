@@ -34,6 +34,7 @@ ONLINE_WINDOW_S = 45
 SERVER_BASE = os.environ.get("LEAF_SERVER_BASE", "https://leaf.wargaelanor.keenetic.link")
 
 # Ссылка на Android-приложение (release-ассет проекта).
+APP_REV = os.environ.get("LEAF_REV", "sec-2c73f93")
 APP_VERSION = os.environ.get("LEAF_APP_VERSION", "1.38")
 APP_NOTES = os.environ.get("LEAF_APP_NOTES", "MQTT удалён полностью; при первом запуске — вход на сервер")
 
@@ -462,7 +463,8 @@ class Api(BaseHTTPRequestHandler):
                 })
 
             if path == "/api/health":
-                return self.json(200, {"ok": True, "ts": now()})
+                return self.json(200, {"ok": True, "ts": now(), "rev": APP_REV,
+                                       "app": APP_VERSION})
             if path.startswith("/api/"):
                 return self.api(method, path, q)
             if method == "POST" and path in PWA_COMMANDS:
