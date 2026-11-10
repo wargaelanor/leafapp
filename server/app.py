@@ -1398,6 +1398,18 @@ class Api(BaseHTTPRequestHandler):
             parts = path.split("/")
             dev_id = int(parts[4])
             action = parts[5] if len(parts) > 5 else ""
+            if action == "assign":
+                username = (self.body().get("username") or "").strip().lower()
+                with db_lock, connect() as c:
+                    urow = c.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone()
+                    if not urow:
+                        return self.err(404, "user not found")
+                    if not c.execute("SELECT 1 FROM devices WHERE id=?", (dev_id,)).fetchone():
+                        return self.err(404, "device not found")
+                    c.execute("UPDATE devices SET owner_id=?, status='active', claim_code=NULL WHERE id=?",
+                              (urow["id"], dev_id))
+                    log_event(c, dev_id, "admin_assigned_device", {"username": username})
+                return self.json(200, {"ok": True, "owner": username})
             if action not in ("approve", "reject"):
                 return self.err(400, "unknown action")
             new_status = "active" if action == "approve" else "rejected"
