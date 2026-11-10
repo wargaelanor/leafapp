@@ -474,7 +474,7 @@ async function refresh() {
 /* ---------- tabs ---------- */
 function switchTab(t) {
   tab = t;
-  document.querySelectorAll('#navDesktop button, #tabbar button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
+  document.querySelectorAll('#navDesktop button, #navMobile button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
   ['car', 'trips', 'charges', 'charts', 'admin', 'me'].forEach(x => $('tab-' + x).classList.toggle('hide', x !== t));
   $('pageTitle').textContent = TITLES[t] || '';
   if (t === 'trips') loadSessions('trip');
@@ -486,7 +486,7 @@ function switchTab(t) {
     if (cur) { $('devName').value = cur.name || ''; $('devLogin').value = cur.login || ''; }
   }
 }
-document.querySelectorAll('#navDesktop button, #tabbar button').forEach(b => b.onclick = () => switchTab(b.dataset.tab));
+document.querySelectorAll('#navDesktop button, #navMobile button').forEach(b => b.onclick = () => switchTab(b.dataset.tab));
 
 /* ---------- commands ---------- */
 async function sendCmd(name, args) {
