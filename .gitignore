@@ -22,3 +22,4 @@ __pycache__/
 deploy/leafstack/.env.local
 deploy/leafstack/.env
 .env
+firmware/LeafControl/build/
