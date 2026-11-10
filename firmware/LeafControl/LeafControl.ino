@@ -1106,21 +1106,28 @@ static void loopSupervisorTask(void*) {
 }
 
 void handleOtaPage() {
-  server.send(200, "text/html",
-    "<html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1'></head><body style='font-family:Arial;text-align:center;margin-top:30px'>"
-    "<h1>Firmware Update</h1>"
-    "<p>РЈСЃС‚Р°РЅРѕРІР»РµРЅРѕ: <strong>" LEAF_FIRMWARE_VERSION "</strong><br>SIM800: CAN-С‚РµР»РµРјРµС‚СЂРёСЏ, РґРёСЃС‚Р°РЅС†РёРѕРЅРЅС‹Рµ РєРѕРјР°РЅРґС‹ Рё РєР»РёРјР°С‚ РїРѕ СЂР°Р·СЂРµС€С‘РЅРЅРѕРјСѓ Р·РІРѕРЅРєСѓ</p>"
-    "<p>Р—Р°РіСЂСѓР·РёС‚Рµ .bin, СЃРѕР±СЂР°РЅРЅС‹Р№ С‡РµСЂРµР· Arduino CLI/IDE<br>(File > Export Compiled Binary)</p>"
-    "<form method='POST' action='/ota_update' enctype='multipart/form-data' style='margin:20px auto;max-width:320px'>"
-    "<input type='file' name='firmware' accept='.bin' required style='width:100%;margin-bottom:15px'>"
-    "<input type='submit' value='Update' style='padding:12px 40px;font-size:16px;background:#0077ac;color:#fff;border:none;border-radius:6px;cursor:pointer'>"
-    "</form>"
-    "<p id='st' style='color:#666'>РћР¶РёРґР°РЅРёРµ С„Р°Р№Р»Р°вЂ¦</p>"
-    "<script>document.forms[0].onsubmit=function(){document.getElementById('st').textContent='РџСЂРѕС€РёРІРєР°, РЅРµ РІС‹РєР»СЋС‡Р°Р№С‚Рµ РїР»Р°С‚СѓвЂ¦';}</script>"
-    "<p style='color:#666;font-size:13px;max-width:340px;margin:14px auto'>Р•СЃР»Рё РѕСЃРЅРѕРІРЅР°СЏ СЃС‚СЂР°РЅРёС†Р° РѕС‚РєСЂС‹РІР°РµС‚СЃСЏ РјРµРґР»РµРЅРЅРѕ, "
-    "РµСЃС‚СЊ СѓРїСЂРѕС‰С‘РЅРЅР°СЏ: <a href='/lite'>/lite</a> вЂ” РЅРµСЃРєРѕР»СЊРєРѕ РєРёР»РѕР±Р°Р№С‚, С‚РѕР»СЊРєРѕ С†РёС„СЂС‹ Рё С‡РµС‚С‹СЂРµ РєРѕРјР°РЅРґС‹.</p>"
-    "<a href='/'>РќР°Р·Р°Рґ</a></body></html>");
+  String html;
+  html.reserve(1600);
+  html += "<!doctype html><html lang='ru'><head><meta charset='utf-8'>";
+  html += "<meta name='viewport' content='width=device-width,initial-scale=1'>";
+  html += "<title>Обновление прошивки</title></head>";
+  html += "<body style='font-family:-apple-system,Segoe UI,Roboto,Arial;text-align:center;margin:0;padding:24px;background:#f2f2f7;color:#1c1c1e'>";
+  html += "<h1 style='font-size:20px'>Обновление прошивки</h1>";
+  html += "<p style='font-size:14px;color:#6b7280'>Установлено: <b style='color:#1c1c1e'>";
+  html += LEAF_FIRMWARE_VERSION;
+  html += "</b></p>";
+  html += "<p style='font-size:14px'>Выберите файл <b>.bin</b>, собранный через Arduino CLI</p>";
+  html += "<form method='POST' action='/ota_update' enctype='multipart/form-data' style='margin:20px auto;max-width:340px'>";
+  html += "<input type='file' name='firmware' accept='.bin' required style='width:100%;margin-bottom:16px'>";
+  html += "<input type='submit' value='Прошить' style='padding:14px 40px;font-size:16px;background:#40a0da;color:#fff;border:none;border-radius:10px'>";
+  html += "</form>";
+  html += "<p id='st' style='color:#6b7280;font-size:13px'>Не выключайте плату во время прошивки</p>";
+  html += "<script>document.forms[0].onsubmit=function(){document.getElementById('st').textContent='Идёт прошивка, подождите…';};</script>";
+  html += "<p style='color:#8e8e93;font-size:12px;max-width:340px;margin:16px auto'>После успешной прошивки плата перезагрузится сама.</p>";
+  html += "</body></html>";
+  server.send(200, "text/html; charset=utf-8", html);
 }
+
 
 void handleOtaUpload() {
   HTTPUpload& upload = server.upload();
