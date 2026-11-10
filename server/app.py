@@ -1065,6 +1065,23 @@ class Api(BaseHTTPRequestHandler):
             online = (now() - (d["last_seen"] or 0)) < ONLINE_WINDOW_S
         self.json(200, {"ok": True, "id": cid, "pushed": online, "poll_s": POLL_S})
 
+    def admin_reset_password(self, path: str):
+        """Админ задаёт новый пароль владельцу (например, если плата его не показала)."""
+        try:
+            uid = int(path.split("/")[4])
+        except (ValueError, IndexError):
+            return self.err(400, "bad user id")
+        new = (self.body().get("password") or "").strip()
+        if len(new) < 8:
+            return self.err(400, "пароль короче 8 символов")
+        with db_lock, connect() as c:
+            row = c.execute("SELECT username FROM users WHERE id=?", (uid,)).fetchone()
+            if not row:
+                return self.err(404, "user not found")
+            c.execute("UPDATE users SET pass_hash=? WHERE id=?", (hash_password(new), uid))
+            log_event(c, None, "admin_password_reset", {"username": row["username"]})
+        self.json(200, {"ok": True, "username": row["username"]})
+
     def list_devices(self):
         u = self.require_user()
         if not u:
@@ -1289,6 +1306,8 @@ class Api(BaseHTTPRequestHandler):
                 r = c.execute("SELECT login FROM devices WHERE id=?", (dev_id,)).fetchone()
             return self.json(200, {"ok": True, "status": new_status, "login": r["login"] if r else None})
 
+        if path.startswith("/api/admin/users/") and method == "POST" and path.endswith("/password"):
+            return self.admin_reset_password(path)
         if path == "/api/admin/users" and method == "GET":
             with db_lock, connect() as c:
                 rows = c.execute("SELECT id,username,role,created_at FROM users ORDER BY id").fetchall()
