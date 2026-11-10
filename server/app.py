@@ -1549,6 +1549,42 @@ class Api(BaseHTTPRequestHandler):
                     log_event(c, did, "admin_assigned_device", {"username": username})
                 return self.json(200, {"ok": True, "owner": username})
 
+        if path == "/api/admin/firmware" and method == "GET":
+            fw_dir = os.path.join(WEB_DIR, "fw")
+            items = []
+            if os.path.isdir(fw_dir):
+                for name in sorted(os.listdir(fw_dir)):
+                    if not name.lower().endswith(".bin"):
+                        continue
+                    full = os.path.join(fw_dir, name)
+                    items.append({
+                        "name": name,
+                        "size": os.path.getsize(full),
+                        "url": SERVER_BASE + "/fw/" + name,
+                    })
+            return self.json(200, {"items": items, "base": SERVER_BASE})
+
+        if path == "/api/admin/firmware/update" and method == "POST":
+            body = self.body()
+            dev = self.owned_device(u_ctx := self.require_user(), str(body.get("device", "0")))
+            if not dev:
+                return self.err(404, "device not found")
+            name = os.path.basename((body.get("file") or "").strip())
+            full = os.path.join(WEB_DIR, "fw", name)
+            if not name.lower().endswith(".bin") or not os.path.isfile(full):
+                return self.err(404, "firmware not found")
+            url = SERVER_BASE + "/fw/" + name
+            with db_lock, connect() as c:
+                cur = c.execute(
+                    "INSERT INTO commands(device_id,user_id,name,args,status,created_at) VALUES(?,?,?,?,?,?)",
+                    (dev["id"], u_ctx["id"], "fw_update",
+                     json.dumps({"url": url}, ensure_ascii=False), "queued", now()),
+                )
+                cid = cur.lastrowid
+                log_event(c, dev["id"], "fw_update_queued", {"file": name, "by": u_ctx["username"]})
+                online = (now() - (dev["last_seen"] or 0)) < ONLINE_WINDOW_S
+            return self.json(200, {"ok": True, "id": cid, "url": url, "pushed": online})
+
         if path == "/api/admin/users" and method == "GET":
             with db_lock, connect() as c:
                 rows = c.execute(
