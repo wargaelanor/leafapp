@@ -382,13 +382,165 @@
     }
   }
 
+  /* ---------- 3. настройки платы (внутри приложения) ---------- */
+  function addSettingsScreen() {
+    const screens = $('#screens');
+    if (!screens || $('#screen-settings')) return;
+    const sec = document.createElement('section');
+    sec.className = 'screen';
+    sec.id = 'screen-settings';
+    sec.innerHTML = `
+      <div class="card" style="margin-top:8px">
+        <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">Настройки платы</div></div>
+        <div id="cfg-info" style="font-size:12px;color:var(--muted);margin-bottom:12px"></div>
+        <div id="cfg-fields"></div>
+        <button id="cfg-save" style="margin-top:12px;width:100%;padding:12px;border:0;border-radius:8px;background:var(--accent);color:#fff;font-weight:600">Применить на плате</button>
+        <div id="cfg-hint" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">Название машины</div></div>
+        <input id="cfg-name" placeholder="Мой Leaf" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--text)">
+        <button id="cfg-rename" style="margin-top:10px;width:100%;padding:12px;border:0;border-radius:8px;background:var(--surface-2);color:var(--text);font-weight:600">Сохранить название</button>
+      </div>`;
+    screens.insertBefore(sec, $('#screen-more') || null);
+  }
+
+  function showSettings() {
+    $$('.screen').forEach(s => s.classList.remove('active'));
+    const sec = $('#screen-settings');
+    if (sec) sec.classList.add('active');
+    $$('.tab').forEach(t => t.classList.remove('active'));
+    const sc = $('#screens'); if (sc) sc.scrollTop = 0;
+    loadConfig();
+  }
+
+  const TOGGLES = [
+    ['locking', 'Блокировка кнопок', 'запрет команд, если выключено'],
+    ['sleep', 'Глубокий сон', 'усыплять плату при простое'],
+    ['uds', 'Расширенная диагностика', 'UDS-запросы VCM/BCM/ABS/TMI'],
+    ['uds_tpms', 'TPMS', 'если установлен модуль давления'],
+    ['modem', 'Модем', 'SIM800 / A7670'],
+  ];
+  const NUMBERS = [
+    ['charge_limit', 'Лимит заряда, %', '0 = выключено, 70–95'],
+    ['sleep_after', 'Усыплять через, ч', ''],
+    ['wake_fast', 'Быстрое пробуждение, мин', ''],
+    ['wake_slow', 'Медленное пробуждение, мин', ''],
+  ];
+
+  async function loadConfig() {
+    const fields = $('#cfg-fields');
+    if (!fields) return;
+    let cfg = {}, meta = {};
+    try {
+      const j = await api('/api/config');
+      cfg = j.config || {}; meta = j;
+    } catch (e) {
+      fields.innerHTML = '<div style="font-size:12px;color:var(--muted)">' + e.message + '</div>';
+      return;
+    }
+
+    $('#cfg-info').textContent =
+      'Логин: ' + (meta.login || '—') +
+      ' · прошивка: ' + (meta.fw || '—') +
+      (meta.serial ? ' · MAC: ' + meta.serial : '') +
+      (meta.ts ? ' · получено ' + new Date(meta.ts * 1000).toLocaleString('ru-RU') : ' · плата ещё не присылала настройки');
+
+    const inputStyle = 'width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--text)';
+
+    fields.innerHTML =
+      NUMBERS.map(([k, t, h]) => `
+        <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:10px">${t}
+          <input data-num="${k}" type="number" value="${cfg[k] !== undefined ? cfg[k] : ''}" style="${inputStyle}">
+          ${h ? `<span style="font-size:11px">${h}</span>` : ''}
+        </label>`).join('') +
+      '<label style="display:block;font-size:12px;color:var(--muted);margin-bottom:10px">APN модема' +
+      `<input data-text="apn" value="${(cfg.apn || '').replace(/"/g, '&quot;')}" style="${inputStyle}"></label>` +
+      TOGGLES.map(([k, t, h]) => `
+        <label style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)">
+          <input data-bool="${k}" type="checkbox" ${cfg[k] ? 'checked' : ''} style="width:18px;height:18px">
+          <span style="font-size:14px">${t}${h ? `<span style="display:block;font-size:11px;color:var(--muted)">${h}</span>` : ''}</span>
+        </label>`).join('');
+
+    $('#cfg-name').value = meta.login ? '' : '';
+    try {
+      const st = await api('/api/status');
+      if (st && st.device_name) $('#cfg-name').value = st.device_name;
+    } catch {}
+
+    $('#cfg-save').onclick = async () => {
+      const hint = $('#cfg-hint');
+      hint.textContent = 'Отправляю…';
+      const jobs = [];
+      $$('#cfg-fields [data-num]').forEach(el => {
+        if (el.value !== '') jobs.push([el.dataset.num, Number(el.value)]);
+      });
+      $$('#cfg-fields [data-bool]').forEach(el => jobs.push([el.dataset.bool, el.checked ? 1 : 0]));
+      $$('#cfg-fields [data-text]').forEach(el => {
+        if (el.value) jobs.push([el.dataset.text, el.value]);
+      });
+      let ok = 0;
+      for (const [key, value] of jobs) {
+        try { await api('/api/config', { key, value }); ok++; } catch {}
+      }
+      hint.textContent = 'Отправлено параметров: ' + ok + '. Плата применит их в течение ' + 10 + ' с.';
+      setTimeout(loadConfig, 5000);
+    };
+
+    $('#cfg-rename').onclick = async () => {
+      const name = $('#cfg-name').value.trim();
+      if (!name) return;
+      try {
+        const st = await api('/api/status');
+        const devs = await api('/api/devices');
+        const d = (devs.devices || []).find(x => x.login === st.device);
+        if (!d) throw new Error('устройство не найдено');
+        await api('/api/devices/' + d.id, { name }, 'PUT');
+        toast('Название сохранено');
+      } catch (e) { alert(e.message); }
+    };
+  }
+
+  function interceptMore() {
+    $$('.more-item').forEach(el => {
+      if (el.dataset.lcHooked) return;
+      const t = el.textContent || '';
+      if (t.includes('Настройки платы')) {
+        el.dataset.lcHooked = '1';
+        el.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          showSettings();
+        }, true);
+      }
+    });
+  }
+
+  function toast(text) {
+    let el = document.getElementById('lc-toast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'lc-toast';
+      el.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);' +
+        'background:rgba(28,28,30,.94);color:#fff;padding:10px 16px;border-radius:12px;' +
+        'font-size:14px;z-index:999;opacity:0;transition:.25s';
+      document.body.appendChild(el);
+    }
+    el.textContent = text;
+    el.style.opacity = '1';
+    clearTimeout(el._t);
+    el._t = setTimeout(() => { el.style.opacity = '0'; }, 2600);
+  }
+
   /* ---------- запуск ---------- */
   function init() {
     cleanMore();
     addScreen();
     addTab();
+    addSettingsScreen();
+    interceptMore();
     bindCards();
-    const obs = new MutationObserver(() => { cleanMore(); bindCards(); });
+    const obs = new MutationObserver(() => { cleanMore(); interceptMore(); bindCards(); });
     obs.observe(document.body, { childList: true, subtree: true });
   }
 

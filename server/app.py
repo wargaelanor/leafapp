@@ -168,6 +168,11 @@ def init_db() -> None:
     os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
     with db_lock, connect() as c:
         c.executescript(SCHEMA)
+        cols = [r[1] for r in c.execute("PRAGMA table_info(devices)").fetchall()]
+        if "config_json" not in cols:
+            c.execute("ALTER TABLE devices ADD COLUMN config_json TEXT")
+        if "config_ts" not in cols:
+            c.execute("ALTER TABLE devices ADD COLUMN config_ts INTEGER DEFAULT 0")
         row = c.execute("SELECT id FROM users WHERE username=?", (ADMIN_USER,)).fetchone()
         if not row and ADMIN_PASSWORD:
             c.execute(
@@ -355,7 +360,7 @@ class Api(BaseHTTPRequestHandler):
                     return self.err(403, "admin only")
                 return self.serve_static("admin.html")
             if path == "/settings":
-                return self._send(302, b"", "text/plain", {"Location": "/admin"})
+                return self._send(302, b"", "text/plain", {"Location": "/"})
             if path == "/ui":
                 return self.json(200, {"ok": True})
             if path.startswith("/static/"):
@@ -415,6 +420,12 @@ class Api(BaseHTTPRequestHandler):
             return self.maintenance_add()
         if path == "/api/maintenance/done" and method == "POST":
             return self.maintenance_done()
+        if path == "/api/config" and method == "GET":
+            return self.get_config(q)
+        if path == "/api/config" and method == "POST":
+            return self.post_config()
+        if path == "/api/device/config" and method == "POST":
+            return self.device_config()
         if path == "/api/status" and method == "GET":
             return self.pwa_status(q)
         if path in ("/api/trips", "/api/charges") and method == "GET":
@@ -1007,6 +1018,52 @@ class Api(BaseHTTPRequestHandler):
                 return self.err(403, "forbidden")
             c.execute("UPDATE maintenance SET done_at=? WHERE id=?", (now(), mid))
         self.json(200, {"ok": True})
+
+    # ---------- настройки платы
+
+    def get_config(self, q):
+        u = self.require_user()
+        if not u:
+            return
+        d = self.owned_device(u, q.get("device", "0")) or self.pwa_pick_device(u)
+        if not d:
+            return self.err(404, "device not found")
+        cfg = json.loads(d["config_json"]) if d["config_json"] else {}
+        self.json(200, {"config": cfg, "ts": d["config_ts"] or 0, "login": d["login"],
+                        "fw": d["fw"], "serial": d["serial"]})
+
+    def device_config(self):
+        dev = self.device()
+        if not dev:
+            return self.err(401, "bad device token")
+        data = self.body()
+        with db_lock, connect() as c:
+            c.execute("UPDATE devices SET config_json=?, config_ts=? WHERE id=?",
+                      (json.dumps(data, ensure_ascii=False), now(), dev["id"]))
+        self.json(200, {"ok": True})
+
+    def post_config(self):
+        u = self.require_user()
+        if not u:
+            return
+        body = self.body()
+        d = self.owned_device(u, str(body.get("device", "0"))) or self.pwa_pick_device(u)
+        if not d:
+            return self.err(404, "device not found")
+        key = body.get("key")
+        if not key:
+            return self.err(400, "key required")
+        value = body.get("value")
+        with db_lock, connect() as c:
+            cur = c.execute(
+                "INSERT INTO commands(device_id,user_id,name,args,status,created_at) VALUES(?,?,?,?,?,?)",
+                (d["id"], u["id"], "set_config",
+                 json.dumps({"key": key, "value": value}, ensure_ascii=False), "queued", now()),
+            )
+            cid = cur.lastrowid
+            log_event(c, d["id"], "config_set", {"key": key, "value": value, "by": u["username"]})
+            online = (now() - (d["last_seen"] or 0)) < ONLINE_WINDOW_S
+        self.json(200, {"ok": True, "id": cid, "pushed": online, "poll_s": POLL_S})
 
     def list_devices(self):
         u = self.require_user()

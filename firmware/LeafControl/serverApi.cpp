@@ -7,6 +7,7 @@
 
 #include "canLeafZE1.h"
 #include "tripLog.h"
+#include "configuration.h"
 
 // Р“Р»РѕР±Р°Р»СЊРЅС‹Рµ Р·РЅР°С‡РµРЅРёСЏ, РєРѕС‚РѕСЂС‹Рµ РІРµРґС‘С‚ РѕСЃРЅРѕРІРЅРѕР№ СЃРєРµС‚С‡.
 extern float currentSOC;
@@ -276,6 +277,8 @@ static bool jsonString(const String& src, const char* key, char* out, size_t out
   return out[0] != '\0';
 }
 
+static void sendConfig();  // forward declaration
+
 static void registerDevice() {
   unsigned long now = millis();
   if (now - lastRegisterMs < 15000UL) return;
@@ -304,6 +307,7 @@ static void registerDevice() {
   bool active = strcmp(status, "active") == 0;
   setStatus(active ? "active" : "pending approval");
   Serial.printf("[srv] registered, status: %s\n", active ? "active" : "pending");
+  sendConfig();
 }
 
 // ---------------------------------------------------------------- СЃРѕСЃС‚РѕСЏРЅРёРµ
@@ -364,6 +368,52 @@ static void sendState() {
 
 // ---------------------------------------------------------------- РєРѕРјР°РЅРґС‹
 
+// ---------------------------------------------------------------- settings
+
+static void sendConfig() {
+  char body[420];
+  snprintf(body, sizeof(body),
+           "{\"charge_limit\":%d,\"locking\":%d,\"sleep\":%d,\"sleep_after\":%d,"
+           "\"wake_fast\":%d,\"wake_slow\":%d,\"uds\":%d,\"uds_tpms\":%d,"
+           "\"modem\":%d,\"apn\":\"%s\"}",
+           getChargeLimitPct(), getLockingEnabled() ? 1 : 0, getSleepEnabled() ? 1 : 0,
+           getSleepAfterHours(), getWakeFastMinutes(), getWakeSlowMinutes(),
+           getUdsEnabled() ? 1 : 0, getUdsTpmsEnabled() ? 1 : 0,
+           getModemEnable() ? 1 : 0, getModem800Apn());
+  String resp;
+  postJson("/api/device/config", body, resp);
+}
+
+static void applyConfig(const char* argsJson) {
+  char key[24] = {0};
+  if (!jsonString(argsJson, "\"key\"", key, sizeof(key))) return;
+
+  const char* vp = strstr(argsJson, "\"value\"");
+  if (!vp) return;
+  vp = strchr(vp, ':');
+  if (!vp) return;
+  vp++;
+  while (*vp == ' ') vp++;
+  int ival = atoi(vp);
+  bool bval = (ival != 0) || (strncmp(vp, "true", 4) == 0);
+
+  if (!strcmp(key, "charge_limit")) setChargeLimitPct(ival);
+  else if (!strcmp(key, "locking")) setLockingEnabled(bval);
+  else if (!strcmp(key, "sleep")) setSleepEnabled(bval);
+  else if (!strcmp(key, "sleep_after")) setSleepAfterHours(ival);
+  else if (!strcmp(key, "wake_fast")) setWakeFastMinutes(ival);
+  else if (!strcmp(key, "wake_slow")) setWakeSlowMinutes(ival);
+  else if (!strcmp(key, "uds")) setUdsEnabled(bval);
+  else if (!strcmp(key, "uds_tpms")) setUdsTpmsEnabled(bval);
+  else if (!strcmp(key, "modem")) setModemEnable(bval);
+  else {
+    Serial.printf("[srv] unknown config key: %s\n", key);
+    return;
+  }
+  Serial.printf("[srv] config %s = %d\n", key, ival);
+  sendConfig();
+}
+
 static void handleCommandResponse(const String& resp) {
   // {"id": 7, "name": "clim_on", "args": {"minutes": 20}} либо {"id": null}
   if (resp.indexOf("\"id\": null") >= 0 || resp.indexOf("\"id\":null") >= 0) return;
@@ -385,7 +435,9 @@ static void handleCommandResponse(const String& resp) {
   }
 
   Serial.printf("[srv] command: %s %s\n", name, args.c_str());
-  if (cmdHandler) cmdHandler(name, args.c_str());
+  if (!strcmp(name, "set_config")) applyConfig(args.c_str());
+  else if (!strcmp(name, "sync_config")) sendConfig();
+  else if (cmdHandler) cmdHandler(name, args.c_str());
 
   char ack[220];
   snprintf(ack, sizeof(ack), "{\"id\":%ld,\"ok\":true,\"result\":{\"cmd\":\"%s\"}}", id, name);
@@ -508,6 +560,13 @@ void serverApiTick() {
   }
 
   // РѕС‡РµСЂРµРґСЊ РєРѕРјР°РЅРґ СЂР°Р· РІ 3 СЃ
+  // снимок настроек раз в 5 минут
+  static unsigned long lastCfgMs = 0;
+  if (now - lastCfgMs >= 300000UL) {
+    lastCfgMs = now;
+    sendConfig();
+  }
+
   if (now - lastPollMs >= 3000UL) {
     lastPollMs = now;
     pollCommands();
