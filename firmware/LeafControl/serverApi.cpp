@@ -176,7 +176,7 @@ static int request(const char* method, const String& pathAndQuery, const char* b
 
   unsigned long t0 = millis();
   bool connected = false;
-  for (int attempt = 0; attempt < 3 && !connected; attempt++) {
+  for (int attempt = 0; attempt < 2 && !connected; attempt++) {
     connected = (cli->connect(host.c_str(), port) == 1);
     if (!connected) {
       cli->stop();
@@ -209,7 +209,7 @@ static int request(const char* method, const String& pathAndQuery, const char* b
   cli->flush();
 
   response = "";
-  unsigned long deadline = millis() + 12000;
+  unsigned long deadline = millis() + 9000;
   while (millis() < deadline) {
     while (cli->available()) {
       response += (char)cli->read();
@@ -329,7 +329,7 @@ static void sendHeartbeat() {
   postJson("/api/device/heartbeat", body, resp);
 }
 
-static void sendState() {
+static bool sendState() {
   float soc = evData.instrumentSOC >= 0 ? evData.instrumentSOC : currentSOC;
   float packV = evData.packVoltage;
   float packI = evData.packCurrent;
@@ -368,10 +368,12 @@ static void sendState() {
            (unsigned long)busAgeSeconds());
 
   String resp;
-  if (postJson("/api/device/state", body, resp)) {
+  bool ok = postJson("/api/device/state", body, resp);
+  if (ok) {
     stateCounter++;
     setStatus(registered ? "online" : "online (pending)");
   }
+  return ok;
 }
 
 // ---------------------------------------------------------------- РєРѕРјР°РЅРґС‹
@@ -459,14 +461,15 @@ static void handleCommandResponse(const String& resp) {
   postJson("/api/device/ack", ack, r);
 }
 
-static void pollCommands() {
+static bool pollCommands() {
   String resp;
   int code = request("GET", "/api/device/cmd?wait=0", nullptr, resp, 6000);
   if (code >= 200 && code < 300) {
     handleCommandResponse(resp);
-  } else {
-    Serial.printf("[srv] poll -> %d %s\n", code, resp.substring(0, 120).c_str());
+    return true;
   }
+  Serial.printf("[srv] poll -> %d %s\n", code, resp.substring(0, 120).c_str());
+  return false;
 }
 
 // ---------------------------------------------------------------- Р·Р°РїРёСЃРё
@@ -545,7 +548,12 @@ void serverApiTick() {
     return;
   }
   unsigned long now = millis();
-  if (failBackoffMs && (long)(now - failBackoffMs) < 0) return;
+
+  // После серии неудач делаем паузу: при слабом Wi-Fi частые TLS-попытки
+  // блокируют цикл, и плата перестаёт отвечать даже по локальной сети.
+  static uint8_t failCount = 0;
+  static unsigned long retryAt = 0;
+  if (failCount >= 3 && (long)(now - retryAt) < 0) return;
 
   if (!registered || cfgToken[0] == '\0') {
     static unsigned long lastDbgMs = 0;
@@ -566,16 +574,15 @@ void serverApiTick() {
                   (int)WiFi.status(), (now - lastStateMs) / 1000UL, (now - lastPollMs) / 1000UL);
   }
 
-  // СЃРѕСЃС‚РѕСЏРЅРёРµ СЂР°Р· РІ 10 СЃ
   if (now - lastStateMs >= 10000UL) {
     lastStateMs = now;
-    sendState();
+    bool ok = sendState();
     sendHeartbeat();
     if (recCount > 0) sendOneRecord();
+    if (ok) failCount = 0;
+    else if (failCount < 255 && ++failCount >= 3) retryAt = now + 45000UL;
   }
 
-  // РѕС‡РµСЂРµРґСЊ РєРѕРјР°РЅРґ СЂР°Р· РІ 3 СЃ
-  // снимок настроек раз в 5 минут
   static unsigned long lastCfgMs = 0;
   if (now - lastCfgMs >= 300000UL) {
     lastCfgMs = now;
@@ -584,6 +591,8 @@ void serverApiTick() {
 
   if (now - lastPollMs >= 3000UL) {
     lastPollMs = now;
-    pollCommands();
+    if (pollCommands()) failCount = 0;
+    else if (failCount < 255) failCount++;
   }
 }
+
