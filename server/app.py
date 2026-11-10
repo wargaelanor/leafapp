@@ -30,6 +30,9 @@ POLL_S = int(os.environ.get("LEAF_POLL_S", "10"))
 SESSION_DAYS = 30
 ONLINE_WINDOW_S = 45
 
+# Публичный адрес этого сервера (для ссылок на прошивки и APK).
+SERVER_BASE = os.environ.get("LEAF_SERVER_BASE", "https://leaf.wargaelanor.keenetic.link")
+
 # Ссылка на Android-приложение (release-ассет проекта).
 APK_URL = os.environ.get(
     "LEAF_APK_URL",
