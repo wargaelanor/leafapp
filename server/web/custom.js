@@ -899,6 +899,15 @@
   // полная строка (возраст и версия прошивки) — в подсказке и на широком.
   function addLinkBadge() {
     if (document.getElementById('link-badge')) return;
+    // На узких экранах штатный «Online» дублирует наш бейдж и не помещается
+    // рядом с ним в шапке — оставляем один индикатор с версией прошивки.
+    if (!document.getElementById('link-badge-style')) {
+      const style = document.createElement('style');
+      style.id = 'link-badge-style';
+      style.textContent = '@media (max-width: 900px){#conn-badge{display:none!important}}' +
+        '#link-badge{max-width:46vw}@media (min-width:720px){#link-badge{max-width:none}}';
+      document.head.appendChild(style);
+    }
     const host = document.querySelector('.appbar .actions') || document.querySelector('.appbar');
     if (!host) return;
 
