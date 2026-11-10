@@ -545,15 +545,159 @@
     el._t = setTimeout(() => { el.style.opacity = '0'; }, 2600);
   }
 
+  /* ---------- 4. выход и админка ---------- */
+  let userRole = null;
+
+  async function loadRole() {
+    try {
+      const d = await api('/api/devices');
+      userRole = d.role || 'owner';
+    } catch { userRole = null; }
+  }
+
+  function moreContainer() {
+    const item = document.querySelector('.more-item');
+    return item ? item.parentElement : null;
+  }
+
+  function makeRow(title, sub, onClick) {
+    const row = document.createElement('div');
+    row.setAttribute('data-lc-row', '1');
+    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;' +
+      'padding:16px;margin:0 16px;background:var(--surface);border-bottom:1px solid var(--line);' +
+      'color:var(--text);font-size:15px;cursor:pointer';
+    const left = document.createElement('div');
+    left.textContent = title;
+    if (sub) {
+      const s = document.createElement('div');
+      s.style.cssText = 'font-size:12px;color:var(--muted);margin-top:2px';
+      s.textContent = sub;
+      left.appendChild(s);
+    }
+    const chev = document.createElement('div');
+    chev.textContent = '›';
+    chev.style.cssText = 'color:var(--muted);font-size:20px;line-height:1';
+    row.appendChild(left);
+    row.appendChild(chev);
+    row.addEventListener('click', (e) => { e.preventDefault(); e.stopImmediatePropagation(); onClick(); }, true);
+    return row;
+  }
+
+  function addMoreRows() {
+    const box = moreContainer();
+    if (!box || box.querySelector('[data-lc-logout]')) return;
+
+    if (userRole === 'admin') {
+      const adminRow = makeRow('Администрирование', 'устройства, пользователи, журнал', showAdmin);
+      adminRow.setAttribute('data-lc-admin', '1');
+      box.appendChild(adminRow);
+    }
+
+    const logoutRow = makeRow('Выйти', 'сменить пользователя', async () => {
+      try { await api('/api/auth/logout', {}); } catch {}
+      location.href = '/login';
+    });
+    logoutRow.setAttribute('data-lc-logout', '1');
+    box.appendChild(logoutRow);
+  }
+
+  function addAdminScreen() {
+    const screens = $('#screens');
+    if (!screens || $('#screen-admin')) return;
+    const sec = document.createElement('section');
+    sec.className = 'screen';
+    sec.id = 'screen-admin';
+    sec.innerHTML = `
+      <div class="card" style="margin-top:8px">
+        <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">Заявки на подключение</div></div>
+        <div id="adm-pending"></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">Пользователи</div></div>
+        <div id="adm-users"></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">Устройства</div></div>
+        <div id="adm-devices"></div>
+      </div>`;
+    screens.insertBefore(sec, $('#screen-more') || null);
+  }
+
+  function showAdmin() {
+    $$('.screen').forEach(s => s.classList.remove('active'));
+    const sec = $('#screen-admin');
+    if (sec) sec.classList.add('active');
+    $$('.tab').forEach(t => t.classList.remove('active'));
+    const sc = $('#screens'); if (sc) sc.scrollTop = 0;
+    loadAdmin();
+  }
+
+  async function loadAdmin() {
+    try {
+      const p = await api('/api/admin/devices?status=pending');
+      const pend = p.devices || [];
+      $('#adm-pending').innerHTML = pend.length
+        ? pend.map(d => `
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)">
+            <div style="flex:1">${d.login}
+              <div style="font-size:12px;color:var(--muted)">${d.serial || ''} · ${d.fw || ''}</div></div>
+            <button data-ok="${d.id}" style="border:0;border-radius:8px;background:var(--accent);color:#fff;padding:8px 12px">Одобрить</button>
+            <button data-no="${d.id}" style="border:0;border-radius:8px;background:var(--surface-2);color:var(--danger);padding:8px 12px">Отклонить</button>
+          </div>`).join('')
+        : '<div style="font-size:13px;color:var(--muted)">Заявок нет</div>';
+
+      $$('#adm-pending [data-ok]').forEach(b => b.onclick = async () => {
+        await api('/api/admin/devices/' + b.dataset.ok + '/approve', {});
+        toast('Устройство одобрено');
+        loadAdmin();
+      });
+      $$('#adm-pending [data-no]').forEach(b => b.onclick = async () => {
+        await api('/api/admin/devices/' + b.dataset.no + '/reject', {});
+        toast('Устройство отклонено');
+        loadAdmin();
+      });
+
+      const u = await api('/api/admin/users');
+      $('#adm-users').innerHTML = (u.users || []).map(x => `
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)">
+          <div style="flex:1">${x.username}
+            <div style="font-size:12px;color:var(--muted)">${x.role}</div></div>
+          <button data-pw="${x.id}" style="border:0;border-radius:8px;background:var(--surface-2);color:var(--text);padding:8px 12px">Пароль</button>
+        </div>`).join('');
+      $$('#adm-users [data-pw]').forEach(b => b.onclick = async () => {
+        const pwd = prompt('Новый пароль (минимум 8 символов):');
+        if (!pwd) return;
+        try {
+          await api('/api/admin/users/' + b.dataset.pw + '/password', { password: pwd });
+          toast('Пароль изменён');
+        } catch (e) { alert(e.message); }
+      });
+
+      const all = await api('/api/admin/devices?status=all');
+      $('#adm-devices').innerHTML = (all.devices || []).map(d => `
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)">
+          <div style="flex:1">${d.login}
+            <div style="font-size:12px;color:var(--muted)">${d.serial || ''} · ${d.owner || ''}</div></div>
+          <div style="font-size:12px;color:${d.online ? 'var(--accent)' : 'var(--muted)'}">${d.online ? 'на связи' : 'офлайн'}</div>
+        </div>`).join('');
+    } catch (e) {
+      $('#adm-pending').innerHTML = '<div style="font-size:12px;color:var(--muted)">' + e.message + '</div>';
+    }
+  }
+
   /* ---------- запуск ---------- */
   function init() {
     cleanMore();
     addScreen();
     addTab();
     addSettingsScreen();
+    addAdminScreen();
     interceptMore();
     bindCards();
-    const obs = new MutationObserver(() => { cleanMore(); interceptMore(); bindCards(); });
+    loadRole().then(() => addMoreRows());
+    const obs = new MutationObserver(() => {
+      cleanMore(); interceptMore(); bindCards(); addMoreRows();
+    });
     obs.observe(document.body, { childList: true, subtree: true });
   }
 
