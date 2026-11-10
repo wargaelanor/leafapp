@@ -161,7 +161,7 @@
     // периоды
     const periods = [[0, 'Всё время'], [30, '30 дней'], [7, '7 дней']];
     $('#st-period').innerHTML = periods.map(([v, t]) =>
-      `<button class="dur-btns" style="padding:6px 10px;border-radius:14px;border:1px solid var(--line);background:${v === statsDays ? 'var(--accent)' : 'var(--surface)'};color:${v === statsDays ? '#fff' : 'var(--text)'}" data-days="${v}">${t}</button>`
+      `<button class="dur-btns" style="flex:0 0 auto;width:auto;padding:6px 10px;border-radius:14px;border:1px solid var(--line);background:${v === statsDays ? 'var(--accent)' : 'var(--surface)'};color:${v === statsDays ? '#fff' : 'var(--text)'}" data-days="${v}">${t}</button>`
     ).join('');
     $$('#st-period button').forEach(b => b.onclick = () => {
       statsDays = Number(b.dataset.days);
