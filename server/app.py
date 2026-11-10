@@ -709,6 +709,7 @@ class Api(BaseHTTPRequestHandler):
         data = self.body()
         ts = int(data.pop("ts", now()))
         acks = data.pop("ack", []) or []
+        nacks = data.pop("nack", []) or []
         link = data.pop("link", None)
         rssi = data.pop("rssi", None)
         bus_age = data.pop("bus_age_s", None)
@@ -730,6 +731,12 @@ class Api(BaseHTTPRequestHandler):
             for aid in acks[:8]:
                 try:
                     c.execute("UPDATE commands SET status='done', acked_at=? WHERE id=? AND device_id=?",
+                              (now(), int(aid), dev["id"]))
+                except (TypeError, ValueError):
+                    pass
+            for aid in nacks[:8]:
+                try:
+                    c.execute("UPDATE commands SET status='failed', acked_at=? WHERE id=? AND device_id=?",
                               (now(), int(aid), dev["id"]))
                 except (TypeError, ValueError):
                     pass

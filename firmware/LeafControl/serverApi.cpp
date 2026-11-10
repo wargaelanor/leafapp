@@ -18,6 +18,8 @@ extern bool isChargingNow;
 extern bool doorFL, doorFR, doorRL, doorRR, doorTrunk;
 extern int8_t lockState;
 extern EvBatteryData evData;
+// Версия прошивки, объявлена в основном скетче.
+extern const char* leafFwVersion;
 
 // ---------------------------------------------------------------- РЅР°СЃС‚СЂРѕР№РєРё
 
@@ -35,6 +37,7 @@ static char cfgPass[20] = {0};
 static char cfgToken[64] = {0};
 static char claimCode[24] = {0};
 static bool cfgEnabled = true;
+static volatile bool configDirty = false;
 
 static ServerCommandHandler cmdHandler = nullptr;
 
@@ -172,8 +175,8 @@ static int request(const char* method, const String& pathAndQuery, const char* b
   Client* cli = nullptr;
   if (tls) {
     secure.setInsecure();
-    secure.setTimeout(8000);
-    secure.setHandshakeTimeout(20);
+    secure.setTimeout(6000);
+    secure.setHandshakeTimeout(8);
     cli = &secure;
   } else {
     plain.setTimeout(8000);
@@ -182,7 +185,7 @@ static int request(const char* method, const String& pathAndQuery, const char* b
 
   unsigned long t0 = millis();
   bool connected = false;
-  for (int attempt = 0; attempt < 2 && !connected; attempt++) {
+  for (int attempt = 0; attempt < 1 && !connected; attempt++) {
     connected = (cli->connect(host.c_str(), port) == 1);
     if (!connected) {
       cli->stop();
@@ -215,7 +218,7 @@ static int request(const char* method, const String& pathAndQuery, const char* b
   cli->flush();
 
   response = "";
-  unsigned long deadline = millis() + 9000;
+  unsigned long deadline = millis() + 6000;
   while (millis() < deadline) {
     while (cli->available()) {
       response += (char)cli->read();
@@ -301,7 +304,7 @@ static void registerDevice() {
   char body[320];
   snprintf(body, sizeof(body),
            "{\"login\":\"%s\",\"password\":\"%s\",\"name\":\"Leaf\",\"serial\":\"%s\",\"fw\":\"%s\"}",
-           cfgLogin, cfgPass, WiFi.macAddress().c_str(), "server-sync");
+           cfgLogin, cfgPass, WiFi.macAddress().c_str(), leafFwVersion);
 
   String resp;
   if (!postJson("/api/device/enroll", body, resp)) {
@@ -340,7 +343,7 @@ static void sendHeartbeat() {
   postJson("/api/device/heartbeat", body, resp);
 }
 
-static bool sendState() {
+static String stateJson() {
   float soc = evData.instrumentSOC >= 0 ? evData.instrumentSOC : currentSOC;
   float packV = evData.packVoltage;
   float packI = evData.packCurrent;
@@ -379,8 +382,13 @@ static bool sendState() {
            evData.soh, 0.0,
            (unsigned long)busAgeSeconds());
 
+  return String(body);
+}
+
+static bool sendState() {
+  String payload = stateJson();
   String resp;
-  bool ok = postJson("/api/device/state", body, resp);
+  bool ok = postJson("/api/device/state", payload.c_str(), resp);
   if (ok) {
     stateCounter++;
     setStatus(registered ? "online" : "online (pending)");
@@ -439,7 +447,89 @@ static void applyConfig(const char* argsJson) {
     return;
   }
   Serial.printf("[srv] config %s = %d\n", key, ival);
-  sendConfig();
+  configDirty = true;
+}
+
+// ---------------------------------------------------------------- мост команд
+// Сетевой поток не трогает CAN и не запускает последовательности: он только
+// кладёт команду в почтовый ящик. Основной цикл забирает её, выполняет и
+// возвращает результат — только после этого команда подтверждается серверу.
+
+struct CmdBox {
+  int id;
+  char name[28];
+  char args[192];
+};
+
+static portMUX_TYPE mboxMux = portMUX_INITIALIZER_UNLOCKED;
+static CmdBox inbox;
+static volatile bool inboxReady = false;
+static volatile bool inflight = false;
+static int inflightId = 0;
+static unsigned long inflightAt = 0;
+static int outAck[6];
+static uint8_t outAckCount = 0;
+static int outNack[6];
+static uint8_t outNackCount = 0;
+
+// Команды, которые обязаны запустить CAN-последовательность. Если после вызова
+// обработчика последовательность не началась, команда считается неудачной.
+static bool commandNeedsSequence(const char* name) {
+  static const char* list[] = {"clim_on", "clim_off", "lock", "unlock",
+                               "lights", "horn", "refresh",
+                               "charge_start", "charge_stop"};
+  for (const char* n : list) {
+    if (!strcmp(name, n)) return true;
+  }
+  return false;
+}
+
+static void mailboxComplete(bool ok) {
+  portENTER_CRITICAL(&mboxMux);
+  if (ok) {
+    if (outAckCount < 6) outAck[outAckCount++] = inflightId;
+  } else {
+    if (outNackCount < 6) outNack[outNackCount++] = inflightId;
+  }
+  portEXIT_CRITICAL(&mboxMux);
+  Serial.printf("[srv] cmd %d -> %s\n", inflightId, ok ? "done" : "failed");
+  inflight = false;
+  inflightId = 0;
+}
+
+// Вызывается из loop(): выполняет команду из ящика и закрывает текущую,
+// когда последовательность закончилась.
+void serverApiCommandPump() {
+  if (inflight) {
+    bool done = (activeSequence == CanSequence::NONE);
+    bool timeout = (millis() - inflightAt) > 30000UL;
+    if (!done && !timeout) return;
+    mailboxComplete(done);
+    return;
+  }
+  if (!inboxReady) return;
+  if (activeSequence != CanSequence::NONE) return;
+
+  CmdBox cmd;
+  portENTER_CRITICAL(&mboxMux);
+  cmd = inbox;
+  inboxReady = false;
+  portEXIT_CRITICAL(&mboxMux);
+
+  inflight = true;
+  inflightId = cmd.id;
+  inflightAt = millis();
+  Serial.printf("[srv] cmd %d: %s %s\n", cmd.id, cmd.name, cmd.args);
+
+  if (!strcmp(cmd.name, "set_config")) {
+    applyConfig(cmd.args);
+    mailboxComplete(true);
+    return;
+  }
+  if (cmdHandler) cmdHandler(cmd.name, cmd.args);
+  if (commandNeedsSequence(cmd.name) && activeSequence == CanSequence::NONE) {
+    mailboxComplete(false);
+  }
 }
 
 // ---------------------------------------------------------------- прошивка
@@ -526,68 +616,86 @@ static bool flashFromUrl(const char* url) {
 }
 
 static bool syncRequest() {
-  float soc = evData.instrumentSOC >= 0 ? evData.instrumentSOC : currentSOC;
-  float packV = evData.packVoltage;
-  float packI = evData.packCurrent;
-  float packKw = (packV > 0 && evData.packDataValid) ? (packV * packI) / 1000.0f : 0.0f;
-  time_t tnow = time(nullptr);
-  uint32_t ts = (tnow > 1600000000) ? (uint32_t)tnow : 0;
+  // Тело = обычное состояние плюс связка, прошивка и подтверждения команд.
+  String payload = stateJson();
+  payload.remove(payload.length() - 1);  // убираем закрывающую скобку
 
-  String ackList = "";
-  for (uint8_t i = 0; i < pendingAckCount; i++) {
-    if (i) ackList += ",";
-    ackList += String(pendingAck[i]);
+  payload += ",\"plug\":";
+  payload += (tripLogIsCharging() || isChargingNow) ? "1" : "0";
+  payload += ",\"link\":\"wifi\",\"rssi\":";
+  payload += String(WiFi.RSSI());
+  payload += ",\"fw\":\"";
+  payload += leafFwVersion;
+  payload += "\"";
+
+  payload += ",\"ack\":[";
+  portENTER_CRITICAL(&mboxMux);
+  for (uint8_t i = 0; i < outAckCount; i++) {
+    if (i) payload += ",";
+    payload += String(outAck[i]);
   }
-
-  char body[520];
-  snprintf(body, sizeof(body),
-           "{\"ts\":%lu,\"soc\":%.1f,\"odo\":%.0f,\"cabin\":%.1f,\"amb\":%.1f,"
-           "\"batt\":%.1f,\"pack_v\":%.1f,\"pack_kw\":%.2f,\"v12\":%.1f,"
-           "\"hvac\":%d,\"charging\":%d,\"locked\":%d,\"doors\":%d,\"soh\":%d,\"spd\":%.1f,"
-           "\"plug\":%d,\"bus_age_s\":%lu,\"link\":\"wifi\",\"rssi\":%d,\"fw\":\"server-sync\",\"ack\":[%s]}",
-           (unsigned long)ts,
-           soc >= 0 ? soc : -1.0,
-           (double)evData.odometerKm,
-           cabinTemp, evData.ambientTemp,
-           evData.batteryTemp, packV, packKw, 0.0,
-           isHvacOn ? 1 : 0, (isChargingNow || tripLogIsCharging()) ? 1 : 0,
-           (lockState == 1) ? 1 : 0,
-           (doorFL || doorFR || doorRL || doorRR || doorTrunk) ? 1 : 0,
-           evData.soh, 0.0,
-           (tripLogIsCharging() || isChargingNow) ? 1 : 0,
-           (unsigned long)busAgeSeconds(), WiFi.RSSI(), ackList.c_str());
+  portEXIT_CRITICAL(&mboxMux);
+  payload += "],\"nack\":[";
+  portENTER_CRITICAL(&mboxMux);
+  for (uint8_t i = 0; i < outNackCount; i++) {
+    if (i) payload += ",";
+    payload += String(outNack[i]);
+  }
+  portEXIT_CRITICAL(&mboxMux);
+  payload += "]}";
 
   String resp;
-  if (!postJson("/api/device/sync", body, resp)) return false;
+  if (!postJson("/api/device/sync", payload.c_str(), resp)) return false;
 
-  pendingAckCount = 0;  // сервер получил подтверждения
+  portENTER_CRITICAL(&mboxMux);
+  outAckCount = 0;
+  outNackCount = 0;
+  portEXIT_CRITICAL(&mboxMux);
 
-  if (resp.indexOf("\"cmd\":null") >= 0 || resp.indexOf("\"cmd\": null") >= 0) {
-    // команд нет
-  } else {
+  // Разбор очереди: {"ok":true,"cmd":{"id":7,"name":"lock","args":{}},...}
+  if (resp.indexOf("\"cmd\":null") < 0 && resp.indexOf("\"cmd\": null") < 0) {
+    int idPos = resp.indexOf("\"id\":");
+    long id = idPos >= 0 ? resp.substring(idPos + 5).toInt() : 0;
     char name[28];
-    if (jsonString(resp, "\"name\"", name, sizeof(name))) {
-      int idPos = resp.indexOf("\"id\":");
-      long id = idPos >= 0 ? resp.substring(idPos + 5).toInt() : 0;
-      String args = "{}";
-      int aPos = resp.indexOf("\"args\"");
-      if (aPos >= 0) {
-        int brace = resp.indexOf('{', aPos);
-        if (brace >= 0) args = resp.substring(brace, resp.lastIndexOf('}') > brace ? resp.lastIndexOf('}') : resp.length());
+    if (id > 0 && jsonString(resp, "\"name\"", name, sizeof(name))) {
+      CmdBox cmd = {};
+      cmd.id = (int)id;
+      snprintf(cmd.name, sizeof(cmd.name), "%s", name);
+      snprintf(cmd.args, sizeof(cmd.args), "{}");
+
+      // Аргументы — ровно объект после "args", без хвоста ответа.
+      int argsKey = resp.indexOf("\"args\"");
+      if (argsKey >= 0) {
+        int brace = resp.indexOf('{', argsKey);
+        if (brace >= 0) {
+          int depth = 0;
+          for (int i = brace; i < (int)resp.length(); i++) {
+            if (resp[i] == '{') depth++;
+            else if (resp[i] == '}') {
+              depth--;
+              if (depth == 0) {
+                snprintf(cmd.args, sizeof(cmd.args), "%s",
+                         resp.substring(brace, i + 1).c_str());
+                break;
+              }
+            }
+          }
+        }
       }
-      Serial.printf("[srv] cmd: %s %s\n", name, args.c_str());
-      if (!strcmp(name, "fw_update")) {
-        char u[160];
-        if (jsonString(args, "\"url\"", u, sizeof(u))) flashFromUrl(u);
-      }
-      else if (!strcmp(name, "set_config")) applyConfig(args.c_str());
-      else if (cmdHandler) cmdHandler(name, args.c_str());
-      if (id > 0 && pendingAckCount < 8) pendingAck[pendingAckCount++] = (int)id;
+      portENTER_CRITICAL(&mboxMux);
+      inbox = cmd;
+      inboxReady = true;
+      portEXIT_CRITICAL(&mboxMux);
     }
   }
 
   if (resp.indexOf("\"config\":true") >= 0 || resp.indexOf("\"config\": true") >= 0) {
-    sendConfig();
+    configDirty = true;
+  }
+
+  // Сервер узнал о нас: если плата была pending, проверяем статус.
+  if (resp.indexOf("\"online\":false") >= 0) {
+    registerDevice();
   }
   setStatus(registered ? "online" : "online (pending)");
   return true;
@@ -705,27 +813,38 @@ bool serverApiReady() {
   return cfgEnabled && WiFi.status() == WL_CONNECTED && cfgLogin[0] != '\0';
 }
 
-void serverApiTick() {
+// ---------------------------------------------------------------- сетевой поток
+// Вся работа с TLS живёт в отдельной задаче на ядре 0. Основной цикл (веб-сервер,
+// CAN, кнопки) при этом не останавливается: даже 30-секундное рукопожатие на
+// слабом Wi-Fi больше не подвешивает плату.
+
+static void serverNetOnce() {
   if (!cfgEnabled) return;
   if (WiFi.status() != WL_CONNECTED) {
     setStatus("no wifi");
     return;
   }
+  if (getRemoteTransport() != RemoteTransport::SERVER) return;
   unsigned long now = millis();
 
   static uint8_t failCount = 0;
   static unsigned long retryAt = 0;
   if (failCount >= 3 && (long)(now - retryAt) < 0) return;
 
+  static bool registeredOnce = false;
   if (!registered || cfgToken[0] == '\0') {
+    static unsigned long lastDbgMs = 0;
+    if (now - lastDbgMs >= 20000UL) {
+      lastDbgMs = now;
+      Serial.printf("[srv] waiting registration: reg=%d token=%d wifi=%d\n",
+                    registered ? 1 : 0, cfgToken[0] ? 1 : 0, (int)WiFi.status());
+    }
     registerDevice();
     return;
   }
 
-  // Один запрос на цикл: состояние, подтверждения и очередь команд.
-  // На слабом сигнале реже, чтобы не занимать цикл рукопожатиями TLS.
   static unsigned long lastSyncMs = 0;
-  unsigned long interval = (WiFi.RSSI() < -82) ? 10000UL : 5000UL;
+  unsigned long interval = (WiFi.RSSI() < -80) ? 15000UL : 8000UL;
   if (now - lastSyncMs >= interval) {
     lastSyncMs = now;
     bool ok = syncRequest();
@@ -733,15 +852,43 @@ void serverApiTick() {
       failCount = 0;
       if (recCount > 0) sendOneRecord();
     } else if (failCount < 255 && ++failCount >= 3) {
-      retryAt = now + 45000UL;
+      retryAt = now + 30000UL;
     }
   }
 
+  if (configDirty) {
+    configDirty = false;
+    sendConfig();
+  }
+
   static unsigned long lastCfgMs = 0;
-  if (now - lastCfgMs >= 300000UL) {
+  if (now - lastCfgMs >= 600000UL) {
     lastCfgMs = now;
     sendConfig();
   }
 }
+
+static void serverNetLoop(void* arg) {
+  (void)arg;
+  for (;;) {
+    if (WiFi.status() == WL_CONNECTED) {
+      serverNetOnce();
+    }
+    vTaskDelay(pdMS_TO_TICKS(200));
+  }
+}
+
+void serverApiTick() {
+  static bool started = false;
+  if (started) return;
+  if (WiFi.status() != WL_CONNECTED) return;
+  if (xTaskCreatePinnedToCore(serverNetLoop, "leaf-net", 16384, nullptr, 1, nullptr, 0) == pdPASS) {
+    started = true;
+    Serial.println("[srv] сетевой поток запущен");
+  } else {
+    Serial.println("[srv] ERROR: не удалось запустить сетевой поток");
+  }
+}
+
 
 

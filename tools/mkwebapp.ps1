@@ -74,6 +74,17 @@ if (Test-Path $litePath) {
     }
 }
 
+# First-run page: choose the operating mode once. Kept as a separate source
+# file so regenerating this header cannot silently drop it.
+$setupPath = Join-Path $app 'setup.html'
+$setupHtml = ''
+if (Test-Path $setupPath) {
+    $setupHtml = [System.IO.File]::ReadAllText($setupPath, [System.Text.Encoding]::UTF8)
+    $setupHtml = [regex]::Replace($setupHtml, '(?m)^[ \t]+', '')
+    $setupHtml = [regex]::Replace($setupHtml, '(?m)^\r?\n', '')
+    if ($setupHtml -match '\)"setup') { throw 'setup.html contains setup terminator' }
+}
+
 $sb = New-Object System.Text.StringBuilder
 [void]$sb.AppendLine('// GENERATED FILE - do not edit. Run tools/mkwebapp.ps1')
 [void]$sb.AppendLine('#ifndef WEBAPP_HTML_H')
@@ -142,6 +153,12 @@ if ($entries.Count -gt 0) {
     [void]$sb.AppendLine('static const size_t WEBAPP_ASSET_COUNT = 0;')
 }
 [void]$sb.AppendLine()
+if ($setupHtml) {
+    [void]$sb.AppendLine('static const char SETUP_HTML[] PROGMEM = R"setup(')
+    [void]$sb.Append($setupHtml)
+    [void]$sb.AppendLine(')setup";')
+}
+
 [void]$sb.AppendLine('#endif')
 
 [System.IO.File]::WriteAllText($Out, $sb.ToString(), (New-Object System.Text.UTF8Encoding($false)))

@@ -220,6 +220,16 @@ document.addEventListener('visibilitychange', function(){ if(!document.hidden) p
   },{passive:false});
   document.addEventListener('touchend',function(){startY=null;},{passive:true});
 })();
+
+<div style="margin:18px 0 8px;text-align:center">
+<button type="button" id="b-full" style="background:none;border:1px solid rgba(128,128,128,.45);color:inherit;opacity:.75;border-radius:18px;padding:9px 18px;font-size:13px">Полная версия</button>
+</div>
+<script>
+document.getElementById('b-full').addEventListener('click', function(){
+  fetch('/ui', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'mode=full'})
+    .then(function(){ location.href='/'; })
+    .catch(function(){});
+});
 </script>
 </body>
 </html>

@@ -15,6 +15,9 @@
 void serverApiBegin();
 void serverApiTick();
 
+// Вызывается из loop(): выполняет команду с сервера в основном цикле.
+void serverApiCommandPump();
+
 // true, если включена связь с сервером и есть Wi-Fi
 bool serverApiReady();
 

@@ -727,13 +727,6 @@ bool startSequence(CanSequence seq, unsigned long currentTimeMs) {
     return false;
 #else
     if (seq == CanSequence::NONE) return false;
-    if (seq != CanSequence::REFRESH &&
-        seq != CanSequence::HVAC_ON && seq != CanSequence::HVAC_OFF &&
-        seq != CanSequence::CHARGE_ON && seq != CanSequence::UNLOCK_DOORS &&
-        seq != CanSequence::LOCK_DOORS && seq != CanSequence::LIGHTS) {
-        Serial.println("### Command blocked: not enabled in OVMS command build ###");
-        return false;
-    }
     if (activeSequence != CanSequence::NONE) return false; // busy: reject, report to caller
     resetCanLogTimestamps();
     

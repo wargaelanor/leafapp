@@ -1,0 +1,34 @@
+
+<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f2f2f7"><title>LeafControl — настройка</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;
+ background:#f2f2f7;color:#1c1c1e;font:16px/1.42 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+.wrap{width:100%;max-width:440px}
+h1{font-size:24px;font-weight:600;margin:0 0 4px}
+.sub{color:#6b7280;font-size:14px;margin-bottom:20px}
+.opt{display:block;width:100%;text-align:left;background:#fff;border:1px solid #e5e5ea;border-radius:14px;
+ padding:16px;margin-bottom:12px;cursor:pointer;font:inherit}
+.opt b{display:block;font-size:16px;margin-bottom:4px}
+.opt span{font-size:13px;color:#6b7280}
+.opt:active{border-color:#40a0da}
+.note{font-size:12px;color:#6b7280;margin-top:14px}
+</style></head><body><div class="wrap">
+<h1>LeafControl</h1>
+<div class="sub">Плата установлена. Выберите, как она будет работать.</div>
+<form method="POST" action="/setup_choose">
+  <button class="opt" type="submit" name="mode" value="1">
+    <b>Сервер — удалённое управление</b>
+    <span>Плата подключается к серверу: заряд, климат, история поездок с телефона из любой точки.
+    Интерфейс платы лёгкий, ресурсы не тратятся.</span>
+  </button>
+  <button class="opt" type="submit" name="mode" value="0">
+    <b>Локально — без интернета</b>
+    <span>Полный веб-интерфейс на самой плате по Wi-Fi. Модем только принимает звонки.
+    Данные никуда не уходят.</span>
+  </button>
+</form>
+<div class="note">Выбор можно поменять позже: Настройки → Удалённое подключение.</div>
+</div></body></html>

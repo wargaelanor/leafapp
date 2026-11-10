@@ -24,12 +24,15 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.09.138-TCALL"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.09.140-TCALL"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: two MCP2515 CAN buses + SIM800"
 #else
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.09.138-CMD"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.09.140-CMD"
 #define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: stable scroll, Wi-Fi scan"
 #endif
+
+// Доступ к версии из других модулей (serverApi.cpp).
+const char* leafFwVersion = LEAF_FIRMWARE_VERSION;
 
 WebServer server(80);
 DNSServer dnsServer;
@@ -487,7 +490,6 @@ void handleSetupChoose() {
   int mode = server.arg("mode").toInt();
   RemoteTransport transport = (mode == 1) ? RemoteTransport::SERVER : RemoteTransport::LOCAL;
   setRemoteTransport(transport);
-  setUiLite(transport == RemoteTransport::SERVER);
   setSetupDone(true);
   server.sendHeader("Location", "/", true);
   server.send(303, "text/plain", "");
@@ -511,10 +513,9 @@ void handleSetupInfo() {
 
 void handleRootEntry() {
   if (!setupDone()) { handleSetup(); return; }
-  // Интерфейс однозначно определяется режимом:
-  //   LOCAL  — полный локальный web;
-  //   SERVER — лёгкая страница, чтобы не тратить ресурсы платы.
-  if (getRemoteTransport() == RemoteTransport::SERVER) handleLite();
+  // Вид страницы выбирает пользователь и он запоминается в NVS; режим связи
+  // на это больше не влияет.
+  if (getUiLite()) handleLite();
   else handleRoot();
 }
 
@@ -1212,7 +1213,6 @@ void handleSettingsSave() {
   int remoteMode = server.arg("remote_mode").toInt();
   if (remoteMode >= 0 && remoteMode <= 1) {
     setRemoteTransport(static_cast<RemoteTransport>(remoteMode));
-    setUiLite(remoteMode == static_cast<int>(RemoteTransport::SERVER));
   }
 
 
@@ -2224,7 +2224,6 @@ void setup() {
                 BOARD_NAME, (unsigned)ESP.getPsramSize(), (unsigned)ESP.getFlashChipSize());
   WiFi.onEvent(wifiEvent);
   initConfiguration();
-  setUiLite(getRemoteTransport() == RemoteTransport::SERVER);
   clockRestore();
   modemInit();
 
@@ -2538,8 +2537,11 @@ void loop() {
   // Связь с собственным сервером: состояние, очередь команд, история.
   if (!otaInProgress && WiFi.status() == WL_CONNECTED &&
       getRemoteTransport() == RemoteTransport::SERVER) {
-    serverApiTick();
+    serverApiTick();          // один раз поднимает сетевой поток
   }
+  // Команды с сервера исполняются здесь, в основном цикле: CAN, веб-сервер и
+  // кнопки никогда не ждут TLS-рукопожатия.
+  serverApiCommandPump();
   processSerialInput();
   managePendingPublishes();
   manageChargeLimit();
