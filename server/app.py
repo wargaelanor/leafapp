@@ -464,7 +464,10 @@ class Api(BaseHTTPRequestHandler):
 
             if path == "/api/health":
                 return self.json(200, {"ok": True, "ts": now(), "rev": APP_REV,
-                                       "app": APP_VERSION})
+                                       "app": APP_VERSION,
+                                       "host": (self.headers.get("Host") or "")[:64],
+                                       "proto": (self.headers.get("X-Forwarded-Proto") or "")[:16],
+                                       "fwd_host": (self.headers.get("X-Forwarded-Host") or "")[:64]})
             if path.startswith("/api/"):
                 return self.api(method, path, q)
             if method == "POST" and path in PWA_COMMANDS:
