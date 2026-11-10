@@ -17,7 +17,7 @@ enum class ModemState : uint8_t {
 
 void modemInit();
 void modemTick();
-bool modemMqttReady();
+bool modemDataReady();
 Client* modemTcpClient();
 void modemPowerOffNow();
 bool modemGpsFix(float* lat, float* lon, float* alt, float* speed, uint32_t* ageMs);

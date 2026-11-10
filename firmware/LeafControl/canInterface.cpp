@@ -158,7 +158,7 @@ static bool txAllowed(uint32_t id, const uint8_t* data, uint8_t len, bool bypass
 static bool sendCANInternal(uint32_t id, const uint8_t* data, uint8_t len, bool bypassWhitelist) {
 #if LEAF_CAN_RX_ONLY
   // Software interlock in addition to TWAI_MODE_LISTEN_ONLY. This blocks web,
-  // MQTT, modem/call, timer refresh, VIN/ISO-TP and sequence TX paths.
+  // modem/call, timer refresh, VIN/ISO-TP and sequence TX paths.
   (void)id;
   (void)data;
   (void)len;

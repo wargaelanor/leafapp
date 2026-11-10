@@ -193,7 +193,7 @@ static void attachTask(void*) {
 
   if (!needData) {
     setState(ModemState::STANDBY);
-    Serial.println("[modem] GSM standby for incoming calls; MQTT uses WiFi");
+    Serial.println("[modem] GSM standby for incoming calls; data over Wi-Fi");
     taskBusy = false;
     vTaskDelete(NULL);
     return;
@@ -375,12 +375,12 @@ void modemTick() {
 
 }
 
-bool modemMqttReady() {
+bool modemDataReady() {
   return getModemEnable() && (ModemState)stateVal == ModemState::READY;
 }
 
 Client* modemTcpClient() {
-  if (!modemMqttReady()) return nullptr;
+  if (!modemDataReady()) return nullptr;
   return modem800::hwTcpClient();
 }
 

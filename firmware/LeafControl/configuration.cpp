@@ -271,7 +271,7 @@ ConfigStatus setHostName(const char* value) {
 
 RemoteTransport getRemoteTransport() {
     int value = conf_remote_transport.get();
-    // Совместимость с прежними значениями: 1 = MQTT, 2 = OVMS Server V2,
+    // Совместимость со старыми значениями: 1 и 2 означают SERVER.
     // 3 = только звонки. Оба сетевых режима теперь один — SERVER.
     if (value == 1 || value == 2) return RemoteTransport::SERVER;
     return RemoteTransport::LOCAL;

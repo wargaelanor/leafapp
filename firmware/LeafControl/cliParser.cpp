@@ -68,6 +68,7 @@ void executeCommand(char* cmd) {
             else if (strcmp(key, "ap_ssid") == 0) Serial.println(getApSSID());
             else if (strcmp(key, "ap_password") == 0) Serial.println("****");
             else if (strcmp(key, "hostName") == 0) Serial.println(getHostName());
+        else if (strcmp(key, "remote_mode") == 0) Serial.println((int)getRemoteTransport());
             else if (strcmp(key, "locking_enabled") == 0) Serial.println(getLockingEnabled() ? "true" : "false");
             else if (strcmp(key, "sleep_enable") == 0) Serial.println(getSleepEnabled() ? "true" : "false");
             else if (strcmp(key, "uds_enable") == 0) Serial.println(getUdsEnabled() ? "true" : "false");
@@ -92,7 +93,12 @@ void executeCommand(char* cmd) {
 
             ConfigStatus status = ConfigStatus::ERROR_UNKNOWN;
 
-            if (strcmp(key, "ssid") == 0) status = setWifiSSID(val);
+            if (strcmp(key, "remote_mode") == 0) {
+              int m = atoi(val);
+              status = setRemoteTransport(m == 1 ? RemoteTransport::SERVER : RemoteTransport::LOCAL);
+              setUiLite(m == 1);
+            }
+            else if (strcmp(key, "ssid") == 0) status = setWifiSSID(val);
             else if (strcmp(key, "password") == 0) status = setWifiPassword(val);
             else if (strcmp(key, "ssid2") == 0) status = setWifiSSID2(val);
             else if (strcmp(key, "password2") == 0) status = setWifiPassword2(val);
