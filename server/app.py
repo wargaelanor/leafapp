@@ -356,6 +356,11 @@ class Api(BaseHTTPRequestHandler):
         оставляет заголовки X-Forwarded-*. Прямой доступ по LAN (без прокси)
         остаётся без Secure, иначе браузер не сохранит cookie на http.
         """
+        forced = os.environ.get("LEAF_COOKIE_SECURE", "").strip().lower()
+        if forced in ("1", "true", "yes"):
+            return True
+        if forced in ("0", "false", "no"):
+            return False
         proto = (self.headers.get("X-Forwarded-Proto") or "").lower().strip()
         if proto:
             return proto == "https"
