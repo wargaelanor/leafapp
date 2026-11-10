@@ -34,12 +34,12 @@ ONLINE_WINDOW_S = 45
 SERVER_BASE = os.environ.get("LEAF_SERVER_BASE", "https://leaf.wargaelanor.keenetic.link")
 
 # Ссылка на Android-приложение (release-ассет проекта).
-APP_VERSION = os.environ.get("LEAF_APP_VERSION", "1.36")
-APP_NOTES = os.environ.get("LEAF_APP_NOTES", "Режим «Сервер» в приложении: данные и команды через ваш сервер")
+APP_VERSION = os.environ.get("LEAF_APP_VERSION", "1.37")
+APP_NOTES = os.environ.get("LEAF_APP_NOTES", "Первый запуск спрашивает адрес сервера и логин; режим «Сервер» включается сразу")
 
 APK_URL = os.environ.get(
     "LEAF_APK_URL",
-    "https://github.com/wargaelanor/leafapp/releases/download/android-v1.36/LeafControl-1.36-debug.apk",
+    "https://github.com/wargaelanor/leafapp/releases/download/android-v1.37/LeafControl-1.37-debug.apk",
 )
 
 # Команды, которые шлёт PWA (те же пути, что у платы).

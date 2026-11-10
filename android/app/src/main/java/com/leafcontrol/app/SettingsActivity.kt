@@ -135,7 +135,7 @@ class SettingsActivity : ComponentActivity() {
 
             Group("Связь") {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("auto" to "Авто", "server" to "Сервер", "local" to "Локально", "mqtt" to "MQTT").forEach { (value, label) ->
+                    listOf("server" to "Сервер", "auto" to "Авто", "local" to "Локально", "mqtt" to "MQTT").forEach { (value, label) ->
                         FilterChip(
                             selected = mode == value,
                             onClick = {
@@ -191,6 +191,7 @@ class SettingsActivity : ComponentActivity() {
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("Проверить сервер") }
+                if (mode == "mqtt") {
                 OutlinedTextField(
                     value = mqttHost,
                     onValueChange = { mqttHost = it },
@@ -229,6 +230,7 @@ class SettingsActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                 )
+                }
                 OutlinedButton(
                     onClick = {
                         Settings.mode = mode

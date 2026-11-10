@@ -17,6 +17,26 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -33,6 +53,7 @@ import kotlin.concurrent.thread
  */
 class MainActivity : ComponentActivity() {
     private var updateDialog: AlertDialog? = null
+    private var showLogin by mutableStateOf(false)
     private val checking = AtomicBoolean(false)
 
     private val notificationPermission =
@@ -57,9 +78,16 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        // Первый запуск без настроенного сервера: сразу спрашиваем адрес,
+        // логин и пароль, иначе приложение выглядит пустым и непонятным.
+        showLogin = Settings.serverUser.isBlank()
+
         setContent {
             LeafTheme {
                 Surface(Modifier.fillMaxSize()) { MainScreen() }
+                if (showLogin) {
+                    ServerLoginDialog(onDone = { showLogin = false })
+                }
             }
         }
 
@@ -210,4 +238,84 @@ class MainActivity : ComponentActivity() {
         updateDialog?.dismiss()
         super.onDestroy()
     }
+}
+
+@Composable
+private fun ServerLoginDialog(onDone: () -> Unit) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var url by remember { mutableStateOf(Settings.serverUrl) }
+    var user by remember { mutableStateOf(Settings.serverUser) }
+    var pass by remember { mutableStateOf(Settings.serverPass) }
+    var status by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = { },
+        title = { Text("Вход на сервер") },
+        text = {
+            Column {
+                Text(
+                    "Приложение работает через ваш сервер LeafControl — тот же адрес, что и у веб-панели.",
+                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = url,
+                    onValueChange = { url = it },
+                    label = { Text("Адрес сервера") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = user,
+                    onValueChange = { user = it },
+                    label = { Text("Логин") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = pass,
+                    onValueChange = { pass = it },
+                    label = { Text("Пароль") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (status.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(status, style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !busy,
+                onClick = {
+                    busy = true
+                    status = "проверяем…"
+                    Settings.serverUrl = url
+                    Settings.serverUser = user
+                    Settings.serverPass = pass
+                    scope.launch {
+                        val result = com.leafcontrol.app.net.ServerApi.probe(ctx)
+                        val ok = result.startsWith("вход выполнен")
+                        status = result
+                        busy = false
+                        if (ok) {
+                            Settings.mode = "server"
+                            Settings.serverCookieTs = System.currentTimeMillis()
+                            Settings.monitorEnabled = true
+                            LeafMonitorService.reload(ctx)
+                            onDone()
+                        }
+                    }
+                }
+            ) { Text(if (busy) "Проверяем…" else "Войти") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDone) { Text("Позже") }
+        }
+    )
 }
