@@ -458,7 +458,57 @@ void handleApiTime() {
   server.send(200, "application/json", "{\"ok\":true}");
 }
 
+
+// ---- Первый запуск: выбор режима ------------------------------------------
+// Флаг хранится в NVS. Пока он не выставлен, корневая страница показывает
+// экран выбора между локальной работой и сервером.
+static Preferences setupPrefs;
+
+static bool setupDone() {
+  if (!setupPrefs.begin("leafsetup", true)) return true;  // нет NVS — не мешаем
+  bool done = setupPrefs.getBool("done", false);
+  setupPrefs.end();
+  return done;
+}
+
+static void setSetupDone(bool value) {
+  if (setupPrefs.begin("leafsetup", false)) {
+    setupPrefs.putBool("done", value);
+    setupPrefs.end();
+  }
+}
+
+void handleSetup() {
+  server.sendHeader("Cache-Control", "no-store");
+  server.send_P(200, "text/html; charset=utf-8", SETUP_HTML);
+}
+
+void handleSetupChoose() {
+  int mode = server.arg("mode").toInt();
+  RemoteTransport transport = (mode == 1) ? RemoteTransport::SERVER : RemoteTransport::LOCAL;
+  setRemoteTransport(transport);
+  setUiLite(transport == RemoteTransport::SERVER);
+  setSetupDone(true);
+  server.sendHeader("Location", "/", true);
+  server.send(303, "text/plain", "");
+}
+
+void handleSetupInfo() {
+  String out = "{\"login\":\"";
+  out += serverApiLogin();
+  out += "\",\"password\":\"";
+  out += serverApiPassword();
+  out += "\",\"server\":\"";
+  out += serverApiBase();
+  out += "\",\"apk\":\"";
+  out += serverApiBase();
+  out += "/app.apk\"}";
+  server.sendHeader("Cache-Control", "no-store");
+  server.send(200, "application/json", out);
+}
+
 void handleRootEntry() {
+  if (!setupDone()) { handleSetup(); return; }
   // Интерфейс однозначно определяется режимом:
   //   LOCAL  — полный локальный web;
   //   SERVER — лёгкая страница, чтобы не тратить ресурсы платы.
@@ -2336,7 +2386,9 @@ for (size_t i = 0; i < WEBAPP_ASSET_COUNT; i++) {
       server.on("/api/developer/canlog/download", HTTP_GET, handleCanLogDownload);
       server.on("/ota", handleOtaPage);
       server.on("/ota_update", HTTP_POST, handleOtaResult, handleOtaUpload);
-      server.on("/settings", handleSettings);
+      server.on("/setup_choose", HTTP_POST, handleSetupChoose);
+  server.on("/api/setup_info", HTTP_GET, handleSetupInfo);
+  server.on("/settings", handleSettings);
       server.on("/settings_save", HTTP_POST, handleSettingsSave);
       server.on("/api/wifi_profiles", HTTP_POST, handleWifiProfilesSave);
       // Commands are POST-only so a malicious page cannot trigger them via

@@ -29,6 +29,12 @@ POLL_S = int(os.environ.get("LEAF_POLL_S", "10"))
 SESSION_DAYS = 30
 ONLINE_WINDOW_S = 45
 
+# Ссылка на Android-приложение (release-ассет проекта).
+APK_URL = os.environ.get(
+    "LEAF_APK_URL",
+    "https://github.com/wargaelanor/leafapp/releases/download/android-v1.35/LeafControl-1.35-debug.apk",
+)
+
 # Команды, которые шлёт PWA (те же пути, что у платы).
 PWA_COMMANDS = {
     "/hvac_on": "clim_on",
@@ -361,6 +367,8 @@ class Api(BaseHTTPRequestHandler):
                 return self.serve_static("admin.html")
             if path == "/settings":
                 return self._send(302, b"", "text/plain", {"Location": "/"})
+            if path == "/app.apk":
+                return self._send(302, b"", "text/plain", {"Location": APK_URL})
             if path == "/ui":
                 return self.json(200, {"ok": True})
             if path.startswith("/static/"):

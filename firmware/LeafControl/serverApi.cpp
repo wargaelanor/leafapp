@@ -524,6 +524,7 @@ void serverApiSetCommandHandler(ServerCommandHandler handler) { cmdHandler = han
 const char* serverApiLogin() { return cfgLogin; }
 const char* serverApiPassword() { return cfgPass; }
 const char* serverApiStatusText() { return statusText; }
+const char* serverApiBase() { return cfgBase; }
 
 bool serverApiReady() {
   return cfgEnabled && WiFi.status() == WL_CONNECTED && cfgLogin[0] != '\0';
