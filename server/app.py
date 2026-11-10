@@ -34,6 +34,9 @@ ONLINE_WINDOW_S = 45
 SERVER_BASE = os.environ.get("LEAF_SERVER_BASE", "https://leaf.wargaelanor.keenetic.link")
 
 # Ссылка на Android-приложение (release-ассет проекта).
+APP_VERSION = os.environ.get("LEAF_APP_VERSION", "1.36")
+APP_NOTES = os.environ.get("LEAF_APP_NOTES", "Режим «Сервер» в приложении: данные и команды через ваш сервер")
+
 APK_URL = os.environ.get(
     "LEAF_APK_URL",
     "https://github.com/wargaelanor/leafapp/releases/download/android-v1.35/LeafControl-1.35-debug.apk",
@@ -408,6 +411,15 @@ class Api(BaseHTTPRequestHandler):
                 return self.json(200, {"ok": True})
             if path.startswith("/static/"):
                 return self.serve_static(path[len("/static/"):])
+            if path == "/api/app/latest" and method == "GET":
+                local_apk = os.path.join(WEB_DIR, "app.apk")
+                url = SERVER_BASE + "/app.apk" if os.path.isfile(local_apk) else APK_URL
+                return self.json(200, {
+                    "version": APP_VERSION,
+                    "url": url,
+                    "notes": APP_NOTES,
+                })
+
             if path == "/api/health":
                 return self.json(200, {"ok": True, "ts": now()})
             if path.startswith("/api/"):
@@ -877,7 +889,10 @@ class Api(BaseHTTPRequestHandler):
         st = json.loads(d["state_json"]) if d["state_json"] else {}
         soc = st.get("soc", -1)
         charging = bool(st.get("charging"))
+        online_now = (now() - (d["last_seen"] or 0)) < ONLINE_WINDOW_S
         payload = {
+            "online": online_now,
+            "age": int(now() - (d["state_ts"] or d["last_seen"] or now())),
             "fw": d["fw"] or "",
             "fw_desc": "",
             "soc": soc,
