@@ -466,6 +466,7 @@ static CmdBox inbox;
 static volatile bool inboxReady = false;
 static volatile bool inflight = false;
 static int inflightId = 0;
+static char inflightName[28] = {0};
 static unsigned long inflightAt = 0;
 static int outAck[6];
 static uint8_t outAckCount = 0;
@@ -504,7 +505,11 @@ void serverApiCommandPump() {
     bool done = (activeSequence == CanSequence::NONE);
     bool timeout = (millis() - inflightAt) > 30000UL;
     if (!done && !timeout) return;
-    mailboxComplete(done && !lastSequenceFailed);
+    bool ok = done && !lastSequenceFailed;
+    // Замок и двери проверяем по факту: машина должна сообщить новое состояние.
+    if (ok && !strcmp(inflightName, "lock")) ok = (lockState == 1);
+    if (ok && !strcmp(inflightName, "unlock")) ok = (lockState == 0);
+    mailboxComplete(ok);
     return;
   }
   if (!inboxReady) return;
@@ -518,6 +523,7 @@ void serverApiCommandPump() {
 
   inflight = true;
   inflightId = cmd.id;
+  snprintf(inflightName, sizeof(inflightName), "%s", cmd.name);
   inflightAt = millis();
   Serial.printf("[srv] cmd %d: %s %s\n", cmd.id, cmd.name, cmd.args);
 
@@ -684,6 +690,19 @@ static bool syncRequest() {
           }
         }
       }
+      // Прошивка живёт в сетевом потоке: она качает файл и перезагружает плату.
+      if (!strcmp(cmd.name, "fw_update")) {
+        char url[160];
+        if (jsonString(cmd.args, "\"url\"", url, sizeof(url))) {
+          Serial.printf("[srv] ota: %s\n", url);
+          flashFromUrl(url);
+        }
+        portENTER_CRITICAL(&mboxMux);
+        if (outNackCount < 6) outNack[outNackCount++] = cmd.id;
+        portEXIT_CRITICAL(&mboxMux);
+        return true;
+      }
+
       portENTER_CRITICAL(&mboxMux);
       inbox = cmd;
       inboxReady = true;
