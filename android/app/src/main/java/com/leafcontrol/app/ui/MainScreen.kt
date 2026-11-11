@@ -1318,11 +1318,22 @@ private fun TripCard(t: Trip) {
                 Spacer(Modifier.weight(1f))
                 Text(LeafRepo.fmtDuration(t.endMs - t.startMs), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 HistoryValue("${fmt(t.distKm, 1)}", "км")
                 HistoryValue("${fmt(t.energyWh / 1000.0, 2)}", "кВт·ч")
                 if (per100 != null) HistoryValue(fmt(per100, 1), "кВт·ч/100")
-                HistoryValue(if (LeafRepo.cost(t) > 0.5) "${LeafRepo.cost(t).toInt()} ₽" else "—", "стоимость")
+                val kmPerKwh = if (t.energyWh > 1.0) t.distKm / (t.energyWh / 1000.0) else null
+                if (kmPerKwh != null) HistoryValue(fmt(kmPerKwh, 1), "км/кВт·ч")
+                Spacer(Modifier.weight(1f))
+                // Стоимость — справа, чтобы не путалась с расходом.
+                HistoryValue(
+                    if (LeafRepo.cost(t) > 0.5) "${LeafRepo.cost(t).toInt()} ₽" else "—",
+                    "стоимость",
+                )
             }
             if (t.startSoc != null && t.endSoc != null) {
                 Text("Заряд ${t.startSoc}→${t.endSoc}%", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1344,9 +1355,21 @@ private fun ChargeCard(c: Charge) {
                 Spacer(Modifier.weight(1f))
                 Text(LeafRepo.fmtDuration(c.endMs - c.startMs), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 HistoryValue(fmt(c.energyWh / 1000.0, 2), "кВт·ч")
-                HistoryValue(if (LeafRepo.cost(c) > 0.5) "${LeafRepo.cost(c).toInt()} ₽" else "—", "стоимость")
+                if (c.startMs > 0 && c.endMs > c.startMs) {
+                    val hours = (c.endMs - c.startMs) / 3_600_000.0
+                    if (hours > 0.05) HistoryValue(fmt(c.energyWh / 1000.0 / hours, 1), "кВт")
+                }
+                Spacer(Modifier.weight(1f))
+                HistoryValue(
+                    if (LeafRepo.cost(c) > 0.5) "${LeafRepo.cost(c).toInt()} ₽" else "—",
+                    "стоимость",
+                )
             }
             if (c.startSoc != null && c.endSoc != null) {
                 Text("Заряд ${c.startSoc}→${c.endSoc}%", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
