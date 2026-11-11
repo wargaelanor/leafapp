@@ -77,7 +77,7 @@ static void noteCanActivity() {
 }
 
 // РѕС‡РµСЂРµРґСЊ Р·Р°РїРёСЃРµР№ РїРѕРµР·РґРѕРє/Р·Р°СЂСЏРґРѕРє
-static const int REC_QUEUE = 8;
+static const int REC_QUEUE = 16;
 static char recQueue[REC_QUEUE][220];
 static char recKind[REC_QUEUE][8];
 static int recHead = 0, recTail = 0, recCount = 0;
@@ -824,6 +824,7 @@ static bool sendOneRecord() {
   String resp;
   if (postJson("/api/device/session", body, resp)) {
     Serial.printf("[srv] Р·Р°РїРёСЃСЊ %s РѕС‚РїСЂР°РІР»РµРЅР°\n", kind);
+    tripLogNoteRecordSent((uint32_t)e);
     return true;
   }
   // РІРµСЂРЅСѓС‚СЊ РІ РѕС‡РµСЂРµРґСЊ РїСЂРё РЅРµСѓРґР°С‡Рµ

@@ -51,6 +51,10 @@ static size_t tripsCount = 0;
 static size_t chargesCount = 0;
 static size_t climateCount = 0;
 
+// До какого времени записи уже ушли на сервер. Нужен, чтобы после
+// перезагрузки/сна дослать то, что не успело отправиться.
+static uint32_t lastSentEpoch = 0;
+
 // --- trip state ----------------------------------------------------------
 static bool tripActive = false;
 static uint32_t tripStartEpoch = 0;
@@ -81,6 +85,8 @@ static unsigned long chgStartMs = 0;
 static float chgSocStart = -1;
 static float chgSocEnd = -1;
 static float chgKwh = 0, chgKwhDay = 0, chgKwhNight = 0;
+
+static void resendUnsent();  // досылка записей после перезагрузки
 
 static uint32_t epochNow() {
   time_t t = time(nullptr);
@@ -192,6 +198,10 @@ void tripLogInit() {
   // the T-2CAN FAT partition must never be formatted here because canLogger
   // shares it.
   Preferences prefs;
+  if (prefs.begin("leafrec", false)) {
+    lastSentEpoch = prefs.getULong("sent", 0);
+    prefs.end();
+  }
   if (prefs.begin("leaftariff", false)) {
     nightFrom = prefs.getUChar("from", 0);
     nightTo = prefs.getUChar("to", 7);
@@ -215,6 +225,7 @@ void tripLogInit() {
   climateCount = fileLines(CLIMATE_PATH);
   Serial.printf("[log] history on board: %u trips, %u charges\n",
                 (unsigned)tripsCount, (unsigned)chargesCount);
+  resendUnsent();
 }
 
 static void finishTrip(const char* reason) {
@@ -285,6 +296,42 @@ static void finishClimate(const char* reason) {
   appendRecord(CLIMATE_PATH, CLIMATE_LIMIT, line);
   serverApiOnRecord("climate", line);
   Serial.printf("[log] climate %.2f kWh, %lu min\n", climWh / 1000.0, (unsigned long)(durMs / 60000UL));
+}
+
+void tripLogNoteRecordSent(uint32_t endEpoch) {
+  if (endEpoch == 0 || endEpoch <= lastSentEpoch) return;
+  lastSentEpoch = endEpoch;
+  Preferences prefs;
+  if (prefs.begin("leafrec", false)) {
+    prefs.putULong("sent", lastSentEpoch);
+    prefs.end();
+  }
+}
+
+// После старта досылаем записи, которые не успели уйти (были офлайн или спали).
+static void resendUnsent() {
+  if (lastSentEpoch == 0) return;  // первый запуск: не спамим историей
+  const char* paths[3] = {TRIPS_PATH, CHARGES_PATH, CLIMATE_PATH};
+  const char* kinds[3] = {"trip", "charge", "climate"};
+  int queued = 0;
+  for (uint8_t k = 0; k < 3 && queued < 16; k++) {
+    File f = HISTFS.open(paths[k], FILE_READ);
+    if (!f) continue;
+    while (f.available() && queued < 16) {
+      String line = f.readStringUntil('\n');
+      line.trim();
+      if (line.length() < 8) continue;
+      int p = line.indexOf("\"e\":");
+      if (p < 0) continue;
+      uint32_t e = (uint32_t)line.substring(p + 4).toInt();
+      if (e > lastSentEpoch) {
+        serverApiOnRecord(kinds[k], line.c_str());
+        queued++;
+      }
+    }
+    f.close();
+  }
+  if (queued) Serial.printf("[log] re-queued %d unsent records\n", queued);
 }
 
 void tripLogTick() {

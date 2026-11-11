@@ -11,6 +11,9 @@ void tripLogTick();
 bool tripLogIsDriving();     // true while a trip is being recorded
 bool tripLogIsCharging();    // true while a charge session is being recorded
 
+// Отметка: запись с таким временем окончания уже ушла на сервер.
+void tripLogNoteRecordSent(uint32_t endEpoch);
+
 void tripLogSendTrips();     // stream the newest records as a JSON array
 void tripLogSendCharges();
 void tripLogClearTrips();

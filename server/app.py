@@ -903,6 +903,14 @@ class Api(BaseHTTPRequestHandler):
         if kind not in ("trip", "charge", "climate"):
             return self.err(400, "kind must be trip|charge|climate")
         with db_lock, connect() as c:
+            # Повторная отправка после офлайна: та же запись не должна
+            # задваиваться в истории.
+            dup = c.execute(
+                "SELECT id FROM dev_sessions WHERE device_id=? AND kind=? AND started_at=? LIMIT 1",
+                (dev["id"], kind, d.get("started_at")),
+            ).fetchone()
+            if dup:
+                return self.json(200, {"ok": True, "session_id": dup["id"], "duplicate": True})
             cur = c.execute(
                 "INSERT INTO dev_sessions(device_id,kind,started_at,ended_at,duration_s,distance_km,"
                 "energy_kwh,soc_start,soc_end,meta) VALUES(?,?,?,?,?,?,?,?,?,?)",
