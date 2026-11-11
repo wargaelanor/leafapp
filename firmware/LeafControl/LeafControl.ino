@@ -24,10 +24,10 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.09.146-TCALL"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.10.147-TCALL"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: two MCP2515 CAN buses + SIM800"
 #else
-#define LEAF_FIRMWARE_VERSION "FW-2026.11.09.146-CMD"
+#define LEAF_FIRMWARE_VERSION "FW-2026.11.10.147-CMD"
 #define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: stable scroll, Wi-Fi scan"
 #endif
 
@@ -263,16 +263,19 @@ static void manageChargeLimit() {
     return;
   }
 
-  // Live SOC sources: BMS via the CAR-CAN gateway preferred; during a charge
-  // the gateway can sleep, so fall back to the EV-CAN dashboard value (0x59E).
-  float soc = currentSOC;
-  if (soc < 0.0f && evData.instrumentSOC >= 0.0f) soc = evData.instrumentSOC;
+  // Лимит задаётся по приборке: водитель видит именно её процент, а BMS
+  // показывает меньше (на этой машине разница до ~9 п.п.). Поэтому берём
+  // значение приборки (EV-CAN 0x59E), а BMS — только как запасной вариант.
+  float dashSoc = evData.instrumentSOC;
+  float bmsSoc = currentSOC;
+  float soc = dashSoc;
+  if (soc < 0.0f) soc = bmsSoc;
   if (soc < 0.0f) return;
   if (soc >= (float)limit) {
     chargeLimitFired = true;
     chargeLimitRetryAtMs = millis();
-    Serial.printf("### Charge limit %d%% reached (SOC %.1f) - stopping charge ###\n",
-                  limit, soc);
+    Serial.printf("### Charge limit %d%% reached (dashboard %.1f, BMS %.1f) - stopping charge ###\n",
+                  limit, dashSoc, bmsSoc);
     evCanArmChargeStop();
   }
 }

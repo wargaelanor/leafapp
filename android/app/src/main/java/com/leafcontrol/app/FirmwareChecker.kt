@@ -14,12 +14,10 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Looks up the firmware binaries published in the GitHub releases of the same
- * repository the app updates from, and saves the one matching the board.
+ * Looks up the firmware binaries on the owner's LeafControl server
+ * (/api/fw/latest) and saves the one matching the board.
  */
 object FirmwareChecker {
-    private const val API = "https://api.github.com/repos/wargaelanor/leafapp/releases?per_page=30"
-
     data class Firmware(
         val version: String,
         val board: String,       // "CMD" (T-2CAN) or "TCALL"
@@ -41,41 +39,31 @@ object FirmwareChecker {
     fun boardLabel(board: String): String =
         if (board == "TCALL") "T-Call" else "T-2CAN"
 
-    /** Newest non-prerelease firmware for the given board, or null. */
+    /** Newest firmware for the given board, from the owner's server. */
     fun latest(board: String): Firmware? {
-        val conn = URL(API).openConnection() as HttpURLConnection
+        val base = com.leafcontrol.app.data.Settings.serverUrl.trim().trimEnd('/')
+        if (base.isEmpty()) return null
+        val conn = URL("$base/api/fw/latest?board=$board").openConnection() as HttpURLConnection
         try {
             conn.connectTimeout = 8000
             conn.readTimeout = 12000
             conn.setRequestProperty("User-Agent", "LeafControl/${BuildConfig.VERSION_NAME}")
-            conn.setRequestProperty("Accept", "application/vnd.github+json")
             if (conn.responseCode !in 200..299) return null
             val body = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-            val releases = JSONArray(body)
-            val suffix = "-$board.bin"
-            val versionPattern = Regex("""LeafControl-FW-(\d+(?:\.\d+){2,})-""")
-            for (i in 0 until releases.length()) {
-                val release = releases.getJSONObject(i)
-                if (release.optBoolean("draft") || release.optBoolean("prerelease")) continue
-                val assets = release.optJSONArray("assets") ?: continue
-                for (j in 0 until assets.length()) {
-                    val asset = assets.getJSONObject(j)
-                    val name = asset.optString("name")
-                    // ".partitions.bin" does not end with "-CMD.bin"/"-TCALL.bin".
-                    if (!name.endsWith(suffix, ignoreCase = true)) continue
-                    val version = versionPattern.find(name)?.groupValues?.get(1) ?: continue
-                    val url = asset.optString("browser_download_url")
-                    if (url.isEmpty()) continue
-                    return Firmware(
-                        version = version,
-                        board = board,
-                        assetName = name,
-                        url = url,
-                        sizeBytes = asset.optLong("size", 0L),
-                        releaseTag = release.optString("tag_name"),
-                    )
-                }
-            }
+            val o = org.json.JSONObject(body)
+            if (!o.optBoolean("ok", false)) return null
+            val url = o.optString("url")
+            val file = o.optString("file")
+            if (url.isEmpty() || file.isEmpty()) return null
+            return Firmware(
+                version = o.optString("version", "?"),
+                board = board,
+                assetName = file,
+                url = url,
+                sizeBytes = o.optLong("size", 0L),
+                releaseTag = "server",
+            )
+        } catch (_: Exception) {
             return null
         } finally {
             conn.disconnect()
@@ -212,3 +200,4 @@ object FirmwareChecker {
         if (total <= 0) onProgress(100)
     }
 }
+

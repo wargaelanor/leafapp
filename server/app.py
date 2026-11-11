@@ -35,12 +35,12 @@ SERVER_BASE = os.environ.get("LEAF_SERVER_BASE", "https://leaf.wargaelanor.keene
 
 # Ссылка на Android-приложение (release-ассет проекта).
 APP_REV = os.environ.get("LEAF_REV", "sec-2c73f93")
-APP_VERSION = os.environ.get("LEAF_APP_VERSION", "1.38")
-APP_NOTES = os.environ.get("LEAF_APP_NOTES", "MQTT удалён полностью; при первом запуске — вход на сервер")
+APP_VERSION = os.environ.get("LEAF_APP_VERSION", "1.39")
+APP_NOTES = os.environ.get("LEAF_APP_NOTES", "Проверка прошивки идёт через сервер")
 
 APK_URL = os.environ.get(
     "LEAF_APK_URL",
-    "https://github.com/wargaelanor/leafapp/releases/download/android-v1.38/LeafControl-1.38-debug.apk",
+    "https://github.com/wargaelanor/leafapp/releases/download/android-v1.39/LeafControl-1.39-debug.apk",
 )
 
 # Команды, которые шлёт PWA (те же пути, что у платы).
@@ -465,6 +465,34 @@ class Api(BaseHTTPRequestHandler):
                 return self.json(200, {"ok": True})
             if path.startswith("/static/"):
                 return self.serve_static(path[len("/static/"):])
+            if path == "/api/fw/latest" and method == "GET":
+                # Последняя прошивка для платы: CMD (T-2CAN) или TCALL.
+                board = (q.get("board") or "CMD").upper()
+                prefix = "tcall" if board == "TCALL" else "t2can"
+                fw_dir = os.path.join(WEB_DIR, "fw")
+                best = None
+                if os.path.isdir(fw_dir):
+                    for name in os.listdir(fw_dir):
+                        m = re.fullmatch(prefix + r"-(\d+)([a-z]?)\.bin", name.lower())
+                        if not m:
+                            continue
+                        key = (int(m.group(1)), m.group(2))
+                        if best is None or key > best[0]:
+                            best = (key, name)
+                self.send_header("Access-Control-Allow-Origin", "*")
+                if best is None:
+                    return self.json(200, {"ok": False, "board": board})
+                name = best[1]
+                full = os.path.join(fw_dir, name)
+                return self.json(200, {
+                    "ok": True,
+                    "board": board,
+                    "version": str(best[0][0]) + best[0][1],
+                    "file": name,
+                    "url": SERVER_BASE + "/fw/" + name,
+                    "size": os.path.getsize(full),
+                })
+
             if path == "/api/app/latest" and method == "GET":
                 local_apk = os.path.join(WEB_DIR, "app.apk")
                 url = SERVER_BASE + "/app.apk" if os.path.isfile(local_apk) else APK_URL
@@ -624,7 +652,8 @@ class Api(BaseHTTPRequestHandler):
         }.get(os.path.splitext(full)[1].lower(), "application/octet-stream")
         with open(full, "rb") as fh:
             data = fh.read()
-        self._send(200, data, ctype)
+        extra = {"Access-Control-Allow-Origin": "*"} if name.startswith("fw/") else None
+        self._send(200, data, ctype, extra)
 
     # ---------- auth
 

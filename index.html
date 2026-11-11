@@ -2500,10 +2500,21 @@ function diagUptime(sec){
   const h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60);
   return h ? (h+' ч '+m+' мин') : (m ? (m+' мин') : (sec+' с'));
 }
+function linkText(l){
+  if(!l) return '—';
+  if(l.mode !== 'server') return 'выключен: режим «без подключения»';
+  if(l.last_ok_s === undefined || l.last_ok_s === null || l.last_ok_s < 0) return 'обмена ещё не было';
+  if(l.last_ok_s <= 30) return 'на связи, ' + l.last_ok_s + ' с назад';
+  if(l.last_ok_s <= 120) return 'на связи, ' + l.last_ok_s + ' с назад';
+  if(l.last_ok_s < 3600) return 'нет связи ' + Math.round(l.last_ok_s/60) + ' мин';
+  return 'нет связи ' + Math.round(l.last_ok_s/3600) + ' ч';
+}
 async function diagRender(){
   try{
     const r = await fetch('/api/status', {cache:'no-store'});
     const j = await r.json();
+    let l = null;
+    try{ l = await (await fetch('/api/link', {cache:'no-store'})).json(); }catch(e){ l = null; }
     $('diag-note').textContent = '';
     const bmsAge = (j.bmsage === 4294967295 || j.bmsage === undefined) ? 'нет ответа' : (j.bmsage+' с назад');
     const t = (v, unit) => (v === undefined || v === null || v < -900) ? '—' : (v + (unit||''));
@@ -2520,8 +2531,10 @@ async function diagRender(){
       ['CAN A', (j.evcan ? 'есть' : 'нет')+' · '+(j.evclk||'?')+' / '+(j.evkbps||'?')+' · '+(j.fa||0)+' кадров'],
       ['BMS', 'группа '+(j.bmsgrp||0)+' · '+bmsAge+' · ошибок '+(j.bmsfail||0)],
       ['Батарея', t(j.btemp,' °C')+' · разброс '+t(j.cdelta,' мВ')],
-      ['Связь', ['без подключения','MQTT','OVMS V2','только звонок'][j.remote_mode] || '—'],
-      ['Модем', j.modem || '—'],
+      ['Режим', l ? (l.mode === 'server' ? 'сервер' : 'без подключения') : (['без подключения','сервер'][j.remote_mode] || '—')],
+      ['Сервер', l ? linkText(l) : '—'],
+      ['Модем', l ? (l.modem + (l.modem_en ? '' : ' · выключен') + (l.apn ? ' · ' + l.apn : ' · APN не задан')) : (j.modem || '—')],
+      ['Wi-Fi (канал)', j.wifi_rssi ? (j.wifi_rssi + ' dBm') : (l && l.wifi ? l.rssi + ' dBm' : 'нет')],
     ];
     $('diag-grid').innerHTML = rows.map(rr =>
       '<div class="d-cell"><b>'+rr[1]+'</b><span>'+rr[0]+'</span></div>').join('');
@@ -2956,37 +2969,36 @@ function closeFw(e){
   $('fw-modal').classList.remove('show');
 }
 async function fwCheck(){
-  $('fw-note').textContent = 'Проверяем GitHub…';
+  $('fw-note').textContent = 'Проверяем обновление на сервере…';
   fwAsset = null;
   $('fw-flash-btn').style.display = 'none';
   try{
-    const r = await fetch('https://api.github.com/repos/wargaelanor/leafapp/releases?per_page=30',
+    const kind = (S.fw.indexOf('TCALL') >= 0 || (S.board||'').indexOf('T-Call') >= 0) ? 'TCALL' : 'CMD';
+    let base = '';
+    try{
+      const l = await (await fetch('/api/link', {cache:'no-store', signal:fetchTimeout(5000)})).json();
+      if(l && l.server) base = String(l.server).replace(/\/+$/, '');
+    }catch(e){ base = ''; }
+    if(!base) base = 'https://leaf.wargaelanor.keenetic.link';
+    const r = await fetch(base + '/api/fw/latest?board=' + kind,
       {cache:'no-store', signal:fetchTimeout(15000)});
     if(!r.ok) throw 0;
-    const releases = await r.json();
-    const kind = (S.fw.indexOf('TCALL') >= 0 || (S.board||'').indexOf('T-Call') >= 0) ? 'TCALL' : 'CMD';
-    const suffix = '-' + kind + '.bin';
-    outer:
-    for(const rl of releases){
-      if(rl.draft || rl.prerelease) continue;
-      for(const a of (rl.assets || [])){
-        if(a.name && a.name.startsWith('LeafControl-FW-') && a.name.endsWith(suffix)){
-          fwAsset = {
-            name: a.name,
-            url: a.browser_download_url,
-            size: a.size,
-            version: a.name.slice('LeafControl-FW-'.length).replace(suffix, ''),
-          };
-          break outer;
-        }
-      }
+    const j = await r.json();
+    if(!j || !j.ok || !j.url){
+      $('fw-note').textContent = 'На сервере нет прошивки для этой платы.';
+      return;
     }
-    if(!fwAsset){ $('fw-note').textContent = 'Прошивка для этой платы в релизах не найдена.'; return; }
-    $('fw-note').textContent = 'Доступно: ' + fwAsset.version + ' · ' +
-      Math.round(fwAsset.size / 1024) + ' КБ. Установлено: ' + (S.fw || '—');
+    fwAsset = {
+      name: j.file || ('firmware-' + kind + '.bin'),
+      url: j.url,
+      size: j.size || 0,
+      version: j.version || '?',
+    };
+    $('fw-note').textContent = 'На сервере: ' + fwAsset.version + ' · ' +
+      Math.round((fwAsset.size || 0) / 1024) + ' КБ. Установлено: ' + (S.fw || '-');
     $('fw-flash-btn').style.display = 'inline-flex';
   }catch(e){
-    $('fw-note').textContent = 'GitHub недоступен — проверьте интернет у платы/телефона.';
+    $('fw-note').textContent = 'Сервер недоступен — проверьте связь и адрес сервера.';
   }
 }
 async function fwFlash(){
