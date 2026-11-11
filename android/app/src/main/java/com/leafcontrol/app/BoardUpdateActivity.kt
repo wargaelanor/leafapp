@@ -110,21 +110,31 @@ private fun BoardUpdateScreen() {
             }
         }
 
+        val curNum = FirmwareChecker.versionNumber(currentFw)
+        val newNum = latest?.let { FirmwareChecker.versionNumber(it.version) } ?: 0
+        val hasUpdate = latest != null && newNum > curNum
+
         InfoCard {
             Text("Плата: ${FirmwareChecker.boardLabel(kind)}", fontSize = 13.sp)
             Text("Установлено: ${currentFw.ifEmpty { "—" }}", fontSize = 13.sp)
-            Text(
-                "Адрес: ${Settings.localHost} (телефон должен быть в одной сети с платой)",
-                fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
             latest?.let {
                 Text(
-                    "Доступно: ${it.version} · ${it.sizeBytes / 1024} КБ · ${it.releaseTag}",
+                    "На сервере: ${FirmwareChecker.displayName(kind, it.version)} · ${it.sizeBytes / 1024} КБ",
                     fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    if (hasUpdate) "Доступно обновление" else "У вас последняя версия",
+                    fontSize = 14.sp,
+                    color = if (hasUpdate) MaterialTheme.colorScheme.tertiary
+                            else MaterialTheme.colorScheme.primary,
                 )
             }
+            Text(
+                "Адрес платы: ${Settings.localHost} (телефон должен быть в одной сети с платой)",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
         if (busy) {
@@ -157,9 +167,12 @@ private fun BoardUpdateScreen() {
                     phase = ""
                     latest = fw
                     result = if (fw == null) {
-                        "Не удалось получить список релизов — проверьте интернет"
+                        "Сервер не ответил — проверьте связь и адрес сервера"
+                    } else if (FirmwareChecker.versionNumber(fw.version) >
+                               FirmwareChecker.versionNumber(currentFw)) {
+                        "Доступно обновление ${FirmwareChecker.displayName(kind, fw.version)}"
                     } else {
-                        ""
+                        "У вас последняя версия"
                     }
                 }
             },

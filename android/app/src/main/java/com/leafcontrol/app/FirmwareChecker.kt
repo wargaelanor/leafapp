@@ -36,6 +36,18 @@ object FirmwareChecker {
         else -> "CMD"
     }
 
+    /** Понятное имя: FR-2can.150 / FR-TCall.150. */
+    fun displayName(board: String, version: String): String =
+        (if (board == "TCALL") "FR-TCall." else "FR-2can.") + version
+
+    /** Номер версии из "FR-2can.150" или старого "FW-2026.11.11.149-CMD". */
+    fun versionNumber(text: String): Int {
+        val trimmed = text.trim()
+        Regex("""(\d+)$""").find(trimmed)?.let { return it.groupValues[1].toIntOrNull() ?: 0 }
+        val all = Regex("""(\d{2,})""").findAll(trimmed).mapNotNull { it.groupValues[1].toIntOrNull() }
+        return all.lastOrNull() ?: 0
+    }
+
     fun boardLabel(board: String): String =
         if (board == "TCALL") "T-Call" else "T-2CAN"
 

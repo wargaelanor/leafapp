@@ -2973,7 +2973,7 @@ async function fwCheck(){
   fwAsset = null;
   $('fw-flash-btn').style.display = 'none';
   try{
-    const kind = (S.fw.indexOf('TCALL') >= 0 || (S.board||'').indexOf('T-Call') >= 0) ? 'TCALL' : 'CMD';
+    const kind = (/tcall/i.test(S.fw || '') || /T-Call/i.test(S.board || '')) ? 'TCALL' : 'CMD';
     let base = '';
     try{
       const l = await (await fetch('/api/link', {cache:'no-store', signal:fetchTimeout(5000)})).json();

@@ -35,12 +35,12 @@ SERVER_BASE = os.environ.get("LEAF_SERVER_BASE", "https://leaf.wargaelanor.keene
 
 # Ссылка на Android-приложение (release-ассет проекта).
 APP_REV = os.environ.get("LEAF_REV", "sec-2c73f93")
-APP_VERSION = os.environ.get("LEAF_APP_VERSION", "1.39")
-APP_NOTES = os.environ.get("LEAF_APP_NOTES", "Проверка прошивки идёт через сервер")
+APP_VERSION = os.environ.get("LEAF_APP_VERSION", "1.40")
+APP_NOTES = os.environ.get("LEAF_APP_NOTES", "Прошивки FR-2can.N / FR-TCall.N; на экране обновления видно, есть ли новая")
 
 APK_URL = os.environ.get(
     "LEAF_APK_URL",
-    "https://github.com/wargaelanor/leafapp/releases/download/android-v1.39/LeafControl-1.39-debug.apk",
+    "https://github.com/wargaelanor/leafapp/releases/download/android-v1.40/LeafControl-1.40-debug.apk",
 )
 
 # Команды, которые шлёт PWA (те же пути, что у платы).
@@ -466,28 +466,37 @@ class Api(BaseHTTPRequestHandler):
             if path.startswith("/static/"):
                 return self.serve_static(path[len("/static/"):])
             if path == "/api/fw/latest" and method == "GET":
-                # Последняя прошивка для платы: CMD (T-2CAN) или TCALL.
+                # Последняя прошивка для платы. Имена: FR-2can.N / FR-TCall.N,
+                # старые t2can-N / tcall-N тоже принимаем.
                 board = (q.get("board") or "CMD").upper()
-                prefix = "tcall" if board == "TCALL" else "t2can"
+                patterns = (r"^fr-tcall\.(\d+)\.bin$", r"^tcall-(\d+)\.bin$") if board == "TCALL" \
+                    else (r"^fr-2can\.(\d+)\.bin$", r"^t2can-(\d+)\.bin$")
+                label = "FR-TCall" if board == "TCALL" else "FR-2can"
                 fw_dir = os.path.join(WEB_DIR, "fw")
                 best = None
                 if os.path.isdir(fw_dir):
                     for name in os.listdir(fw_dir):
-                        m = re.fullmatch(prefix + r"-(\d+)([a-z]?)\.bin", name.lower())
-                        if not m:
-                            continue
-                        key = (int(m.group(1)), m.group(2))
-                        if best is None or key > best[0]:
-                            best = (key, name)
+                        low = name.lower()
+                        for idx, pat in enumerate(patterns):
+                            m = re.fullmatch(pat, low)
+                            if not m:
+                                continue
+                            # новые имена приоритетнее старых при равном номере
+                            key = (int(m.group(1)), -idx)
+                            if best is None or key > best[0]:
+                                best = (key, name)
+                            break
                 cors = {"Access-Control-Allow-Origin": "*"}
                 if best is None:
                     return self.json(200, {"ok": False, "board": board}, cors)
                 name = best[1]
                 full = os.path.join(fw_dir, name)
+                ver = str(best[0][0])
                 return self.json(200, {
                     "ok": True,
                     "board": board,
-                    "version": str(best[0][0]) + best[0][1],
+                    "version": ver,
+                    "name": label + "." + ver,
                     "file": name,
                     "url": SERVER_BASE + "/fw/" + name,
                     "size": os.path.getsize(full),
