@@ -35,12 +35,12 @@ SERVER_BASE = os.environ.get("LEAF_SERVER_BASE", "https://leaf.wargaelanor.keene
 
 # Ссылка на Android-приложение (release-ассет проекта).
 APP_REV = os.environ.get("LEAF_REV", "sec-2c73f93")
-APP_VERSION = os.environ.get("LEAF_APP_VERSION", "1.41")
-APP_NOTES = os.environ.get("LEAF_APP_NOTES", "Новый знак Nissan Control во всех иконках")
+APP_VERSION = "1.42"  # версия APK, лежащего на этом сервере
+APP_NOTES = "Иконки из исходного логотипа, без перерисовки"
 
 APK_URL = os.environ.get(
     "LEAF_APK_URL",
-    "https://github.com/wargaelanor/leafapp/releases/download/android-v1.41/LeafControl-1.41-debug.apk",
+    "https://github.com/wargaelanor/leafapp/releases/download/android-v1.42/LeafControl-1.42-debug.apk",
 )
 
 # Команды, которые шлёт PWA (те же пути, что у платы).
