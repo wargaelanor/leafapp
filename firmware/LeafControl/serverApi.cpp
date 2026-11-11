@@ -726,6 +726,17 @@ static bool syncRequest() {
     }
   }
 
+  // Сервер — источник истины для кода привязки: если он выдал новый код
+  // (например, после отвязки), плата должна показывать именно его.
+  {
+    char cc[24];
+    if (jsonString(resp, "\"claim_code\"", cc, sizeof(cc)) && cc[0] &&
+        strcmp(cc, claimCode) != 0) {
+      snprintf(claimCode, sizeof(claimCode), "%s", cc);
+      Serial.printf("[srv] claim code updated: %s\n", claimCode);
+    }
+  }
+
   if (resp.indexOf("\"config\":true") >= 0 || resp.indexOf("\"config\": true") >= 0) {
     configDirty = true;
   }
