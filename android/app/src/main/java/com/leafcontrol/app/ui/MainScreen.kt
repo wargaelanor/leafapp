@@ -74,6 +74,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -229,6 +231,12 @@ fun MainScreen(vm: LeafViewModel = viewModel()) {
 
 @Composable
 private fun LeafTopBar(state: LeafState, onRefresh: () -> Unit) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var devMenu by remember { mutableStateOf(false) }
+    var devList by remember {
+        mutableStateOf<List<com.leafcontrol.app.net.ServerApi.DeviceRef>>(emptyList())
+    }
     Row(
         Modifier
             .fillMaxWidth()
@@ -245,6 +253,63 @@ private fun LeafTopBar(state: LeafState, onRefresh: () -> Unit) {
             letterSpacing = 0.6.sp,
             color = MaterialTheme.colorScheme.onSurface,
         )
+        Spacer(Modifier.width(8.dp))
+        // Переключатель машин прямо в шапке: имя текущей + список плат аккаунта.
+        Box {
+            Row(
+                Modifier
+                    .clickable {
+                        devMenu = true
+                        scope.launch {
+                            devList = com.leafcontrol.app.net.ServerApi.devices(ctx)
+                        }
+                    }
+                    .padding(horizontal = 6.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    state.board.ifBlank { "Машина" },
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    " ▾",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            DropdownMenu(expanded = devMenu, onDismissRequest = { devMenu = false }) {
+                devList.forEach { d ->
+                    DropdownMenuItem(
+                        text = {
+                            Column {
+                                Text(d.name.ifBlank { d.login }, fontSize = 14.sp)
+                                Text(
+                                    (if (d.online) "на связи" else "офлайн") +
+                                        (if (d.fw.isNotBlank()) " · " + d.fw else ""),
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        },
+                        onClick = {
+                            devMenu = false
+                            Settings.serverDevice = d.id
+                            scope.launch {
+                                com.leafcontrol.app.net.ServerApi.selectDevice(ctx, d.id)
+                                com.leafcontrol.app.service.LeafMonitorService.reload(ctx)
+                            }
+                        },
+                    )
+                }
+                if (devList.isEmpty()) {
+                    DropdownMenuItem(
+                        text = { Text("Нет машин", fontSize = 13.sp) },
+                        onClick = { devMenu = false },
+                    )
+                }
+            }
+        }
         Spacer(Modifier.weight(1f))
         IconButton(onClick = onRefresh) {
             Icon(
