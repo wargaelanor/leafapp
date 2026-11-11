@@ -33,6 +33,9 @@ const char* serverApiClaimCode();
 
 // Обработчик команд с сервера. Реализуется в скетче.
 typedef void (*ServerCommandHandler)(const char* name, const char* argsJson);
+// Применить одну настройку в формате {"key":"...","value":...}.
+void serverApiApplyConfig(const char* argsJson);
+
 void serverApiSetCommandHandler(ServerCommandHandler handler);
 
 // Запись завершённой поездки/зарядки ("trip"/"charge", JSON-строка платы).

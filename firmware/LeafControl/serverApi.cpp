@@ -430,6 +430,25 @@ static void applyConfig(const char* argsJson) {
   int ival = atoi(vp);
   bool bval = (ival != 0) || (strncmp(vp, "true", 4) == 0);
 
+  // Строковые настройки: значение приходит в кавычках ("host_name", "apn").
+  {
+    char sval[48];
+    if (jsonString(argsJson, "\"value\"", sval, sizeof(sval)) && sval[0]) {
+      if (!strcmp(key, "host_name")) {
+        setHostName(sval);
+        configDirty = true;
+        Serial.printf("[srv] config host_name = %s\n", sval);
+        return;
+      }
+      if (!strcmp(key, "apn")) {
+        setModem800Apn(sval);
+        configDirty = true;
+        Serial.printf("[srv] config apn = %s\n", sval);
+        return;
+      }
+    }
+  }
+
   if (!strcmp(key, "remote_mode")) {
     RemoteTransport mode = bval ? RemoteTransport::SERVER : RemoteTransport::LOCAL;
     setRemoteTransport(mode);
@@ -851,6 +870,8 @@ void serverApiBegin() {
   Serial.printf("[srv] СЃРµСЂРІРµСЂ: %s, СѓС‡С‘С‚РєР°: %s, %s\n", cfgBase, cfgLogin,
                 cfgEnabled ? "РІРєР»СЋС‡РµРЅРѕ" : "РІС‹РєР»СЋС‡РµРЅРѕ");
 }
+
+void serverApiApplyConfig(const char* argsJson) { applyConfig(argsJson); }
 
 void serverApiSetCommandHandler(ServerCommandHandler handler) { cmdHandler = handler; }
 const char* serverApiLogin() { return cfgLogin; }

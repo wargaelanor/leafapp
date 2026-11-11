@@ -499,6 +499,9 @@
           <input data-num="${k}" type="number" value="${cfg[k] !== undefined ? cfg[k] : ''}" style="${inputStyle}">
           ${h ? `<span style="font-size:11px">${h}</span>` : ''}
         </label>`).join('') +
+      '<label style="display:block;font-size:12px;color:var(--muted);margin-bottom:10px">Имя в сети (DHCP/mDNS)' +
+      '<input data-text="host_name" value="' + String(cfg.host_name || 'leaf').replace(/"/g, '&quot;') + '" style="' + inputStyle + '">' +
+      '<span style="font-size:11px">так плата видна в списке устройств; применится после перезагрузки</span></label>' +
       '<label style="display:block;font-size:12px;color:var(--muted);margin-bottom:10px">APN модема' +
       `<input data-text="apn" value="${(cfg.apn || '').replace(/"/g, '&quot;')}" style="${inputStyle}"></label>` +
       TOGGLES.map(([k, t, h]) => `
