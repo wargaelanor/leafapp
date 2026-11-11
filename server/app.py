@@ -189,6 +189,18 @@ def init_db() -> None:
             c.execute("ALTER TABLE devices ADD COLUMN config_ts INTEGER DEFAULT 0")
         if "claim_code" not in cols:
             c.execute("ALTER TABLE devices ADD COLUMN claim_code TEXT")
+        c.execute("""CREATE TABLE IF NOT EXISTS feedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            device_id INTEGER,
+            text TEXT NOT NULL,
+            created_at INTEGER,
+            status TEXT DEFAULT 'new'
+        )""")
+        # Код привязки должен быть у каждой платы всегда: по нему машину
+        # можно перенести в другой аккаунт.
+        for d in c.execute("SELECT id FROM devices WHERE claim_code IS NULL OR claim_code=''").fetchall():
+            c.execute("UPDATE devices SET claim_code=? WHERE id=?", (make_claim_code(), d["id"]))
         row = c.execute("SELECT id FROM users WHERE username=?", (ADMIN_USER,)).fetchone()
         if not row and ADMIN_PASSWORD:
             c.execute(
@@ -532,6 +544,8 @@ class Api(BaseHTTPRequestHandler):
         # ---------- auth
         if path == "/api/auth/register" and method == "POST":
             return self.register()
+        if path == "/api/feedback" and method == "POST":
+            return self.post_feedback()
         if path == "/api/claim" and method == "POST":
             return self.claim_device()
         if path == "/api/auth/login" and method == "POST":
@@ -691,6 +705,22 @@ class Api(BaseHTTPRequestHandler):
         self.json(200, {"ok": True, "user": {"id": uid, "username": username, "role": "owner"}},
                   {"Set-Cookie": cookie})
 
+    def post_feedback(self):
+        """Сообщение от владельца: что не работает, что улучшить."""
+        u = self.require_user()
+        if not u:
+            return
+        text = (self.body().get("text") or "").strip()
+        if len(text) < 5:
+            return self.err(400, "слишком коротко")
+        if len(text) > 2000:
+            text = text[:2000]
+        with db_lock, connect() as c:
+            c.execute("INSERT INTO feedback(user_id,text,created_at,status) VALUES(?,?,?,'new')",
+                      (u["id"], text, now()))
+            log_event(c, None, "feedback_new", {"username": u["username"]})
+        return self.json(200, {"ok": True})
+
     def claim_device(self):
         """Привязка платы к аккаунту по коду с её экрана."""
         u = self.require_user()
@@ -700,21 +730,26 @@ class Api(BaseHTTPRequestHandler):
         if len(code) < 16:
             return self.err(400, "код слишком короткий")
         with db_lock, connect() as c:
-            rows = c.execute(
-                "SELECT * FROM devices WHERE owner_id IS NULL AND claim_code IS NOT NULL"
-            ).fetchall()
+            # Код с экрана платы — это ключ к машине. Он действует всегда, поэтому
+            # плату можно перенести в другой аккаунт, даже если она уже привязана.
+            rows = c.execute("SELECT * FROM devices WHERE claim_code IS NOT NULL").fetchall()
             match = None
             for r in rows:
                 if normalize_code(r["claim_code"]) == code:
                     match = r
                     break
             if not match:
-                return self.err(404, "код не найден или уже использован")
+                return self.err(404, "код не найден — проверьте его на экране платы")
+            prev_owner = match["owner_id"]
+            if prev_owner == u["id"]:
+                return self.json(200, {"ok": True, "device_id": match["id"],
+                                       "login": match["login"], "already": True})
             c.execute(
-                "UPDATE devices SET owner_id=?, status='active', claim_code=NULL WHERE id=?",
-                (u["id"], match["id"]),
+                "UPDATE devices SET owner_id=?, status='active', claim_code=? WHERE id=?",
+                (u["id"], match["claim_code"], match["id"]),
             )
-            log_event(c, match["id"], "device_claimed", {"by": u["username"]})
+            log_event(c, match["id"], "device_claimed",
+                      {"by": u["username"], "from_user": prev_owner})
         self.json(200, {"ok": True, "device_id": match["id"], "login": match["login"]})
 
     def login(self):
@@ -884,7 +919,8 @@ class Api(BaseHTTPRequestHandler):
                        "args": json.loads(row["args"]) if row["args"] else {}}
             want_cfg = (now() - (dev["config_ts"] or 0)) > 300
             online = True
-        self.json(200, {"ok": True, "cmd": cmd, "poll_s": 5, "config": want_cfg, "online": online})
+        self.json(200, {"ok": True, "cmd": cmd, "poll_s": 5, "config": want_cfg,
+                        "online": online, "claim_code": dev["claim_code"] or ""})
 
     def device_state(self):
         dev = self.device()
@@ -1607,6 +1643,18 @@ class Api(BaseHTTPRequestHandler):
             parts = path.split("/")
             dev_id = int(parts[4])
             action = parts[5] if len(parts) > 5 else ""
+            if action == "unbind":
+                with db_lock, connect() as c:
+                    row = c.execute("SELECT login FROM devices WHERE id=?", (did,)).fetchone()
+                    if not row:
+                        return self.err(404, "device not found")
+                    c.execute(
+                        "UPDATE devices SET owner_id=NULL, status='unclaimed', claim_code=? WHERE id=?",
+                        (make_claim_code(), did),
+                    )
+                    log_event(c, did, "admin_unbound_device", {"login": row["login"]})
+                return self.json(200, {"ok": True})
+
             if action == "assign":
                 username = (self.body().get("username") or "").strip().lower()
                 with db_lock, connect() as c:
@@ -1750,9 +1798,45 @@ class Api(BaseHTTPRequestHandler):
             with db_lock, connect() as c:
                 rows = c.execute(
                     "SELECT u.id,u.username,u.role,u.created_at, "
-                    "(SELECT COUNT(*) FROM devices d WHERE d.owner_id=u.id) AS devices "
+                    "(SELECT COUNT(*) FROM devices d WHERE d.owner_id=u.id) AS devices, "
+                    "(SELECT MAX(d.last_seen) FROM devices d WHERE d.owner_id=u.id) AS last_seen "
                     "FROM users u ORDER BY u.id").fetchall()
-            return self.json(200, {"users": [dict(r) for r in rows]})
+                out = []
+                for r in rows:
+                    item = dict(r)
+                    devs = c.execute(
+                        "SELECT id, login, name, fw, last_seen, status FROM devices "
+                        "WHERE owner_id=? ORDER BY id", (r["id"],)
+                    ).fetchall()
+                    item["device_list"] = [
+                        {"id": d["id"], "login": d["login"], "name": d["name"],
+                         "fw": d["fw"], "last_seen": d["last_seen"],
+                         "online": (now() - (d["last_seen"] or 0)) < ONLINE_WINDOW_S}
+                        for d in devs
+                    ]
+                    item["feedback_open"] = c.execute(
+                        "SELECT COUNT(*) FROM feedback WHERE user_id=? AND status='new'",
+                        (r["id"],)).fetchone()[0]
+                    out.append(item)
+            return self.json(200, {"users": out})
+
+        if path == "/api/admin/feedback" and method == "GET":
+            with db_lock, connect() as c:
+                rows = c.execute(
+                    "SELECT f.*, u.username FROM feedback f "
+                    "LEFT JOIN users u ON u.id=f.user_id ORDER BY f.id DESC LIMIT 200"
+                ).fetchall()
+            return self.json(200, {"items": [dict(r) for r in rows]})
+
+        if path.startswith("/api/admin/feedback/") and method == "POST":
+            try:
+                fid = int(path.rsplit("/", 1)[-1])
+            except ValueError:
+                return self.err(400, "bad id")
+            st = (self.body().get("status") or "done")
+            with db_lock, connect() as c:
+                c.execute("UPDATE feedback SET status=? WHERE id=?", (st, fid))
+            return self.json(200, {"ok": True})
 
         if path == "/api/admin/events" and method == "GET":
             with db_lock, connect() as c:

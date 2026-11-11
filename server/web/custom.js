@@ -9,8 +9,9 @@
     : Number(v).toFixed(d === undefined ? 1 : d).replace('.', ',');
   const api = async (p, body, method) => {
     const opt = { credentials: 'same-origin' };
+    // method можно передать отдельно, без тела (DELETE и подобное)
+    opt.method = method || (body !== undefined ? 'POST' : 'GET');
     if (body !== undefined) {
-      opt.method = method || 'POST';
       opt.headers = { 'Content-Type': 'application/json' };
       opt.body = JSON.stringify(body);
     }
@@ -406,8 +407,36 @@
         <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">Название машины</div></div>
         <input id="cfg-name" placeholder="Мой Leaf" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--text)">
         <button id="cfg-rename" style="margin-top:10px;width:100%;padding:12px;border:0;border-radius:8px;background:var(--surface-2);color:var(--text);font-weight:600">Сохранить название</button>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">Обратная связь</div></div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Что не работает или чего не хватает — сообщение увидит администратор сервера.</div>
+        <textarea id="fb-text" rows="4" maxlength="2000" placeholder="Опишите проблему или пожелание"
+          style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--text);resize:vertical"></textarea>
+        <button id="fb-send" style="margin-top:10px;width:100%;padding:12px;border:0;border-radius:8px;background:var(--accent);color:#fff;font-weight:600">Отправить</button>
+        <div id="fb-hint" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
       </div>`;
     screens.insertBefore(sec, $('#screen-more') || null);
+
+    setTimeout(() => {
+      const btn = document.getElementById('fb-send');
+      if (!btn || btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.onclick = async () => {
+        const ta = document.getElementById('fb-text');
+        const hint = document.getElementById('fb-hint');
+        const text = (ta.value || '').trim();
+        if (text.length < 5) { hint.textContent = 'Напишите хотя бы пару слов'; return; }
+        btn.disabled = true;
+        try {
+          await api('/api/feedback', { text });
+          ta.value = '';
+          hint.textContent = 'Спасибо, отправлено';
+        } catch (e) {
+          hint.textContent = e.message;
+        } finally { btn.disabled = false; }
+      };
+    }, 0);
   }
 
   function showSettings() {
@@ -639,12 +668,20 @@
         <div id="adm-pending"></div>
       </div>
       <div class="card">
+        <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">Обращения владельцев</div></div>
+        <div id="adm-feedback"></div>
+      </div>
+      <div class="card">
         <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">Пользователи</div></div>
         <div id="adm-users"></div>
       </div>
       <div class="card">
         <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">Устройства</div></div>
         <div id="adm-devices"></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">Журнал</div></div>
+        <div id="adm-events"></div>
       </div>`;
     screens.insertBefore(sec, $('#screen-more') || null);
   }
@@ -658,8 +695,25 @@
     loadAdmin();
   }
 
+  const admBtn = (label, color) =>
+    `border:0;border-radius:8px;background:var(--surface-2);color:${color || 'var(--text)'};padding:7px 11px;font-size:12px`;
+  const admWhen = (sec) => {
+    if (!sec) return '—';
+    const d = new Date(sec * 1000);
+    return d.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  };
+  const admAgo = (sec) => {
+    if (!sec) return 'никогда';
+    const s = Math.max(0, Math.round(Date.now() / 1000 - sec));
+    if (s < 90) return 'только что';
+    if (s < 3600) return Math.round(s / 60) + ' мин назад';
+    if (s < 86400) return Math.round(s / 3600) + ' ч назад';
+    return Math.round(s / 86400) + ' дн назад';
+  };
+
   async function loadAdmin() {
     try {
+      // ---- заявки
       const p = await api('/api/admin/devices?status=pending');
       const pend = p.devices || [];
       $('#adm-pending').innerHTML = pend.length
@@ -667,8 +721,8 @@
           <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)">
             <div style="flex:1">${d.login}
               <div style="font-size:12px;color:var(--muted)">${d.serial || ''} · ${d.fw || ''}${d.claim_code ? ' · код ' + d.claim_code : ''}</div></div>
-            <button data-ok="${d.id}" style="border:0;border-radius:8px;background:var(--accent);color:#fff;padding:8px 12px">Привязать</button>
-            <button data-no="${d.id}" style="border:0;border-radius:8px;background:var(--surface-2);color:var(--danger);padding:8px 12px">Удалить</button>
+            <button data-ok="${d.id}" style="${admBtn('Привязать')};background:var(--accent);color:#fff">Привязать</button>
+            <button data-no="${d.id}" style="${admBtn('Удалить', 'var(--danger)')}">Удалить</button>
           </div>`).join('')
         : '<div style="font-size:13px;color:var(--muted)">Заявок нет</div>';
 
@@ -683,20 +737,62 @@
       });
       $$('#adm-pending [data-no]').forEach(b => b.onclick = async () => {
         if (!confirm('Удалить устройство вместе с историей?')) return;
-        await api('/api/admin/devices/' + b.dataset.no, undefined, 'DELETE');
-        toast('Устройство удалено');
-        loadAdmin();
+        try {
+          await api('/api/admin/devices/' + b.dataset.no, undefined, 'DELETE');
+          toast('Устройство удалено');
+          loadAdmin();
+        } catch (e) { alert(e.message); }
       });
 
+      // ---- обращения
+      const fb = await api('/api/admin/feedback');
+      const items = fb.items || [];
+      const open = items.filter(x => x.status !== 'done').length;
+      $('#adm-feedback').innerHTML = items.length
+        ? items.map(x => `
+          <div style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);align-items:flex-start">
+            <div style="flex:1">
+              <div style="font-size:13px;white-space:pre-wrap">${(x.text || '').replace(/</g, '&lt;')}</div>
+              <div style="font-size:12px;color:var(--muted);margin-top:4px">
+                ${x.username || 'без пользователя'} · ${admWhen(x.created_at)}${x.status === 'done' ? ' · прочитано' : ''}</div>
+            </div>
+            ${x.status === 'done' ? '' : `<button data-fb="${x.id}" style="${admBtn('Прочитано')}">Прочитано</button>`}
+          </div>`).join('')
+        : '<div style="font-size:13px;color:var(--muted)">Обращений нет</div>';
+      $$('#adm-feedback [data-fb]').forEach(b => b.onclick = async () => {
+        try {
+          await api('/api/admin/feedback/' + b.dataset.fb, { status: 'done' });
+          loadAdmin();
+        } catch (e) { alert(e.message); }
+      });
+      const badge = document.getElementById('adm-fb-badge');
+      if (badge) { badge.textContent = open ? String(open) : ''; badge.style.display = open ? 'inline-block' : 'none'; }
+
+      // ---- пользователи
       const u = await api('/api/admin/users');
       const users = u.users || [];
-      $('#adm-users').innerHTML = users.map(x => `
-        <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)">
-          <div style="flex:1">${x.username}
-            <div style="font-size:12px;color:var(--muted)">${x.role} · машин: ${x.devices || 0}</div></div>
-          <button data-pw="${x.id}" style="border:0;border-radius:8px;background:var(--surface-2);color:var(--text);padding:8px 12px">Пароль</button>
-          ${x.role === 'admin' ? '' : `<button data-del-user="${x.id}" style="border:0;border-radius:8px;background:var(--surface-2);color:var(--danger);padding:8px 12px">Удалить</button>`}
-        </div>`).join('') + `
+      $('#adm-users').innerHTML = users.map(x => {
+        const devs = x.device_list || [];
+        const chips = devs.length
+          ? devs.map(d => `<span style="display:inline-flex;align-items:center;gap:6px;margin:6px 8px 0 0;padding:5px 9px;border-radius:999px;background:var(--surface-2);font-size:12px">
+              <i style="width:7px;height:7px;border-radius:50%;background:${d.online ? 'var(--accent)' : 'var(--muted)'}"></i>
+              ${d.login}${d.fw ? ' · ' + d.fw.replace(/^FR-/, '') : ''}</span>`).join('')
+          : '<span style="font-size:12px;color:var(--muted)">машин нет</span>';
+        return `
+        <div style="padding:12px 0;border-bottom:1px solid var(--line)">
+          <div style="display:flex;gap:10px;align-items:center">
+            <div style="flex:1">
+              <div style="font-size:14px">${x.username}${x.feedback_open ? ` <span style="font-size:11px;color:#d9534f">● ${x.feedback_open}</span>` : ''}</div>
+              <div style="font-size:12px;color:var(--muted)">${x.role} · создан ${admWhen(x.created_at)} · последняя связь ${admAgo(x.last_seen)}</div>
+            </div>
+            <button data-pw="${x.id}" style="${admBtn('Пароль')}">Пароль</button>
+            ${x.role === 'admin' ? '' : `<button data-del-user="${x.id}" style="${admBtn('Удалить', 'var(--danger)')}">Удалить</button>`}
+          </div>
+          <div style="margin-top:2px">${chips}</div>
+          ${devs.length ? `<div style="margin-top:8px">${devs.map(d =>
+            `<button data-unbind="${d.id}" style="${admBtn('Отвязать ' + d.login, 'var(--danger)')};margin:0 6px 6px 0">Отвязать ${d.login}</button>`).join('')}</div>` : ''}
+        </div>`;
+      }).join('') + `
         <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
           <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Создать клиента</div>
           <input id="adm-new-user" placeholder="логин" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--text);margin-bottom:6px">
@@ -720,6 +816,14 @@
           loadAdmin();
         } catch (e) { alert(e.message); }
       });
+      $$('#adm-users [data-unbind]').forEach(b => b.onclick = async () => {
+        if (!confirm('Отвязать плату от аккаунта? У неё появится новый код привязки.')) return;
+        try {
+          await api('/api/admin/devices/' + b.dataset.unbind + '/unbind', {});
+          toast('Плата отвязана');
+          loadAdmin();
+        } catch (e) { alert(e.message); }
+      });
       const createBtn = document.getElementById('adm-create');
       if (createBtn) createBtn.onclick = async () => {
         const username = (document.getElementById('adm-new-user').value || '').trim();
@@ -733,14 +837,16 @@
         } catch (e) { alert(e.message); }
       };
 
+      // ---- устройства
       const all = await api('/api/admin/devices?status=all');
       $('#adm-devices').innerHTML = (all.devices || []).map(d => `
         <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)">
           <div style="flex:1">${d.login}
-            <div style="font-size:12px;color:var(--muted)">${d.serial || ''} · ${d.owner || 'без владельца'}${d.claim_code ? ' · код ' + d.claim_code : ''}</div></div>
+            <div style="font-size:12px;color:var(--muted)">${d.serial || ''} · ${d.owner || 'без владельца'} · ${admAgo(d.last_seen)}${d.claim_code ? ' · код ' + d.claim_code : ''}</div></div>
           <div style="font-size:12px;color:${d.online ? 'var(--accent)' : 'var(--muted)'}">${d.online ? 'на связи' : 'офлайн'}</div>
-          <button data-assign="${d.id}" style="border:0;border-radius:8px;background:var(--surface-2);color:var(--text);padding:6px 10px;font-size:12px">Привязать</button>
-          <button data-del-dev="${d.id}" style="border:0;border-radius:8px;background:var(--surface-2);color:var(--danger);padding:6px 10px;font-size:12px">Удалить</button>
+          <button data-assign="${d.id}" style="${admBtn('Привязать')}">Привязать</button>
+          ${d.owner ? `<button data-unbind="${d.id}" style="${admBtn('Отвязать', 'var(--danger)')}">Отвязать</button>` : ''}
+          <button data-del-dev="${d.id}" style="${admBtn('Удалить', 'var(--danger)')}">Удалить</button>
         </div>`).join('');
 
       $$('#adm-devices [data-assign]').forEach(b => b.onclick = async () => {
@@ -752,6 +858,14 @@
           loadAdmin();
         } catch (e) { alert(e.message); }
       });
+      $$('#adm-devices [data-unbind]').forEach(b => b.onclick = async () => {
+        if (!confirm('Отвязать плату от аккаунта?')) return;
+        try {
+          await api('/api/admin/devices/' + b.dataset.unbind + '/unbind', {});
+          toast('Отвязано');
+          loadAdmin();
+        } catch (e) { alert(e.message); }
+      });
       $$('#adm-devices [data-del-dev]').forEach(b => b.onclick = async () => {
         if (!confirm('Удалить устройство и всю его историю?')) return;
         try {
@@ -760,11 +874,20 @@
           loadAdmin();
         } catch (e) { alert(e.message); }
       });
+
+      // ---- журнал
+      const ev = await api('/api/admin/events');
+      const events = (ev.events || []).slice(0, 60);
+      $('#adm-events').innerHTML = events.length
+        ? events.map(e => `<div style="display:flex;gap:10px;padding:6px 0;font-size:12px;border-bottom:1px solid var(--line)">
+            <span style="color:var(--muted);min-width:78px">${admWhen(e.ts)}</span>
+            <span style="flex:1">${e.kind}${e.device_id ? ' · #' + e.device_id : ''}</span>
+          </div>`).join('')
+        : '<div style="font-size:13px;color:var(--muted)">Пусто</div>';
     } catch (e) {
       $('#adm-pending').innerHTML = '<div style="font-size:12px;color:var(--muted)">' + e.message + '</div>';
     }
   }
-
 
   /* ---------- 5. добавление машины по коду ---------- */
   function addClaimScreen() {
