@@ -1799,7 +1799,8 @@ class Api(BaseHTTPRequestHandler):
                 rows = c.execute(
                     "SELECT u.id,u.username,u.role,u.created_at, "
                     "(SELECT COUNT(*) FROM devices d WHERE d.owner_id=u.id) AS devices, "
-                    "(SELECT MAX(d.last_seen) FROM devices d WHERE d.owner_id=u.id) AS last_seen "
+                    "(SELECT MAX(d.last_seen) FROM devices d WHERE d.owner_id=u.id) AS last_seen, "
+                    "EXISTS(SELECT 1 FROM devices d2 WHERE d2.login=u.username) AS is_device "
                     "FROM users u ORDER BY u.id").fetchall()
                 out = []
                 for r in rows:

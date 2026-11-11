@@ -770,7 +770,8 @@
 
       // ---- пользователи
       const u = await api('/api/admin/users');
-      const users = u.users || [];
+      // технические аккаунты плат (логин = логин устройства) в списке не нужны
+      const users = (u.users || []).filter(x => !x.is_device || (x.devices || 0) > 0);
       $('#adm-users').innerHTML = users.map(x => {
         const devs = x.device_list || [];
         const chips = devs.length
