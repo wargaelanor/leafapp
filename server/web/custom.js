@@ -120,7 +120,8 @@
     if (!el) return;
     opts = opts || {};
     const W = Math.max(240, Math.floor(el.clientWidth || el.parentElement?.clientWidth || 320));
-    const H = opts.height || 150;
+    // Высота: график должен читаться на телефоне, поэтому по умолчанию высокий.
+    const H = opts.height || 300;
     const padL = 36, padR = 12, padT = 12, padB = 22;
     const plotW = W - padL - padR, plotH = H - padT - padB;
 
