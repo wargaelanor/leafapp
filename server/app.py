@@ -479,9 +479,9 @@ class Api(BaseHTTPRequestHandler):
                         key = (int(m.group(1)), m.group(2))
                         if best is None or key > best[0]:
                             best = (key, name)
-                self.send_header("Access-Control-Allow-Origin", "*")
+                cors = {"Access-Control-Allow-Origin": "*"}
                 if best is None:
-                    return self.json(200, {"ok": False, "board": board})
+                    return self.json(200, {"ok": False, "board": board}, cors)
                 name = best[1]
                 full = os.path.join(fw_dir, name)
                 return self.json(200, {
@@ -491,7 +491,7 @@ class Api(BaseHTTPRequestHandler):
                     "file": name,
                     "url": SERVER_BASE + "/fw/" + name,
                     "size": os.path.getsize(full),
-                })
+                }, cors)
 
             if path == "/api/app/latest" and method == "GET":
                 local_apk = os.path.join(WEB_DIR, "app.apk")
