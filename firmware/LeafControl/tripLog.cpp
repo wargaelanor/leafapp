@@ -1,6 +1,7 @@
 #include "tripLog.h"
 
 extern void serverApiOnRecord(const char* kind, const char* line);
+extern void serverApiHistSample(float soc, float kw, float batt, float spd);
 #include "boardConfig.h"
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
 #include <SPIFFS.h>
@@ -490,6 +491,12 @@ void tripLogTick() {
       if (isNight(epoch)) chgKwhNight += wh; else chgKwhDay += wh;
     }
     if (!charging) finishCharge("stopped");
+  }
+
+  // Точка для графиков (копится на плате, уходит пачкой при связи).
+  {
+    float kw = (dataOk && v > 0) ? (v * i) / 1000.0f : 0.0f;
+    serverApiHistSample(soc, kw, evData.batteryTemp, 0.0f);
   }
 
   if (odo > 0) lastOdo = odo;

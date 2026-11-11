@@ -12,6 +12,9 @@
 // Дальше плата раз в несколько секунд отправляет состояние, раз в 3 секунды
 // опрашивает очередь команд и подтверждает выполнение.
 
+// Точка телеметрии для графиков: плата копит их сама и отправляет пачкой.
+void serverApiHistSample(float soc, float kw, float batt, float spd);
+
 void serverApiBegin();
 void serverApiTick();
 

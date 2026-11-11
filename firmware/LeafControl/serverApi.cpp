@@ -349,7 +349,9 @@ static String stateJson() {
   float soc = evData.instrumentSOC >= 0 ? evData.instrumentSOC : currentSOC;
   float packV = evData.packVoltage;
   float packI = evData.packCurrent;
-  float packKw = (packV > 0 && evData.packDataValid) ? (packV * packI) / 1000.0f : 0.0f;
+  // Мощность считаем всегда, когда есть напряжение и ток: во время движения
+  // packDataValid часто ещё не поднят, и график показывал ровный ноль.
+  float packKw = (packV > 0 && fabsf(packI) > 0.1f) ? (packV * packI) / 1000.0f : 0.0f;
 #if defined(LEAF_SYNTH_TELEMETRY) && (LEAF_SYNTH_TELEMETRY)
   // Стендовый режим: CAN нет, поэтому показываем правдоподобные значения,
   // чтобы проверить обмен, графики и историю. В машине флаг выключен.
@@ -658,6 +660,63 @@ static bool sendPing() {
   return postJson("/api/device/ping", body, resp);
 }
 
+
+// ---------------------------------------------------------------- история точек
+// Плата копит телеметрию сама: при слабом Wi-Fi сервер получал по 4 точки за
+// поездку, и графики превращались в прямые. Теперь точки уходят пачкой, как
+// только появляется связь.
+static const int HIST_N = 240;
+struct HistPoint { uint32_t ts; int16_t soc10; int16_t kw10; int8_t batt; uint8_t spd; };
+static HistPoint histBuf[HIST_N];
+static int histCount = 0;
+static uint32_t histLastTs = 0;
+
+void serverApiHistSample(float soc, float kw, float batt, float spd) {
+  time_t tnow = time(nullptr);
+  if (tnow < 1600000000) return;
+  uint32_t ts = (uint32_t)tnow;
+  if (ts <= histLastTs + 4) return;           // чаще, чем раз в 5 с, не нужно
+  if (histCount >= HIST_N) {                   // старые вытесняем
+    memmove(&histBuf[0], &histBuf[1], sizeof(HistPoint) * (HIST_N - 1));
+    histCount = HIST_N - 1;
+  }
+  HistPoint& h = histBuf[histCount++];
+  h.ts = ts;
+  h.soc10 = (int16_t)lroundf(soc * 10.0f);
+  h.kw10 = (int16_t)lroundf(kw * 10.0f);
+  h.batt = (int8_t)lroundf(batt);
+  h.spd = (uint8_t)(spd < 0 ? 0 : (spd > 250 ? 250 : lroundf(spd)));
+  histLastTs = ts;
+}
+
+static bool uploadHistory() {
+  if (histCount <= 0) return true;
+  String body;
+  body.reserve(histCount * 34 + 24);
+  body += "{\"points\":[";
+  for (int i = 0; i < histCount; i++) {
+    const HistPoint& h = histBuf[i];
+    if (i) body += ",";
+    body += "[";
+    body += String(h.ts);
+    body += ",";
+    body += String(h.soc10 / 10.0f, 1);
+    body += ",";
+    body += String(h.kw10 / 10.0f, 1);
+    body += ",";
+    body += String((int)h.batt);
+    body += ",";
+    body += String((int)h.spd);
+    body += "]";
+  }
+  body += "]}";
+  String resp;
+  if (!postJson("/api/device/hist", body.c_str(), resp)) return false;
+  Serial.printf("[srv] история: отправлено %d точек\n", histCount);
+  histCount = 0;
+  return true;
+}
+
 static bool syncRequest() {
   // Тело = обычное состояние плюс связка, прошивка и подтверждения команд.
   String payload = stateJson();
@@ -926,6 +985,12 @@ static void serverNetOnce() {
       lastOkMs = millis();
       failCount = 0;
       if (recCount > 0) sendOneRecord();
+      // накопленные точки телеметрии — пачкой, не чаще раза в минуту
+      static unsigned long lastHistMs = 0;
+      if (histCount > 0 && now - lastHistMs > 60000UL) {
+        lastHistMs = now;
+        uploadHistory();
+      }
     } else if (failCount < 255 && ++failCount >= 3) {
       retryAt = now + 30000UL;
     }

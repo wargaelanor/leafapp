@@ -565,6 +565,8 @@ class Api(BaseHTTPRequestHandler):
             return self.device_enroll()
         if path == "/api/device/ping" and method == "POST":
             return self.device_ping()
+        if path == "/api/device/hist" and method == "POST":
+            return self.device_hist()
         if path == "/api/device/sync" and method == "POST":
             return self.device_sync()
         if path == "/api/device/state" and method == "POST":
@@ -881,6 +883,39 @@ class Api(BaseHTTPRequestHandler):
                 (now(), d.get("link"), d.get("rssi"), fw or None, dev["id"]),
             )
         return self.json(200, {"ok": True, "ts": int(now())})
+
+    def device_hist(self):
+        """Пачка точек, накопленных платой, пока не было связи."""
+        dev = self.device()
+        if not dev:
+            return self.err(401, "bad device token")
+        d = self.body()
+        pts = d.get("points") or []
+        if not isinstance(pts, list):
+            return self.err(400, "points must be a list")
+        added = 0
+        with db_lock, connect() as c:
+            row = c.execute("SELECT MAX(ts) AS m FROM samples WHERE device_id=?",
+                            (dev["id"],)).fetchone()
+            last_ts = row["m"] or 0
+            for p in pts[:500]:
+                try:
+                    ts = int(p[0])
+                    soc = float(p[1])
+                    kw = float(p[2])
+                    batt = float(p[3])
+                    spd = float(p[4])
+                except (TypeError, ValueError, IndexError):
+                    continue
+                if ts <= last_ts:
+                    continue
+                payload = json.dumps({"soc": soc, "pack_kw": kw, "batt": batt,
+                                      "spd": spd, "hist": True}, ensure_ascii=False)
+                c.execute("INSERT INTO samples(device_id, ts, payload) VALUES(?,?,?)",
+                          (dev["id"], ts, payload))
+                last_ts = ts
+                added += 1
+        return self.json(200, {"ok": True, "added": added})
 
     def device_sync(self):
         """Один запрос на цикл: состояние + подтверждения + очередь команд."""
