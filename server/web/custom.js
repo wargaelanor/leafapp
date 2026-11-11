@@ -113,48 +113,135 @@
     } catch { return ''; }
   }
 
+  // Рисует график по точкам [[epoch, значение], ...] или просто [значение, ...].
+  // Ширина берётся из карточки, поэтому линия растягивается на всю доступную
+  // ширину; по горизонтали подписывается время.
   function chart(el, series, opts) {
-    // series: [{values:[], color, label}]
     if (!el) return;
-    const w = 300, h = 140, pad = 26;
-    const all = series.flatMap(s => s.values).filter(v => isFinite(v));
+    opts = opts || {};
+    const W = Math.max(240, Math.floor(el.clientWidth || el.parentElement?.clientWidth || 320));
+    const H = opts.height || 150;
+    const padL = 36, padR = 12, padT = 12, padB = 22;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+
+    const all = [];
+    series.forEach(s => {
+      const raw = s.points || (s.values || []).map(v => [0, v]);
+      s._pts = raw
+        .map(p => [Number(p[0]) || 0, Number(p[1])])
+        .filter(p => isFinite(p[1]));
+      s._pts.forEach(p => all.push(p[1]));
+    });
+
     el.innerHTML = '';
     if (!all.length) {
       el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 0">нет данных</div>';
       return;
     }
+
     let min = Math.min(...all), max = Math.max(...all);
-    if (max - min < (opts && opts.minSpan || 1)) { max += 0.5; min -= 0.5; }
-    const span = max - min;
+    const step = opts.minSpan || 1;
+    if (max - min < step) {
+      const c = (max + min) / 2;
+      min = c - step / 2;
+      max = c + step / 2;
+    }
+    const span = (max - min) || 1;
+
+    // время: границы сессии (или крайние точки)
+    let t0 = opts.from, t1 = opts.to;
+    if (!t0 || !t1) {
+      const tsAll = series.flatMap(s => (s.points || []).map(p => Number(p[0]) || 0)).filter(t => t > 0);
+      if (tsAll.length) {
+        t0 = Math.min(...tsAll);
+        t1 = Math.max(...tsAll);
+      }
+    }
+    const hasTime = !!(t0 && t1 && t1 > t0);
+    const longSpan = hasTime && (t1 - t0) > 86400;
+
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
-    svg.setAttribute('style', 'width:100%;height:140px;display:block');
-    const grid = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    grid.setAttribute('d', `M${pad} ${pad} H${w - pad} M${pad} ${h - pad} H${w - pad}`);
-    grid.setAttribute('stroke', 'var(--line)'); grid.setAttribute('fill', 'none');
-    svg.appendChild(grid);
-    series.forEach(s => {
-      const vals = s.values;
-      if (!vals.length) return;
-      const pts = vals.map((v, i) => [
-        pad + i * (w - pad * 2) / Math.max(1, vals.length - 1),
-        h - pad - ((v - min) / span) * (h - pad * 2)
-      ]);
-      const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      p.setAttribute('d', pts.map((q, i) => (i ? 'L' : 'M') + q[0].toFixed(1) + ' ' + q[1].toFixed(1)).join(' '));
-      p.setAttribute('fill', 'none'); p.setAttribute('stroke', s.color || 'var(--accent)');
-      p.setAttribute('stroke-width', '2'); p.setAttribute('stroke-linejoin', 'round');
-      svg.appendChild(p);
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    svg.setAttribute('width', W);
+    svg.setAttribute('height', H);
+    svg.setAttribute('style', 'display:block;width:100%;height:' + H + 'px');
+
+    // горизонтальная сетка
+    [0, 0.5, 1].forEach(f => {
+      const y = padT + f * plotH;
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      line.setAttribute('d', `M${padL} ${y.toFixed(1)} H${W - padR}`);
+      line.setAttribute('stroke', 'var(--line)');
+      line.setAttribute('fill', 'none');
+      line.setAttribute('stroke-width', '1');
+      svg.appendChild(line);
     });
-    const t = (x, y, s2, anchor) => {
-      const e = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      e.setAttribute('x', x); e.setAttribute('y', y); e.setAttribute('font-size', '11');
-      e.setAttribute('fill', 'var(--muted)'); e.setAttribute('text-anchor', anchor || 'start');
-      e.textContent = s2; svg.appendChild(e);
+    // вертикальная сетка
+    [0.25, 0.5, 0.75].forEach(f => {
+      const x = padL + f * plotW;
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      line.setAttribute('d', `M${x.toFixed(1)} ${padT} V${padT + plotH}`);
+      line.setAttribute('stroke', 'var(--line)');
+      line.setAttribute('fill', 'none');
+      line.setAttribute('stroke-width', '1');
+      line.setAttribute('opacity', '0.6');
+      svg.appendChild(line);
+    });
+
+    const xFor = (p, i, n) => {
+      if (hasTime && p[0] > 0) {
+        const f = Math.min(1, Math.max(0, (p[0] - t0) / (t1 - t0)));
+        return padL + f * plotW;
+      }
+      return padL + (n > 1 ? i / (n - 1) : 0.5) * plotW;
     };
-    t(pad, pad - 6, fmt(max, 1));
-    t(pad, h - pad + 14, fmt(min, 1));
-    if (opts && opts.label) t(w - pad, pad - 6, opts.label, 'end');
+
+    series.forEach(s => {
+      const pts = s._pts;
+      if (!pts.length) return;
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', pts.map((p, i) => {
+        const x = xFor(p, i, pts.length);
+        const y = padT + plotH - ((p[1] - min) / span) * plotH;
+        return (i ? 'L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1);
+      }).join(' '));
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', s.color || 'var(--accent)');
+      path.setAttribute('stroke-width', '2');
+      path.setAttribute('stroke-linejoin', 'round');
+      path.setAttribute('stroke-linecap', 'round');
+      svg.appendChild(path);
+    });
+
+    const text = (x, y, str, anchor) => {
+      const e = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      e.setAttribute('x', x);
+      e.setAttribute('y', y);
+      e.setAttribute('font-size', '10');
+      e.setAttribute('fill', 'var(--muted)');
+      e.setAttribute('text-anchor', anchor || 'start');
+      e.textContent = str;
+      svg.appendChild(e);
+    };
+
+    text(padL - 4, padT + 4, fmt(max, 1), 'end');
+    text(padL - 4, padT + plotH + 3, fmt(min, 1), 'end');
+
+    if (hasTime) {
+      const clock = (ts) => {
+        const d = new Date(ts * 1000);
+        const hh = String(d.getHours()).padStart(2, '0');
+        const mm = String(d.getMinutes()).padStart(2, '0');
+        return longSpan
+          ? d.getDate().toString().padStart(2, '0') + '.' + String(d.getMonth() + 1).padStart(2, '0') + ' ' + hh + ':' + mm
+          : hh + ':' + mm;
+      };
+      text(padL, H - 6, clock(t0), 'start');
+      text(padL + plotW / 2, H - 6, clock((t0 + t1) / 2), 'middle');
+      text(W - padR, H - 6, clock(t1), 'end');
+    }
+    if (opts.label) text(W - padR, padT + 9, opts.label, 'end');
+
     el.appendChild(svg);
   }
 
@@ -343,13 +430,15 @@
       pts = (await api(`/api/samples?device=&from=${s}&to=${e}`)).points || [];
     } catch { }
 
+    // Точки храним вместе со временем: по нему подписывается ось X.
     const series = { kw: [], spd: [], batt: [], soc: [] };
     pts.forEach(p => {
-      if (p.kw !== undefined && p.kw !== null) series.kw.push(Number(p.kw));
-      if (p.spd !== undefined && p.spd !== null) series.spd.push(Number(p.spd));
+      const ts = Number(p.ts) || 0;
+      if (p.kw !== undefined && p.kw !== null) series.kw.push([ts, Number(p.kw)]);
+      if (p.spd !== undefined && p.spd !== null) series.spd.push([ts, Number(p.spd)]);
       // -99 значит «BMS не ответил» — такую точку в график не берём
-      if (p.batt !== undefined && p.batt !== null && Number(p.batt) > -50) series.batt.push(Number(p.batt));
-      if (p.soc !== undefined && p.soc !== null) series.soc.push(Number(p.soc));
+      if (p.batt !== undefined && p.batt !== null && Number(p.batt) > -50) series.batt.push([ts, Number(p.batt)]);
+      if (p.soc !== undefined && p.soc !== null) series.soc.push([ts, Number(p.soc)]);
     });
 
     const colors = { kw: 'var(--accent)', spd: '#34c759', batt: '#ff9500', soc: '#af52de' };
@@ -361,13 +450,21 @@
         el.innerHTML = '<div style="font-size:12px;color:var(--muted)">Нет данных за эту поездку.</div>';
         return;
       }
-      chart(el, sel.map(k => ({ values: series[k], color: colors[k] })), { minSpan: 2 });
+      chart(el, sel.map(k => ({ points: series[k], color: colors[k] })), { minSpan: 2, from: s, to: e });
       el.insertAdjacentHTML('beforeend',
         '<div style="display:flex;gap:12px;font-size:11px;color:var(--muted);margin-top:4px">' +
         sel.map(k => `<span><i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${colors[k]};margin-right:4px"></i>${k === 'kw' ? 'кВт' : k === 'spd' ? 'км/ч' : k === 'batt' ? '°C' : '%'}</span>`).join('') +
         '</div>');
     }
 
+    if (window.ResizeObserver) {
+      let lastW = 0;
+      const ro = new ResizeObserver(() => {
+        const w = $('.lc-chart', box)?.clientWidth || 0;
+        if (w && Math.abs(w - lastW) > 8) { lastW = w; draw(); }
+      });
+      ro.observe(box);
+    }
     $$('.lc-btn', box).forEach(b => b.onclick = () => {
       const k = b.dataset.k;
       state[k] = !state[k];
