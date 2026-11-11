@@ -35,12 +35,12 @@ SERVER_BASE = os.environ.get("LEAF_SERVER_BASE", "https://leaf.wargaelanor.keene
 
 # Ссылка на Android-приложение (release-ассет проекта).
 APP_REV = os.environ.get("LEAF_REV", "sec-2c73f93")
-APP_VERSION = "1.43"  # версия APK, лежащего на этом сервере
-APP_NOTES = "Знак в шапке главного экрана — из исходного логотипа"
+APP_VERSION = "1.44"  # версия APK, лежащего на этом сервере
+APP_NOTES = "Переключение между машинами"
 
 APK_URL = os.environ.get(
     "LEAF_APK_URL",
-    "https://github.com/wargaelanor/leafapp/releases/download/android-v1.43/LeafControl-1.43-debug.apk",
+    "https://github.com/wargaelanor/leafapp/releases/download/android-v1.44/LeafControl-1.44-debug.apk",
 )
 
 # Команды, которые шлёт PWA (те же пути, что у платы).
@@ -622,6 +622,20 @@ class Api(BaseHTTPRequestHandler):
                 "petrol_price": float(cfg["petrol_price"]),
                 "petrol_l100": float(cfg["petrol_l100"]),
             })
+        if path == "/api/device/select" and method == "POST":
+            u = self.require_user()
+            if not u:
+                return
+            ref = str(self.body().get("device", "")).strip()
+            d = self.owned_device(u, ref) if ref else None
+            if not d:
+                return self.err(404, "device not found")
+            cookie = f"leaf_dev={d['id']}; Path=/; SameSite=Lax; Max-Age={365 * 86400}"
+            if self.is_secure_request():
+                cookie += "; Secure"
+            return self.json(200, {"ok": True, "device": d["id"], "login": d["login"],
+                                   "name": d["name"]}, {"Set-Cookie": cookie})
+
         if path == "/api/devices" and method == "GET":
             return self.list_devices()
         if path == "/api/state" and method == "GET":
@@ -1079,6 +1093,7 @@ class Api(BaseHTTPRequestHandler):
             "night_to": None,
             "gps": None,
             "device": d["login"],
+            "device_id": d["id"],
             "device_name": d["name"],
         }
         if st.get("v12") is not None or st.get("doors") is not None:

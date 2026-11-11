@@ -1089,6 +1089,78 @@
     window.addEventListener('resize', () => { tick(); });
   }
 
+
+  /* ---------- выбор машины ---------- */
+  function addDeviceChip() {
+    if (document.getElementById('dev-chip')) return;
+    const host = document.querySelector('.appbar .actions');
+    if (!host) return;
+    const b = document.createElement('button');
+    b.id = 'dev-chip';
+    b.style.cssText = 'display:flex;align-items:center;gap:4px;border:0;background:rgba(120,120,128,.14);' +
+      'color:var(--text);border-radius:999px;padding:5px 10px;font:12px/1.1 -apple-system,Segoe UI,Roboto;' +
+      'max-width:34vw;overflow:hidden;white-space:nowrap;margin-right:4px';
+    b.innerHTML = '<span id="dev-chip-name" style="overflow:hidden;text-overflow:ellipsis">Машина</span>' +
+      '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg>';
+    b.onclick = openDeviceSheet;
+    host.insertBefore(b, host.firstChild);
+    refreshDeviceChip();
+    setInterval(refreshDeviceChip, 30000);
+  }
+
+  async function refreshDeviceChip() {
+    try {
+      const j = await api('/api/status');
+      const el = document.getElementById('dev-chip-name');
+      if (el) el.textContent = j.device_name || j.device || 'Машина';
+      if (j && j.device_id) window.__leafDeviceId = j.device_id;
+    } catch (e) { }
+  }
+
+  async function openDeviceSheet() {
+    let list = [];
+    try { list = (await api('/api/devices')).devices || []; } catch (e) { }
+    const cur = window.__leafDeviceId;
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10000;' +
+      'display:flex;align-items:flex-end;justify-content:center';
+    const sheet = document.createElement('div');
+    sheet.style.cssText = 'background:var(--surface);color:var(--text);width:100%;max-width:540px;' +
+      'border-radius:16px 16px 0 0;padding:16px;max-height:72vh;overflow:auto';
+    const ago = (s) => {
+      if (!s) return 'нет данных';
+      const d = Math.max(0, Math.round(Date.now() / 1000 - s));
+      if (d < 90) return 'на связи';
+      if (d < 3600) return Math.round(d / 60) + ' мин назад';
+      if (d < 86400) return Math.round(d / 3600) + ' ч назад';
+      return Math.round(d / 86400) + ' дн назад';
+    };
+    sheet.innerHTML = '<div style="font-weight:600;margin-bottom:10px">Выбор машины</div>' +
+      (list.length ? list.map(d => `
+        <div data-dev="${d.id}" style="display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--line);cursor:pointer">
+          <i style="width:8px;height:8px;border-radius:50%;background:${d.online ? 'var(--accent)' : 'var(--muted)'}"></i>
+          <div style="flex:1">
+            <div style="font-size:14px">${d.name || d.login}${String(d.id) === String(cur) ? ' ✓' : ''}</div>
+            <div style="font-size:12px;color:var(--muted)">${d.login} · ${d.fw || ''} · ${ago(d.last_seen)}</div>
+          </div>
+        </div>`).join('') : '<div style="font-size:13px;color:var(--muted)">Машин нет</div>') +
+      `<div data-add="1" style="padding:14px 0;color:var(--accent);font-size:14px;cursor:pointer">+ Добавить машину по коду</div>
+       <button id="dev-cancel" style="margin-top:10px;width:100%;padding:12px;border:0;border-radius:10px;background:var(--surface-2);color:var(--text)">Отмена</button>`;
+    ov.appendChild(sheet);
+    document.body.appendChild(ov);
+    ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+    sheet.querySelector('#dev-cancel').onclick = () => ov.remove();
+    sheet.querySelectorAll('[data-dev]').forEach(el => el.onclick = async () => {
+      try {
+        await api('/api/device/select', { device: el.dataset.dev });
+        ov.remove();
+        location.reload();
+      } catch (e) { alert(e.message); }
+    });
+    const add = sheet.querySelector('[data-add]');
+    if (add) add.onclick = () => { ov.remove(); showClaim(); };
+  }
+
   /* ---------- запуск ---------- */
   function init() {
     cleanMore();
@@ -1099,6 +1171,7 @@
     addClaimScreen();
     addFirmwareScreen();
     addLinkBadge();
+    addDeviceChip();
     interceptMore();
     bindCards();
     loadRole().then(() => addMoreRows());

@@ -46,6 +46,11 @@ object Settings {
         get() = p.getString("server_pass", "") ?: ""
         set(v) = p.edit().putString("server_pass", v).apply()
 
+    /** Какая машина открыта в приложении (0 — выбрать автоматически). */
+    var serverDevice: Int
+        get() = p.getInt("server_device", 0)
+        set(v) = p.edit().putInt("server_device", v).apply()
+
     /** Session cookie of the server login (leaf_session=...). */
     var serverCookie: String
         get() = p.getString("server_cookie", "") ?: ""

@@ -42,9 +42,17 @@ object ServerApi {
 
     private fun base(): String = Settings.serverUrl.trim().trimEnd('/')
 
+    private fun cookieHeader(): String {
+        val parts = ArrayList<String>()
+        if (Settings.serverCookie.isNotEmpty()) parts += Settings.serverCookie
+        if (Settings.serverDevice > 0) parts += "leaf_dev=" + Settings.serverDevice
+        return parts.joinToString("; ")
+    }
+
     private fun request(path: String, method: String = "GET", body: String? = null): Request {
         val b = Request.Builder().url(base() + path)
-        if (Settings.serverCookie.isNotEmpty()) b.header("Cookie", Settings.serverCookie)
+        val cookie = cookieHeader()
+        if (cookie.isNotEmpty()) b.header("Cookie", cookie)
         b.header("Accept", "application/json")
         if (body != null) b.method(method, body.toRequestBody(jsonType))
         else if (method == "GET") b.get()
@@ -164,6 +172,44 @@ object ServerApi {
         } catch (_: Exception) {
             null
         }
+    }
+
+    data class DeviceRef(
+        val id: Int,
+        val login: String,
+        val name: String,
+        val online: Boolean,
+        val fw: String,
+        val lastSeen: Long,
+    )
+
+    /** Список машин аккаунта. */
+    suspend fun devices(context: Context): List<DeviceRef> = withContext(Dispatchers.IO) {
+        val body = get(context, "/api/devices") ?: return@withContext emptyList()
+        try {
+            val arr = JSONObject(body).optJSONArray("devices") ?: JSONArray()
+            val out = ArrayList<DeviceRef>(arr.length())
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                out += DeviceRef(
+                    id = o.optInt("id", 0),
+                    login = o.optString("login", ""),
+                    name = o.optString("name", ""),
+                    online = o.optBoolean("online", false),
+                    fw = o.optString("fw", ""),
+                    lastSeen = o.optLong("last_seen", 0L),
+                )
+            }
+            out
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    /** Выбирает машину и запоминает её в настройках. */
+    suspend fun selectDevice(context: Context, id: Int): Boolean = withContext(Dispatchers.IO) {
+        Settings.serverDevice = id
+        status(context) != null
     }
 
     /** Sends a command through the server: /lock, /unlock, /hvac_on?... */

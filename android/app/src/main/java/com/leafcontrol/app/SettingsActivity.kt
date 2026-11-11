@@ -108,6 +108,11 @@ class SettingsActivity : ComponentActivity() {
 
         val leafState by LeafRepo.state.collectAsStateWithLifecycle()
         val scope = rememberCoroutineScope()
+        var deviceList by remember { mutableStateOf<List<com.leafcontrol.app.net.ServerApi.DeviceRef>>(emptyList()) }
+        var selectedDevice by remember { mutableStateOf(Settings.serverDevice) }
+        LaunchedEffect(Unit) {
+            deviceList = com.leafcontrol.app.net.ServerApi.devices(ctx)
+        }
 
         val notificationPermission =
             rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
@@ -186,6 +191,36 @@ class SettingsActivity : ComponentActivity() {
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("Проверить сервер") }
+                if (deviceList.isNotEmpty()) {
+                    Text("Машина", fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    deviceList.forEach { d ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable {
+                                selectedDevice = d.id
+                                Settings.serverDevice = d.id
+                                scope.launch {
+                                    com.leafcontrol.app.net.ServerApi.selectDevice(ctx, d.id)
+                                    LeafMonitorService.reload(ctx)
+                                }
+                            }.padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(d.name.ifBlank { d.login }, fontSize = 14.sp)
+                                Text(
+                                    d.login + (if (d.fw.isNotBlank()) " · " + d.fw else "") +
+                                        (if (d.online) " · на связи" else " · офлайн"),
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            if (selectedDevice == d.id) {
+                                Text("✓", color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                    }
+                }
                 OutlinedButton(
                     onClick = {
                         Settings.mode = mode
