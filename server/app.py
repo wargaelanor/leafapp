@@ -35,12 +35,12 @@ SERVER_BASE = os.environ.get("LEAF_SERVER_BASE", "https://leaf.wargaelanor.keene
 
 # Ссылка на Android-приложение (release-ассет проекта).
 APP_REV = os.environ.get("LEAF_REV", "sec-2c73f93")
-APP_VERSION = "1.47"  # версия APK, лежащего на этом сервере
-APP_NOTES = "Расход в двух единицах, стоимость справа"
+APP_VERSION = "1.48"  # версия APK, лежащего на этом сервере
+APP_NOTES = "Графики поездок и зарядок в приложении"
 
 APK_URL = os.environ.get(
     "LEAF_APK_URL",
-    "https://github.com/wargaelanor/leafapp/releases/download/android-v1.47/LeafControl-1.47-debug.apk",
+    "https://github.com/wargaelanor/leafapp/releases/download/android-v1.48/LeafControl-1.48-debug.apk",
 )
 
 # Команды, которые шлёт PWA (те же пути, что у платы).

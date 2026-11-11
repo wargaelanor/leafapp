@@ -212,6 +212,39 @@ object ServerApi {
         status(context) != null
     }
 
+
+    data class SamplePoint(
+        val ts: Long,
+        val kw: Double?,
+        val soc: Double?,
+        val batt: Double?,
+        val spd: Double?,
+    )
+
+    /** Точки телеметрии за интервал (для графиков поездок и зарядок). */
+    suspend fun samples(context: Context, from: Long, to: Long): List<SamplePoint> =
+        withContext(Dispatchers.IO) {
+            if (to <= from) return@withContext emptyList()
+            val body = get(context, "/api/samples?from=$from&to=$to") ?: return@withContext emptyList()
+            try {
+                val arr = JSONObject(body).optJSONArray("points") ?: JSONArray()
+                val out = ArrayList<SamplePoint>(arr.length())
+                for (i in 0 until arr.length()) {
+                    val o = arr.getJSONObject(i)
+                    out += SamplePoint(
+                        ts = o.optLong("ts", 0L),
+                        kw = if (o.has("kw") && !o.isNull("kw")) o.optDouble("kw") else null,
+                        soc = if (o.has("soc") && !o.isNull("soc")) o.optDouble("soc") else null,
+                        batt = if (o.has("batt") && !o.isNull("batt")) o.optDouble("batt") else null,
+                        spd = if (o.has("spd") && !o.isNull("spd")) o.optDouble("spd") else null,
+                    )
+                }
+                out
+            } catch (_: Exception) {
+                emptyList()
+            }
+        }
+
     /** Sends a command through the server: /lock, /unlock, /hvac_on?... */
     suspend fun command(context: Context, path: String): Boolean = withContext(Dispatchers.IO) {
         if (!configured()) return@withContext false

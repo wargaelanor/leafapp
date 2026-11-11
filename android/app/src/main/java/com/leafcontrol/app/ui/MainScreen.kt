@@ -13,6 +13,9 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -1304,13 +1307,157 @@ private fun SummaryCell(value: String, label: String, modifier: Modifier = Modif
     }
 }
 
+
+private data class ChartSeriesDef(val key: String, val label: String, val color: Color)
+
+@Composable
+private fun HistoryChart(
+    from: Long,
+    to: Long,
+    points: List<com.leafcontrol.app.net.ServerApi.SamplePoint>,
+    defaults: Set<String>,
+) {
+    val defs = listOf(
+        ChartSeriesDef("kw", "Мощность, кВт", Color(0xFF2E86DE)),
+        ChartSeriesDef("spd", "Скорость, км/ч", Color(0xFF34C759)),
+        ChartSeriesDef("soc", "Заряд, %", Color(0xFFAF52DE)),
+        ChartSeriesDef("batt", "Батарея, °C", Color(0xFFFF9500)),
+    )
+    var selected by remember { mutableStateOf(defaults) }
+    var probeFrac by remember { mutableStateOf<Float?>(null) }
+
+    fun vals(key: String): List<Pair<Long, Double>> = when (key) {
+        "kw" -> points.mapNotNull { p -> p.kw?.let { p.ts to it } }
+        "spd" -> points.mapNotNull { p -> p.spd?.let { p.ts to it } }
+        "soc" -> points.mapNotNull { p -> p.soc?.let { p.ts to it } }
+        else -> points.mapNotNull { p -> p.batt?.takeIf { v -> v > -50 }?.let { p.ts to it } }
+    }
+
+    val active = defs.filter { selected.contains(it.key) }.map { it to vals(it.key) }.filter { it.second.isNotEmpty() }
+    val allVals = active.flatMap { it.second.map { p -> p.second } }
+
+    if (active.isEmpty() || allVals.isEmpty()) {
+        Text("Нет точек за эту сессию", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        return
+    }
+
+    var yMin = allVals.min()
+    var yMax = allVals.max()
+    if (yMax - yMin < 1.0) {
+        val c = (yMax + yMin) / 2
+        yMin = c - 0.5
+        yMax = c + 0.5
+    }
+    val spanY = (yMax - yMin).coerceAtLeast(0.001)
+    val spanT = (to - from).coerceAtLeast(1L)
+    val gridColor = MaterialTheme.colorScheme.outline
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            defs.forEach { d ->
+                val on = selected.contains(d.key)
+                Text(
+                    d.label,
+                    fontSize = 11.sp,
+                    color = if (on) Color.White else MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier
+                        .background(if (on) d.color else MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(14.dp))
+                        .clickable {
+                            selected = if (on) selected - d.key else selected + d.key
+                            probeFrac = null
+                        }
+                        .padding(horizontal = 9.dp, vertical = 5.dp),
+                )
+            }
+        }
+
+        val probeTs = probeFrac?.let { from + (spanT * it).toLong() } ?: to
+        val parts = active.mapNotNull { (d, list) ->
+            list.minByOrNull { kotlin.math.abs(it.first - probeTs) }
+                ?.let { d.label.substringBefore(',') + " " + fmt(it.second, 1) }
+        }
+        Text(
+            timeFmt(probeTs) + (if (parts.isNotEmpty()) " · " + parts.joinToString(" · ") else ""),
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        Row(Modifier.fillMaxWidth().height(220.dp)) {
+            Column(
+                Modifier.width(38.dp).fillMaxHeight(),
+                verticalArrangement = Arrangement.SpaceBetween,
+                horizontalAlignment = Alignment.End,
+            ) {
+                Text(fmt(yMax, 1), fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(fmt(yMin, 1), fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Spacer(Modifier.width(4.dp))
+            Canvas(
+                Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .pointerInput(Unit) {
+                        detectTapGestures { off ->
+                            probeFrac = (off.x / size.width.toFloat()).coerceIn(0f, 1f)
+                        }
+                    }
+            ) {
+                val w = size.width
+                val h = size.height
+                for (i in 0..2) {
+                    val y = h * i / 2f
+                    drawLine(gridColor, Offset(0f, y), Offset(w, y), 1f)
+                }
+                for (i in 1..3) {
+                    val x = w * i / 4f
+                    drawLine(gridColor, Offset(x, 0f), Offset(x, h), 1f)
+                }
+                active.forEach { pair ->
+                    val d = pair.first
+                    val list = pair.second
+                    val path = Path()
+                    list.forEachIndexed { i, p ->
+                        val x = ((p.first - from).toFloat() / spanT) * w
+                        val y = h - (((p.second - yMin) / spanY) * h).toFloat()
+                        if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                    }
+                    drawPath(path, d.color, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f))
+                }
+                probeFrac?.let { f ->
+                    drawLine(gridColor, Offset(w * f, 0f), Offset(w * f, h), 1f)
+                }
+            }
+        }
+
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(timeFmt(from), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(timeFmt((from + to) / 2), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(timeFmt(to), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
 @Composable
 private fun TripCard(t: Trip) {
     val per100 = LeafRepo.tripPer100(t)
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var open by remember { mutableStateOf(false) }
+    var loading by remember { mutableStateOf(false) }
+    var points by remember { mutableStateOf<List<com.leafcontrol.app.net.ServerApi.SamplePoint>>(emptyList()) }
     Surface(
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surface,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable {
+            open = !open
+            if (open && points.isEmpty() && !loading) {
+                loading = true
+                scope.launch {
+                    points = com.leafcontrol.app.net.ServerApi.samples(ctx, t.startMs / 1000, t.endMs / 1000)
+                    loading = false
+                }
+            }
+        },
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(Modifier.fillMaxWidth()) {
@@ -1338,16 +1485,38 @@ private fun TripCard(t: Trip) {
             if (t.startSoc != null && t.endSoc != null) {
                 Text("Заряд ${t.startSoc}→${t.endSoc}%", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            if (open) {
+                Spacer(Modifier.height(8.dp))
+                if (loading) {
+                    Text("Загружаю точки…", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    HistoryChart(t.startMs / 1000, t.endMs / 1000, points, setOf("kw", "soc"))
+                }
+            }
         }
     }
 }
 
 @Composable
 private fun ChargeCard(c: Charge) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var open by remember { mutableStateOf(false) }
+    var loading by remember { mutableStateOf(false) }
+    var points by remember { mutableStateOf<List<com.leafcontrol.app.net.ServerApi.SamplePoint>>(emptyList()) }
     Surface(
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surface,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable {
+            open = !open
+            if (open && points.isEmpty() && !loading) {
+                loading = true
+                scope.launch {
+                    points = com.leafcontrol.app.net.ServerApi.samples(ctx, c.startMs / 1000, c.endMs / 1000)
+                    loading = false
+                }
+            }
+        },
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(Modifier.fillMaxWidth()) {
@@ -1373,6 +1542,14 @@ private fun ChargeCard(c: Charge) {
             }
             if (c.startSoc != null && c.endSoc != null) {
                 Text("Заряд ${c.startSoc}→${c.endSoc}%", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (open) {
+                Spacer(Modifier.height(8.dp))
+                if (loading) {
+                    Text("Загружаю точки…", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    HistoryChart(c.startMs / 1000, c.endMs / 1000, points, setOf("kw", "batt", "soc"))
+                }
             }
         }
     }
@@ -1559,6 +1736,10 @@ private fun MoreRow(icon: ImageVector, title: String, subtitle: String, onClick:
         }
     }
 }
+
+private fun timeFmt(ts: Long): String =
+    java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+        .format(java.util.Date(ts * 1000L))
 
 private fun pct(v: Double): String = if (v >= 0) "${v.toInt()}%" else "—"
 
