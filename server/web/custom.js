@@ -236,11 +236,98 @@
           ? d.getDate().toString().padStart(2, '0') + '.' + String(d.getMonth() + 1).padStart(2, '0') + ' ' + hh + ':' + mm
           : hh + ':' + mm;
       };
-      text(padL, H - 6, clock(t0), 'start');
-      text(padL + plotW / 2, H - 6, clock((t0 + t1) / 2), 'middle');
-      text(W - padR, H - 6, clock(t1), 'end');
+      const marks = 5;
+      for (let i = 0; i < marks; i++) {
+        const ts = t0 + (t1 - t0) * (i / (marks - 1));
+        const x = padL + plotW * (i / (marks - 1));
+        text(x, H - 6, clock(ts), i === 0 ? 'start' : (i === marks - 1 ? 'end' : 'middle'));
+      }
     }
     if (opts.label) text(W - padR, padT + 9, opts.label, 'end');
+
+    // ---- подсказка: время и значения в точке под пальцем/курсором
+    if (hasTime) {
+      const marks = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      marks.setAttribute('stroke', 'var(--muted)');
+      marks.setAttribute('stroke-width', '1');
+      marks.setAttribute('stroke-dasharray', '3 3');
+      marks.setAttribute('fill', 'none');
+      marks.setAttribute('visibility', 'hidden');
+      svg.appendChild(marks);
+
+      const bubbleBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      bubbleBg.setAttribute('rx', '5');
+      bubbleBg.setAttribute('fill', 'var(--surface-2)');
+      bubbleBg.setAttribute('stroke', 'var(--line)');
+      bubbleBg.setAttribute('height', '18');
+      bubbleBg.setAttribute('visibility', 'hidden');
+      svg.appendChild(bubbleBg);
+
+      const bubble = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      bubble.setAttribute('font-size', '10.5');
+      bubble.setAttribute('fill', 'var(--text)');
+      bubble.setAttribute('visibility', 'hidden');
+      svg.appendChild(bubble);
+
+      const hit = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      hit.setAttribute('x', padL);
+      hit.setAttribute('y', padT);
+      hit.setAttribute('width', plotW);
+      hit.setAttribute('height', plotH);
+      hit.setAttribute('fill', 'transparent');
+      hit.setAttribute('style', 'cursor:crosshair;touch-action:pan-y');
+      svg.appendChild(hit);
+
+      const clockFull = (ts) => {
+        const d = new Date(ts * 1000);
+        return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+      };
+      const unit = { kw: ' кВт', spd: ' км/ч', soc: ' %', batt: ' °C' };
+      const unitShort = { kw: 'кВт', spd: 'км/ч', soc: '%', batt: '°C' };
+
+      const show = (ev) => {
+        const r = svg.getBoundingClientRect();
+        const px = (ev.clientX - r.left) * (W / r.width);
+        if (px < padL - 4 || px > W - padR + 4) return hide();
+        const f = Math.min(1, Math.max(0, (px - padL) / plotW));
+        const ts = t0 + f * (t1 - t0);
+        const x = padL + f * plotW;
+
+        marks.setAttribute('d', `M${x.toFixed(1)} ${padT} V${padT + plotH}`);
+        marks.setAttribute('visibility', 'visible');
+
+        const parts = [];
+        series.forEach(sr => {
+          if (!sr.show || !sr._pts.length) return;
+          let best = null, bestD = Infinity;
+          sr._pts.forEach(pt => {
+            const d = Math.abs(pt[0] - ts);
+            if (d < bestD) { bestD = d; best = pt; }
+          });
+          if (best) parts.push(fmt(best[1], 1) + unit[sr.key]);
+        });
+        const labelText = clockFull(ts) + (parts.length ? ' · ' + parts.join(' · ') : '');
+        bubble.textContent = labelText;
+        const tw = labelText.length * 5.7 + 10;
+        const bx = Math.min(W - padR - tw, Math.max(padL, x - tw / 2));
+        bubbleBg.setAttribute('x', bx);
+        bubbleBg.setAttribute('y', padT - 2);
+        bubbleBg.setAttribute('width', tw);
+        bubble.setAttribute('x', bx + 5);
+        bubble.setAttribute('y', padT + 11);
+        bubbleBg.setAttribute('visibility', 'visible');
+        bubble.setAttribute('visibility', 'visible');
+      };
+      const hide = () => {
+        marks.setAttribute('visibility', 'hidden');
+        bubble.setAttribute('visibility', 'hidden');
+        bubbleBg.setAttribute('visibility', 'hidden');
+      };
+      hit.addEventListener('pointerdown', show);
+      hit.addEventListener('pointermove', show);
+      hit.addEventListener('pointerleave', hide);
+      hit.addEventListener('pointerup', hide);
+    }
 
     el.appendChild(svg);
   }
@@ -434,7 +521,8 @@
     const series = { kw: [], spd: [], batt: [], soc: [] };
     pts.forEach(p => {
       const ts = Number(p.ts) || 0;
-      if (p.kw !== undefined && p.kw !== null) series.kw.push([ts, Number(p.kw)]);
+      // при зарядке ток отрицательный, поэтому мощность приходит со знаком минус
+      if (p.kw !== undefined && p.kw !== null) series.kw.push([ts, kind === 'charge' ? Math.abs(Number(p.kw)) : Number(p.kw)]);
       if (p.spd !== undefined && p.spd !== null) series.spd.push([ts, Number(p.spd)]);
       // -99 значит «BMS не ответил» — такую точку в график не берём
       if (p.batt !== undefined && p.batt !== null && Number(p.batt) > -50) series.batt.push([ts, Number(p.batt)]);
@@ -450,7 +538,7 @@
         el.innerHTML = '<div style="font-size:12px;color:var(--muted)">Нет данных за эту поездку.</div>';
         return;
       }
-      chart(el, sel.map(k => ({ points: series[k], color: colors[k] })), { minSpan: 2, from: s, to: e });
+      chart(el, sel.map(k => ({ key: k, show: true, points: series[k], color: colors[k] })), { minSpan: 2, from: s, to: e });
       el.insertAdjacentHTML('beforeend',
         '<div style="display:flex;gap:12px;font-size:11px;color:var(--muted);margin-top:4px">' +
         sel.map(k => `<span><i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${colors[k]};margin-right:4px"></i>${k === 'kw' ? 'кВт' : k === 'spd' ? 'км/ч' : k === 'batt' ? '°C' : '%'}</span>`).join('') +
