@@ -317,13 +317,22 @@
     const box = document.createElement('div');
     box.className = 'lc-detail';
     box.style.cssText = 'padding:10px 0 4px;border-top:1px solid var(--line);margin-top:10px';
+    const LABELS = {
+      kw: 'Мощность, кВт',
+      spd: 'Скорость, км/ч',
+      soc: 'Заряд, %',
+      batt: 'Батарея, °C',
+    };
+    // Поездка: мощность, скорость, заряд и температура. Зарядка: без скорости,
+    // там важнее температура батареи.
+    const keys = kind === 'trip' ? ['kw', 'spd', 'soc', 'batt'] : ['kw', 'batt', 'soc'];
+    const state = kind === 'trip'
+      ? { kw: true, spd: false, soc: false, batt: false }
+      : { kw: true, spd: false, soc: true, batt: true };
+
     box.innerHTML = `
       <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">
-        <button data-k="kw" class="lc-btn" style="padding:6px 10px;border-radius:14px;border:1px solid var(--line);background:var(--accent);color:#fff;font-size:12px">Мощность, кВт</button>
-        ${kind === 'trip'
-          ? '<button data-k="spd" class="lc-btn" style="padding:6px 10px;border-radius:14px;border:1px solid var(--line);background:var(--surface);color:var(--text);font-size:12px">Скорость</button>'
-          : '<button data-k="batt" class="lc-btn" style="padding:6px 10px;border-radius:14px;border:1px solid var(--line);background:var(--surface);color:var(--text);font-size:12px">Батарея, °C</button>'}
-        <button data-k="soc" class="lc-btn" style="padding:6px 10px;border-radius:14px;border:1px solid var(--line);background:var(--surface);color:var(--text);font-size:12px">Заряд, %</button>
+        ${keys.map(k => `<button data-k="${k}" class="lc-btn" style="padding:6px 10px;border-radius:14px;border:1px solid var(--line);background:${state[k] ? 'var(--accent)' : 'var(--surface)'};color:${state[k] ? '#fff' : 'var(--text)'};font-size:12px">${LABELS[k]}</button>`).join('')}
       </div>
       <div class="lc-chart"></div>`;
     item.appendChild(box);
@@ -338,12 +347,12 @@
     pts.forEach(p => {
       if (p.kw !== undefined && p.kw !== null) series.kw.push(Number(p.kw));
       if (p.spd !== undefined && p.spd !== null) series.spd.push(Number(p.spd));
-      if (p.batt !== undefined && p.batt !== null) series.batt.push(Number(p.batt));
+      // -99 значит «BMS не ответил» — такую точку в график не берём
+      if (p.batt !== undefined && p.batt !== null && Number(p.batt) > -50) series.batt.push(Number(p.batt));
       if (p.soc !== undefined && p.soc !== null) series.soc.push(Number(p.soc));
     });
 
     const colors = { kw: 'var(--accent)', spd: '#34c759', batt: '#ff9500', soc: '#af52de' };
-    const state = { kw: true, spd: kind === 'charge', batt: false, soc: true };
 
     function draw() {
       const sel = Object.keys(state).filter(k => state[k] && series[k].length);
@@ -375,6 +384,9 @@
     if (trips && !trips.dataset.lcBound) {
       trips.dataset.lcBound = '1';
       trips.addEventListener('click', (e) => {
+        // кнопки и сам график живут внутри .lc-detail — их клики не должны
+        // сворачивать карточку (из-за этого переключатели «схлопывали» её)
+        if (e.target.closest && e.target.closest('.lc-detail')) return;
         const it = e.target.closest && e.target.closest('.trip-item');
         if (it) expand(it, 'trip');
       });
@@ -382,6 +394,7 @@
     if (charges && !charges.dataset.lcBound) {
       charges.dataset.lcBound = '1';
       charges.addEventListener('click', (e) => {
+        if (e.target.closest && e.target.closest('.lc-detail')) return;
         const it = e.target.closest && e.target.closest('.trip-item');
         if (it) expand(it, 'charge');
       });
