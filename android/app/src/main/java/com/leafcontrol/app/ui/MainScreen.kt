@@ -270,14 +270,15 @@ private fun LeafTopBar(state: LeafState, onRefresh: () -> Unit) {
 
 @Composable
 private fun LeafLogo(modifier: Modifier, color: Color) {
-    Canvas(modifier) {
-        val stroke = 1.8.dp.toPx()
-        val r = size.minDimension * 0.30f
-        val cy = size.height / 2f
-        drawCircle(color, r, Offset(size.width / 2f, cy), style = androidx.compose.ui.graphics.drawscope.Stroke(stroke))
-        drawLine(color, Offset(0f, cy), Offset(size.width / 2f - r, cy), stroke)
-        drawLine(color, Offset(size.width / 2f + r, cy), Offset(size.width, cy), stroke)
-    }
+    // Знак берётся из исходного логотипа владельца: чёрный для светлой темы,
+    // белый — для тёмной. Только масштабирование, линии не редактируются.
+    Image(
+        painter = painterResource(
+            if (isSystemInDarkTheme()) R.drawable.logo_mark_dark else R.drawable.logo_mark_light
+        ),
+        contentDescription = null,
+        modifier = modifier,
+    )
 }
 
 @Composable
