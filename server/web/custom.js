@@ -177,6 +177,11 @@
       ['Зарядок', d.charges.count],
       ['Заряжено', fmt(d.charges.kwh, 2) + ' кВт·ч'],
     ];
+    // Климат считаем отдельно от поездок: стоянка с включённой машиной.
+    if (d.climate && d.climate.count > 0) {
+      rows.push(['Климат', fmt(d.climate.kwh, 2) + ' кВт·ч']);
+      rows.push(['Климат, время', fmt(d.climate.hours, 1) + ' ч']);
+    }
     $('#st-totals').innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">` +
       rows.map(([k, v]) => `<div><div style="font-size:12px;color:var(--muted)">${k}</div><div style="font-size:18px">${v}</div></div>`).join('') + `</div>`;
 

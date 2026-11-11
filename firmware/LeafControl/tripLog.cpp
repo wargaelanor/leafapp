@@ -30,8 +30,10 @@ extern WebServer server;
 
 static const char* TRIPS_PATH   = "/trips.jsonl";
 static const char* CHARGES_PATH = "/charges.jsonl";
+static const char* CLIMATE_PATH = "/climate.jsonl";
 static const size_t TRIPS_LIMIT   = BOARD_TRIPS_LIMIT;
 static const size_t CHARGES_LIMIT = BOARD_CHARGES_LIMIT;
+static const size_t CLIMATE_LIMIT = 64UL * 1024UL;
 static const size_t SEND_MAX_RECORDS = 800;
 
 // Moscow, no DST. The board stores UTC epochs; localtime_r() on this core does
@@ -47,6 +49,7 @@ static float lastOdo = -1.0f;
 
 static size_t tripsCount = 0;
 static size_t chargesCount = 0;
+static size_t climateCount = 0;
 
 // --- trip state ----------------------------------------------------------
 static bool tripActive = false;
@@ -56,7 +59,20 @@ static float tripOdoStart = 0;
 static float tripSocStart = -1;
 static float tripSocEnd = -1;
 static float tripKwh = 0, tripKwhDay = 0, tripKwhNight = 0;
-static unsigned long tripLastMoveMs = 0;
+static unsigned long tripMoveMs = 0;      // последнее движение
+static unsigned long tripOffSinceMs = 0;  // с какого момента машина «не готова»
+static bool tripPending = false;          // едем, но ещё меньше 100 м
+static uint32_t tripPendEpoch = 0;
+static unsigned long tripPendMs = 0;
+static float tripPendOdo = 0;
+static float tripPendSoc = -1;
+
+// --- климат (машина включена, стоит, потребляет) -------------------------
+static bool climActive = false;
+static uint32_t climStartEpoch = 0;
+static unsigned long climStartMs = 0;
+static float climWh = 0, climWhDay = 0, climWhNight = 0;
+static float climSocStart = -1, climSocEnd = -1;
 
 // --- charge state --------------------------------------------------------
 static bool chgActive = false;
@@ -196,6 +212,7 @@ void tripLogInit() {
   tripsCount = fileLines(TRIPS_PATH);
   compactCharges();
   chargesCount = fileLines(CHARGES_PATH);
+  climateCount = fileLines(CLIMATE_PATH);
   Serial.printf("[log] history on board: %u trips, %u charges\n",
                 (unsigned)tripsCount, (unsigned)chargesCount);
 }
@@ -245,6 +262,29 @@ static void finishCharge(const char* reason) {
   appendRecord(CHARGES_PATH, CHARGES_LIMIT, line);
   serverApiOnRecord("charge", line);
   Serial.printf("[log] charge %.2f kWh\n", chgKwh);
+}
+
+static void finishClimate(const char* reason) {
+  if (!climActive) return;
+  climActive = false;
+  uint32_t endEpoch = epochNow();
+  unsigned long durMs = millis() - climStartMs;
+  // Климат — это заметная работа: минимум 5 минут и 100 Вт·ч.
+  if (durMs < 300000UL || climWh < 100.0f) {
+    Serial.printf("[log] climate session dropped (%.1f Wh, %lu s)\n",
+                  climWh, (unsigned long)(durMs / 1000UL));
+    return;
+  }
+  char line[200];
+  snprintf(line, sizeof(line),
+           "{\"s\":%lu,\"e\":%lu,\"d\":%lu,\"w\":%.3f,\"wd\":%.3f,\"wn\":%.3f,\"s0\":%d,\"s1\":%d,\"r\":\"%s\"}",
+           (unsigned long)climStartEpoch, (unsigned long)endEpoch,
+           (unsigned long)(durMs / 1000UL), climWh, climWhDay, climWhNight,
+           (int)(climSocStart >= 0 ? climSocStart : -1),
+           (int)(climSocEnd >= 0 ? climSocEnd : -1), reason);
+  appendRecord(CLIMATE_PATH, CLIMATE_LIMIT, line);
+  serverApiOnRecord("climate", line);
+  Serial.printf("[log] climate %.2f kWh, %lu min\n", climWh / 1000.0, (unsigned long)(durMs / 60000UL));
 }
 
 void tripLogTick() {
@@ -305,33 +345,85 @@ void tripLogTick() {
   // stays 0/-1, and relying on it made the board skip whole drives.
   bool moved = odoMoving;
 
-  // ---- trips ----
+  // ---- поездки -----------------------------------------------------------
+  // Поездка начинается после 100 м хода и заканчивается только когда машина
+  // выключена. Остановки в пути (с включённой машиной) её больше не делят:
+  // раньше поездку рвало через 3 минуты стоянки, отсюда «1 км + 16 км».
+  bool ready = (evData.vehicleOn == 1);
+  float powerW = (dataOk && v > 0) ? fabsf(v * i) : 0.0f;
+
   if (!tripActive) {
     if (moved && epoch) {
-      tripActive = true;
-      tripStartEpoch = epoch;
-      tripStartMs = now;
-      tripOdoStart = lastOdo;
-      tripSocStart = soc;
-      tripSocEnd = soc;
-      tripKwh = tripKwhDay = tripKwhNight = 0;
-      tripLastMoveMs = now;
-      Serial.printf("[log] trip started at %.1f km\n", (double)tripOdoStart);
+      if (!tripPending) {
+        tripPending = true;
+        tripPendEpoch = epoch;
+        tripPendMs = now;
+        tripPendOdo = lastOdo;
+        tripPendSoc = soc;
+      } else if (lastOdo > 0 && tripPendOdo > 0 && (lastOdo - tripPendOdo) >= 0.10f) {
+        tripActive = true;
+        tripPending = false;
+        tripStartEpoch = tripPendEpoch;
+        tripStartMs = tripPendMs;
+        tripOdoStart = tripPendOdo;
+        tripSocStart = tripPendSoc;
+        tripSocEnd = soc;
+        tripKwh = tripKwhDay = tripKwhNight = 0;
+        tripMoveMs = now;
+        tripOffSinceMs = 0;
+        Serial.printf("[log] trip started at %.2f km\n", (double)tripOdoStart);
+      }
+    } else if (tripPending) {
+      // манёвр короче 100 м — это не поездка
+      tripPending = false;
     }
-  } else {
-    if (moved) tripLastMoveMs = now;
+  }
+
+  if (tripActive) {
+    if (moved) {
+      tripMoveMs = now;
+      tripOffSinceMs = 0;
+    }
     if (soc >= 0) tripSocEnd = soc;
     if (wh > 0) {
       tripKwh += wh;
       if (isNight(epoch)) tripKwhNight += wh; else tripKwhDay += wh;
     }
-    // Ignition off plus a short standstill closes a trip; a long standstill
-    // closes it even when the car still reports "on" (e.g. waiting in traffic
-    // was long but the odometer never moved - do not stretch that to a day).
-    bool off = (evData.vehicleOn == 0) && (now - tripLastMoveMs > 180000UL);
-    bool idle = (now - tripLastMoveMs > 15UL * 60000UL);
-    if (off) finishTrip("off");
-    else if (idle) finishTrip("idle");
+    // Конец поездки: машина не в READY, не едет и не заряжается. Пять минут
+    // запаса — чтобы стоянка у магазина не закрывала поездку.
+    // Машина выключена = не READY, не едет, не заряжается и не тянет ток.
+    if (!ready && !moved && !charging && powerW < 150.0f) {
+      if (tripOffSinceMs == 0) tripOffSinceMs = now;
+    } else {
+      tripOffSinceMs = 0;
+    }
+    // Страховка: шина молчит 15 минут — машина точно спит.
+    bool busSilent = evCanLastFrameAgeSec() > 900UL;
+    if ((tripOffSinceMs != 0 && now - tripOffSinceMs > 480000UL) || busSilent) {
+      finishTrip("off");
+    }
+  }
+
+  // ---- климат ------------------------------------------------------------
+  // Машина включена, стоит и тянет ток — это климат, а не поездка.
+  bool idling = ready && !moved && !charging && !tripActive && !tripPending;
+  if (!climActive) {
+    if (idling && powerW > 300.0f && epoch) {
+      climActive = true;
+      climStartEpoch = epoch;
+      climStartMs = now;
+      climWh = climWhDay = climWhNight = 0;
+      climSocStart = soc;
+      climSocEnd = soc;
+      Serial.println("[log] climate session started");
+    }
+  } else {
+    if (soc >= 0) climSocEnd = soc;
+    if (wh > 0) {
+      climWh += wh;
+      if (isNight(epoch)) climWhNight += wh; else climWhDay += wh;
+    }
+    if (!idling) finishClimate("stopped");
   }
 
   // ---- charges ----

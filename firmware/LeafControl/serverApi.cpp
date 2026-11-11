@@ -816,7 +816,8 @@ static bool sendOneRecord() {
   snprintf(body, sizeof(body),
            "{\"kind\":\"%s\",\"started_at\":%lu,\"ended_at\":%lu,\"duration_s\":%lu,"
            "\"distance_km\":%.2f,\"energy_kwh\":%.3f,\"soc_start\":%.0f,\"soc_end\":%.0f}",
-           strcmp(kind, "charge") == 0 ? "charge" : "trip",
+           (strcmp(kind, "charge") == 0) ? "charge"
+                                         : (strcmp(kind, "climate") == 0 ? "climate" : "trip"),
            (unsigned long)s, (unsigned long)e, (unsigned long)d,
            km, wh / 1000.0, s0, s1);
 

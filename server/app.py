@@ -900,8 +900,8 @@ class Api(BaseHTTPRequestHandler):
             return self.err(401, "bad device token")
         d = self.body()
         kind = d.get("kind")
-        if kind not in ("trip", "charge"):
-            return self.err(400, "kind must be trip|charge")
+        if kind not in ("trip", "charge", "climate"):
+            return self.err(400, "kind must be trip|charge|climate")
         with db_lock, connect() as c:
             cur = c.execute(
                 "INSERT INTO dev_sessions(device_id,kind,started_at,ended_at,duration_s,distance_km,"
@@ -1158,6 +1158,12 @@ class Api(BaseHTTPRequestHandler):
                 "FROM dev_sessions WHERE device_id=? AND kind='charge' AND COALESCE(ended_at,0)>=?",
                 (d["id"], since),
             ).fetchone()
+            climate = c.execute(
+                "SELECT COUNT(*) n, COALESCE(SUM(energy_kwh),0) kwh, "
+                "COALESCE(SUM(duration_s),0) secs "
+                "FROM dev_sessions WHERE device_id=? AND kind='climate' AND COALESCE(ended_at,0)>=?",
+                (d["id"], since),
+            ).fetchone()
             per_day = c.execute(
                 "SELECT date(COALESCE(ended_at,started_at),'unixepoch','localtime') d, "
                 "COALESCE(SUM(distance_km),0) km, COALESCE(SUM(energy_kwh),0) kwh "
@@ -1203,6 +1209,8 @@ class Api(BaseHTTPRequestHandler):
             "days": days,
             "trips": {"count": trips["n"], "km": round(km, 1), "kwh": round(kwh, 2)},
             "charges": {"count": charges["n"], "kwh": round(ch_kwh, 2)},
+            "climate": {"count": climate["n"], "kwh": round(float(climate["kwh"] or 0), 2),
+                        "hours": round(float(climate["secs"] or 0) / 3600.0, 2)},
             "per_day": [{"date": r["d"], "km": round(float(r["km"] or 0), 2),
                          "kwh": round(float(r["kwh"] or 0), 2)} for r in per_day],
             "consumption_km_per_kwh": round(consumption, 2),
