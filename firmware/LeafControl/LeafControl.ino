@@ -24,10 +24,10 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FR-TCall.153"
+#define LEAF_FIRMWARE_VERSION "FR-TCall.154"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: two MCP2515 CAN buses + SIM800"
 #else
-#define LEAF_FIRMWARE_VERSION "FR-2can.153"
+#define LEAF_FIRMWARE_VERSION "FR-2can.154"
 #define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: stable scroll, Wi-Fi scan"
 #endif
 
@@ -2257,6 +2257,17 @@ void setup() {
   initConfiguration();
   clockRestore();
   modemInit();
+
+  // Имя платы в сети (DHCP hostname). Без этого телефон/роутер показывает
+  // её как esp32-xxxxxx. Берём host_name из настроек, по умолчанию «leaf».
+  {
+    String host = getHostName();
+    host.trim();
+    if (host.isEmpty()) host = "leaf";
+    WiFi.setHostname(host.c_str());
+    WiFi.softAPsetHostname(host.c_str());
+    Serial.printf("[wifi] hostname: %s\n", host.c_str());
+  }
 
   wokeFromTimer = (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER);
   if (wokeFromTimer) {
