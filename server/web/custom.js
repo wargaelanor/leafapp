@@ -327,7 +327,7 @@
     // там важнее температура батареи.
     const keys = kind === 'trip' ? ['kw', 'spd', 'soc', 'batt'] : ['kw', 'batt', 'soc'];
     const state = kind === 'trip'
-      ? { kw: true, spd: false, soc: false, batt: false }
+      ? { kw: true, spd: false, soc: true, batt: false }
       : { kw: true, spd: false, soc: true, batt: true };
 
     box.innerHTML = `
