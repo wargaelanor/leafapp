@@ -91,8 +91,11 @@ body{background:var(--bg);font-family:'NissanBrand',-apple-system,BlinkMacSystem
 .tabbar{position:absolute;bottom:0;left:0;right:0;height:56px;background:var(--surface-2);display:flex;box-shadow:0 -1px 0 var(--line);z-index:50;padding-bottom:env(safe-area-inset-bottom)}
 .tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;color:var(--muted);font-size:9px;user-select:none;position:relative;padding-top:4px}
 .tab svg{width:22px;height:22px;display:block}
-.tab.active{color:var(--text)}
-.tab.active::before{content:'';position:absolute;top:0;left:20%;right:20%;height:2px;background:var(--accent)}
+.tab{transition:color .15s ease}
+.tab.active{color:var(--accent);font-weight:600;background:rgba(64,160,218,.10)}
+.tab.active svg{transform:translateY(-1px)}
+.tab.active::before{content:'';position:absolute;top:0;left:16%;right:16%;height:3px;
+  border-radius:0 0 3px 3px;background:var(--accent);box-shadow:0 1px 6px rgba(64,160,218,.55)}
 .card{background:var(--surface);border-radius:8px;margin:8px 16px;box-shadow:0 1px 3px rgba(0,0,0,.06);overflow:hidden}
 .card-header{padding:16px 16px 0}
 .card-header .accent-line{width:26px;height:1px;background:#40a0da;margin-bottom:8px}
@@ -417,7 +420,12 @@ body.demo .demo-banner{display:block}
           padding:14px 10px;box-shadow:none;border-right:1px solid var(--line);
           background:var(--surface-2);z-index:1}
   .tab{flex:0 0 auto;flex-direction:row;justify-content:flex-start;gap:10px;
-       padding:12px;border-radius:10px;font-size:14px}
+       padding:12px;border-radius:10px;font-size:14px;transition:background .15s, color .15s}
+  .tab.active{background:rgba(64,160,218,.14);color:var(--accent);font-weight:600}
+  .tab.active::before{content:'';position:absolute;left:0;top:8px;bottom:8px;width:3px;
+       border-radius:0 3px 3px 0;background:var(--accent);right:auto;height:auto;box-shadow:none}
+  .tab.active::after{display:none}
+  .tab:hover{background:rgba(120,128,140,.10)}
   .tab svg{width:20px;height:20px}
   .screens{grid-column:2;grid-row:2;overflow-y:auto;padding:16px 22px 28px}
   .screen{max-width:1080px;margin:0 auto;padding-bottom:0}
