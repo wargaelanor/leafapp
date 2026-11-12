@@ -258,6 +258,14 @@ static void handleEvFrame(uint32_t id, uint8_t len, const uint8_t* data) {
     // OutsideAmbientTemperature: byte6, 0.5C/bit, offset -40 (OVMS xnl)
     float ambient = data[6] * 0.5f - 40.0f;
     if (data[6] != 0xFF) handleEvAmbient(ambient);
+  } else if (id == 0x5BC && len >= 5) {
+    // GIDS и SOH от LBC. На ZE0/AZE0 этот кадр живёт на EV-CAN; на ZE1 он же
+    // приходит ретрансляцией по IT-CAN (декодер Port B обрабатывает его
+    // отдельно). Значения одинаковые, поэтому повторная запись не вредна.
+    int gids = (data[0] << 2) | (data[1] >> 6);
+    int soh = (data[4] >> 1) & 0x7F;
+    if (gids > 0 && gids <= 500) handleEvGids(gids);
+    if (soh > 0 && soh <= 100) handleEvSOH(soh);
   } else if (id == 0x1DC && len >= 4) {
     // LB charge/discharge limits (OVMS xnl). The CHARGE limit (d[2..3],
     // /10 A) is > 0 exactly while a charger is connected/negotiating and 0
