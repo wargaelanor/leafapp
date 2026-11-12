@@ -366,21 +366,25 @@
         series.forEach((sr, idx) => {
           const dot = dots[idx];
           if (!sr.show || !sr._pts.length) { dot.setAttribute('visibility', 'hidden'); return; }
-          let bestIdx = -1, bestD = Infinity;
-          sr._raw.forEach((pt, i) => {
-            const d = Math.abs(pt[0] - ts);
-            if (d < bestD) { bestD = d; bestIdx = i; }
-          });
-          if (bestIdx < 0) { dot.setAttribute('visibility', 'hidden'); return; }
-          const best = sr._raw[bestIdx];
-          const drawn = sr._pts[bestIdx] || best;
-          const bx = hasTime ? xFor(drawn, 0, sr._pts.length) : x;
-          const by = yFor(drawn[1]);
-          dot.setAttribute('cx', bx.toFixed(1));
-          dot.setAttribute('cy', by.toFixed(1));
-          dot.setAttribute('fill', (hasZero && sr.key === 'kw' && best[1] < 0) ? '#34c759' : (sr.color || 'var(--accent)'));
+          // значение в точке под пальцем: линейная интерполяция между соседями,
+          // чтобы кружок ехал ровно за курсором, а не прыгал по точкам
+          const pts = sr._pts;
+          if (!pts.length) { dot.setAttribute('visibility', 'hidden'); return; }
+          let v;
+          if (ts <= pts[0][0]) v = pts[0][1];
+          else if (ts >= pts[pts.length - 1][0]) v = pts[pts.length - 1][1];
+          else {
+            let i = 1;
+            while (i < pts.length && pts[i][0] < ts) i++;
+            const a = pts[i - 1], b = pts[i];
+            const k = (ts - a[0]) / Math.max(1, b[0] - a[0]);
+            v = a[1] + (b[1] - a[1]) * k;
+          }
+          dot.setAttribute('cx', x.toFixed(1));
+          dot.setAttribute('cy', yFor(v).toFixed(1));
+          dot.setAttribute('fill', (hasZero && sr.key === 'kw' && v < 0) ? '#34c759' : (sr.color || 'var(--accent)'));
           dot.setAttribute('visibility', 'visible');
-          parts.push(fmt(best[1], 1) + unit[sr.key]);
+          parts.push(fmt(v, 1) + unit[sr.key]);
         });
 
         const labelText = clockFull(ts) + (parts.length ? ' · ' + parts.join(' · ') : '');

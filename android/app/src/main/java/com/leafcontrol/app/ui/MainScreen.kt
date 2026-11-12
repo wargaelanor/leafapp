@@ -1492,11 +1492,24 @@ private fun HistoryChart(
                         val list = pair.second
                         if (list.isEmpty()) return@forEach
                         val ts = from + (spanT * f).toLong()
-                        val idx = list.indices.minByOrNull { kotlin.math.abs(list[it].first - ts) } ?: return@forEach
-                        val near = list[idx]
                         val sm = smoothed(list)
-                        val col = if (d.key == "kw" && near.second < 0.0) RegenGreen else d.color
-                        val c = Offset(xOf(near.first), yOf(sm[idx]))
+                        // интерполяция по времени: кружок едет за пальцем, а не прыгает
+                        var v = sm.first()
+                        if (ts <= list.first().first) {
+                            v = sm.first()
+                        } else if (ts >= list.last().first) {
+                            v = sm.last()
+                        } else {
+                            var i = 1
+                            while (i < list.size && list[i].first < ts) i++
+                            val a = sm[i - 1]
+                            val b = sm[i]
+                            val span = (list[i].first - list[i - 1].first).coerceAtLeast(1L)
+                            val k = ((ts - list[i - 1].first).toDouble() / span.toDouble()).coerceIn(0.0, 1.0)
+                            v = a + (b - a) * k
+                        }
+                        val col = if (d.key == "kw" && v < 0.0) RegenGreen else d.color
+                        val c = Offset(px, yOf(v))
                         drawCircle(col, radius = 4f, center = c)
                         drawCircle(Color.White, radius = 2f, center = c)
                     }
