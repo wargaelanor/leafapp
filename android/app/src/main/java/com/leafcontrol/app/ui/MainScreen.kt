@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -1329,6 +1330,9 @@ private fun HistoryChart(
     )
     var selected by remember { mutableStateOf(defaults) }
     var probeFrac by remember { mutableStateOf<Float?>(null) }
+    // окно просмотра: двумя пальцами масштабируем, одним — сдвигаем
+    var vFrom by remember { mutableStateOf(from) }
+    var vTo by remember { mutableStateOf(to) }
 
     fun vals(key: String): List<Pair<Long, Double>> = when (key) {
         "kw" -> points.mapNotNull { p -> p.kw?.let { p.ts to it } }
@@ -1355,7 +1359,8 @@ private fun HistoryChart(
         yMax = c + 0.5
     }
     val spanY = (yMax - yMin).coerceAtLeast(0.001)
-    val spanT = (to - from).coerceAtLeast(1L)
+    val fullSpan = (to - from).coerceAtLeast(1L)
+    val spanT = (vTo - vFrom).coerceAtLeast(1L)
     val gridColor = MaterialTheme.colorScheme.outline
     val crossZero = yMin < 0.0 && yMax > 0.0
 
@@ -1381,7 +1386,7 @@ private fun HistoryChart(
             }
         }
 
-        val probeTs = probeFrac?.let { from + (spanT * it).toLong() } ?: to
+        val probeTs = probeFrac?.let { vFrom + (spanT * it).toLong() } ?: vTo
         val parts = active.mapNotNull { (d, list) ->
             list.minByOrNull { kotlin.math.abs(it.first - probeTs) }
                 ?.let { d.label.substringBefore(',') + " " + fmt(it.second, 1) }
@@ -1407,28 +1412,36 @@ private fun HistoryChart(
                     .weight(1f)
                     .fillMaxHeight()
                     .pointerInput(Unit) {
-                        // тянем палец по графику — страница не должна уезжать
-                        awaitEachGesture {
-                            val down = awaitFirstDown(requireUnconsumed = false)
-                            down.consume()
-                            probeFrac = (down.position.x / size.width.toFloat()).coerceIn(0f, 1f)
-                            var pressed = true
-                            while (pressed) {
-                                val ev = awaitPointerEvent()
-                                val ch = ev.changes.firstOrNull() ?: break
-                                if (!ch.pressed) {
-                                    pressed = false
-                                } else {
-                                    probeFrac = (ch.position.x / size.width.toFloat()).coerceIn(0f, 1f)
-                                    ch.consume()
-                                }
-                            }
+                        detectTransformGestures(panZoomLock = false) { centroid, pan, zoom, _ ->
+                            val span = (vTo - vFrom).toFloat()
+                            val minSpan = (fullSpan / 200f).coerceAtLeast(30f)
+                            var newSpan = (span / zoom).coerceIn(minSpan, fullSpan.toFloat())
+                            var center = vFrom + (centroid.x / size.width.toFloat()) * span - (pan.x / size.width.toFloat()) * span
+                            var a = center - newSpan / 2f
+                            var b = center + newSpan / 2f
+                            if (a < from) { a = from.toFloat(); b = a + newSpan }
+                            if (b > to) { b = to.toFloat(); a = b - newSpan }
+                            vFrom = a.toLong()
+                            vTo = b.toLong()
+                            probeFrac = null
                         }
+                    }
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onTap = { off ->
+                                probeFrac = (off.x / size.width.toFloat()).coerceIn(0f, 1f)
+                            },
+                            onDoubleTap = {
+                                vFrom = from
+                                vTo = to
+                                probeFrac = null
+                            },
+                        )
                     }
             ) {
                 val w = size.width
                 val h = size.height
-                fun xOf(ts: Long): Float = (((ts - from).toFloat()) / spanT) * w
+                fun xOf(ts: Long): Float = (((ts - vFrom).toFloat()) / spanT) * w
                 fun yOf(v: Double): Float = h - (((v - yMin) / spanY) * h).toFloat()
 
                 for (i in 0..2) {
@@ -1491,7 +1504,7 @@ private fun HistoryChart(
                         val d = pair.first
                         val list = pair.second
                         if (list.isEmpty()) return@forEach
-                        val ts = from + (spanT * f).toLong()
+                        val ts = vFrom + (spanT * f).toLong()
                         val sm = smoothed(list)
                         // интерполяция по времени: кружок едет за пальцем, а не прыгает
                         var v = sm.first()
@@ -1517,10 +1530,18 @@ private fun HistoryChart(
             }
         }
 
+        if (vTo - vFrom < (to - from) * 98 / 100) {
+            Text(
+                "Сброс масштаба",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.clickable { vFrom = from; vTo = to; probeFrac = null },
+            )
+        }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(timeFmt(from), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(timeFmt((from + to) / 2), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(timeFmt(to), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(timeFmt(vFrom), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(timeFmt((vFrom + vTo) / 2), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(timeFmt(vTo), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
