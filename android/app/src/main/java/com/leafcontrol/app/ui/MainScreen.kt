@@ -1449,12 +1449,23 @@ private fun HistoryChart(
                     )
                 }
 
+                // сглаживание 1-2-1 для рисования; подписи берём из исходных
+                fun smoothed(list: List<Pair<Long, Double>>): List<Double> {
+                    val raw = list.map { it.second }
+                    val out = raw.toMutableList()
+                    for (i in 1 until raw.size - 1) {
+                        out[i] = (raw[i - 1] + 2 * raw[i] + raw[i + 1]) / 4.0
+                    }
+                    return out
+                }
+
                 active.forEach { pair ->
                     val d = pair.first
                     val list = pair.second
                     if (list.isEmpty()) return@forEach
+                    val sm = smoothed(list)
                     val path = Path()
-                    val pts = list.map { Offset(xOf(it.first), yOf(it.second)) }
+                    val pts = list.mapIndexed { i, p -> Offset(xOf(p.first), yOf(sm[i])) }
                     path.moveTo(pts.first().x, pts.first().y)
                     for (i in 1 until pts.size - 1) {
                         val mid = Offset((pts[i].x + pts[i + 1].x) / 2f, (pts[i].y + pts[i + 1].y) / 2f)
@@ -1482,10 +1493,13 @@ private fun HistoryChart(
                         val list = pair.second
                         if (list.isEmpty()) return@forEach
                         val ts = from + (spanT * f).toLong()
-                        val near = list.minByOrNull { kotlin.math.abs(it.first - ts) } ?: return@forEach
+                        val idx = list.indices.minByOrNull { kotlin.math.abs(list[it].first - ts) } ?: return@forEach
+                        val near = list[idx]
+                        val sm = smoothed(list)
                         val col = if (d.key == "kw" && near.second < 0.0) RegenGreen else d.color
-                        drawCircle(col, radius = 4f, center = Offset(xOf(near.first), yOf(near.second)))
-                        drawCircle(Color.White, radius = 2f, center = Offset(xOf(near.first), yOf(near.second)))
+                        val c = Offset(xOf(near.first), yOf(sm[idx]))
+                        drawCircle(col, radius = 4f, center = c)
+                        drawCircle(Color.White, radius = 2f, center = c)
                     }
                 }
             }

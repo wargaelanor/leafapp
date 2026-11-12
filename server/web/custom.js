@@ -129,7 +129,13 @@
     const all = [];
     series.forEach(sr => {
       const raw = sr.points || (sr.values || []).map(v => [0, v]);
-      sr._pts = raw.map(p => [Number(p[0]) || 0, Number(p[1])]).filter(p => isFinite(p[1]));
+      sr._raw = raw.map(p => [Number(p[0]) || 0, Number(p[1])]).filter(p => isFinite(p[1]));
+      // лёгкое сглаживание 1-2-1: убирает «пилу» телеметрии, форма остаётся
+      const sm = sr._raw.map(p => [p[0], p[1]]);
+      for (let i = 1; i < sm.length - 1; i++) {
+        sm[i][1] = (sr._raw[i - 1][1] + 2 * sr._raw[i][1] + sr._raw[i + 1][1]) / 4;
+      }
+      sr._pts = sm;
       sr._pts.forEach(p => all.push(p[1]));
     });
 
@@ -360,14 +366,16 @@
         series.forEach((sr, idx) => {
           const dot = dots[idx];
           if (!sr.show || !sr._pts.length) { dot.setAttribute('visibility', 'hidden'); return; }
-          let best = null, bestD = Infinity;
-          sr._pts.forEach(pt => {
+          let bestIdx = -1, bestD = Infinity;
+          sr._raw.forEach((pt, i) => {
             const d = Math.abs(pt[0] - ts);
-            if (d < bestD) { bestD = d; best = pt; }
+            if (d < bestD) { bestD = d; bestIdx = i; }
           });
-          if (!best) { dot.setAttribute('visibility', 'hidden'); return; }
-          const bx = hasTime ? xFor(best, 0, sr._pts.length) : x;
-          const by = yFor(best[1]);
+          if (bestIdx < 0) { dot.setAttribute('visibility', 'hidden'); return; }
+          const best = sr._raw[bestIdx];
+          const drawn = sr._pts[bestIdx] || best;
+          const bx = hasTime ? xFor(drawn, 0, sr._pts.length) : x;
+          const by = yFor(drawn[1]);
           dot.setAttribute('cx', bx.toFixed(1));
           dot.setAttribute('cy', by.toFixed(1));
           dot.setAttribute('fill', (hasZero && sr.key === 'kw' && best[1] < 0) ? '#34c759' : (sr.color || 'var(--accent)'));
