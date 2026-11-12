@@ -7,6 +7,33 @@
   const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
   const fmt = (v, d) => (v === null || v === undefined || !isFinite(v)) ? '—'
     : Number(v).toFixed(d === undefined ? 1 : d).replace('.', ',');
+  // Chrome/Edge предлагают установку PWA — придерживаем событие до нажатия кнопки.
+  let deferredInstall = null;
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstall = e;
+  });
+  window.addEventListener('appinstalled', () => { deferredInstall = null; });
+
+  const isStandalone = () =>
+    window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+
+  async function installPwa() {
+    if (isStandalone()) { toast('Уже открыто как приложение'); return; }
+    if (deferredInstall) {
+      try {
+        deferredInstall.prompt();
+        const res = await deferredInstall.userChoice;
+        deferredInstall = null;
+        if (res && res.outcome === 'accepted') return;
+      } catch (e) { /* ниже подскажем вручную */ }
+    }
+    const iOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    alert(iOS
+      ? 'В Safari нажмите «Поделиться» и выберите «На экран «Домой».'
+      : 'В меню браузера (⋮) выберите «Установить приложение» или «Добавить на главный экран».');
+  }
+
   const api = async (p, body, method) => {
     const opt = { credentials: 'same-origin' };
     // method можно передать отдельно, без тела (DELETE и подобное)
@@ -923,6 +950,22 @@
       const logout = box.querySelector('[data-lc-logout]');
       if (logout) box.insertBefore(adminRow, logout);
       else box.appendChild(adminRow);
+    }
+
+    if (!box.querySelector('[data-lc-apk]')) {
+      const apkRow = makeRow('Скачать приложение', 'Android, файл APK', () => {
+        location.href = '/app.apk';
+      });
+      apkRow.setAttribute('data-lc-apk', '1');
+      const logout0 = box.querySelector('[data-lc-logout]');
+      if (logout0) box.insertBefore(apkRow, logout0); else box.appendChild(apkRow);
+    }
+
+    if (!box.querySelector('[data-lc-install]') && !isStandalone()) {
+      const instRow = makeRow('Установить как приложение', 'ярлык на экран телефона', installPwa);
+      instRow.setAttribute('data-lc-install', '1');
+      const logout1 = box.querySelector('[data-lc-logout]');
+      if (logout1) box.insertBefore(instRow, logout1); else box.appendChild(instRow);
     }
 
     if (!box.querySelector('[data-lc-logout]')) {
