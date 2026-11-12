@@ -135,6 +135,7 @@ import com.leafcontrol.app.data.LeafRepo
 import com.leafcontrol.app.data.LeafState
 import com.leafcontrol.app.data.Settings
 import com.leafcontrol.app.data.Trip
+import com.leafcontrol.app.net.ServerApi
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -206,6 +207,7 @@ fun MainScreen(vm: LeafViewModel = viewModel()) {
                             isCharges = true,
                             onClear = { vm.clearHistory(true) },
                             onExport = { exportCharges(vm, charges) },
+                            onExcel = { scope.launch { exportExcelWorkbook(vm) } },
                         )
                         else -> if (page == 4) {
                             HistoryScreen(
@@ -213,6 +215,7 @@ fun MainScreen(vm: LeafViewModel = viewModel()) {
                                 isCharges = false,
                                 onClear = { vm.clearHistory(false) },
                                 onExport = { exportTrips(vm, trips) },
+                                onExcel = { scope.launch { exportExcelWorkbook(vm) } },
                             )
                         } else {
                             MoreScreen(
@@ -1233,6 +1236,7 @@ private fun HistoryScreen(
     isCharges: Boolean,
     onClear: () -> Unit,
     onExport: () -> Unit,
+    onExcel: () -> Unit,
 ) {
     val list = if (isCharges) charges else trips
     val count = list.size
@@ -1260,14 +1264,19 @@ private fun HistoryScreen(
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onExcel, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Outlined.FileDownload, null, Modifier.size(16.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text("Excel", fontSize = 12.sp)
+                }
                 OutlinedButton(onClick = onExport, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Outlined.FileDownload, null, Modifier.size(16.dp))
-                    Spacer(Modifier.width(6.dp))
+                    Spacer(Modifier.width(5.dp))
                     Text("CSV", fontSize = 12.sp)
                 }
                 OutlinedButton(onClick = onClear, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Outlined.Delete, null, Modifier.size(16.dp))
-                    Spacer(Modifier.width(6.dp))
+                    Spacer(Modifier.width(5.dp))
                     Text("Очистить", fontSize = 12.sp)
                 }
             }
@@ -1890,6 +1899,38 @@ private fun exportCharges(vm: LeafViewModel, charges: List<Charge>) {
     val text = "\ufeff" + (listOf(head) + rows).joinToString("\r\n") { it.joinToString(";") }
     val ok = CsvWriter.save(vm.getApplication(), "leaf-charges.csv", text)
     vm.message.value = if (ok) "CSV сохранён в Загрузки" else "Не удалось сохранить CSV"
+}
+
+/** Excel с сервера: обзор, дни, сессии, телеметрия и диаграммы. */
+private suspend fun exportExcelWorkbook(vm: LeafViewModel) {
+    val ctx: Context = vm.getApplication()
+    if (!ServerApi.configured()) {
+        vm.message.value = "Excel доступен в режиме «Сервер»"
+        return
+    }
+    vm.message.value = "Собираю Excel на сервере…"
+    val data = ServerApi.exportExcel(ctx, 90)
+    if (data == null || data.isEmpty()) {
+        vm.message.value = "Excel не получен — проверьте вход в аккаунт"
+        return
+    }
+    val mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    val saved = CsvWriter.saveBytes(ctx, "leaf-history.xlsx", data, mime)
+    if (!saved.ok) {
+        vm.message.value = "Не удалось сохранить Excel"
+        return
+    }
+    vm.message.value = "Excel сохранён в Загрузки"
+    val uri = saved.uri ?: return
+    try {
+        ctx.startActivity(
+            Intent(Intent.ACTION_VIEW)
+                .setDataAndType(uri, mime)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+    } catch (_: Exception) {
+        // нет приложения для xlsx — файл всё равно лежит в Загрузках
+    }
 }
 
 private fun openBoard(ctx: Context, path: String) {

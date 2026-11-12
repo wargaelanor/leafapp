@@ -335,5 +335,34 @@ object ServerApi {
         }
     }
 
+    /**
+     * Excel-книга истории с сервера — тот же файл, что кнопка «Скачать Excel»
+     * в PWA. Генерация на сервере, телефон только забирает байты.
+     */
+    suspend fun exportExcel(context: Context, days: Int = 90): ByteArray? =
+        withContext(Dispatchers.IO) {
+            if (!configured()) return@withContext null
+            val slow = client.newBuilder()
+                .readTimeout(120, TimeUnit.SECONDS)
+                .callTimeout(180, TimeUnit.SECONDS)
+                .build()
+            val path = "/api/export/xlsx?days=" + days
+            fun call() = try {
+                slow.newCall(request(path)).execute()
+            } catch (_: Exception) {
+                null
+            }
+            var r = call() ?: return@withContext null
+            r.use { first ->
+                if (first.code == 401 || first.code == 403) {
+                    Settings.serverCookie = ""
+                    if (!login(context, force = true)) return@withContext null
+                    val r2 = call() ?: return@withContext null
+                    r2.use { return@withContext if (it.isSuccessful) it.body?.bytes() else null }
+                }
+                return@withContext if (first.isSuccessful) first.body?.bytes() else null
+            }
+        }
+
     fun encoded(value: String): String = URLEncoder.encode(value, "UTF-8")
 }
