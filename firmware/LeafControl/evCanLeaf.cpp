@@ -242,11 +242,13 @@ static void handleEvFrame(uint32_t id, uint8_t len, const uint8_t* data) {
     handleEvPackStatus(voltage, current);
     // AZE0/ZE0: SOC приборки лежит в этом же кадре, байт 4 (0..100 %).
     // На ZE1 там всегда 0, поэтому ветка включается только для AZE0.
-    if (!leafIsZe1() && len >= 5) {
+    if (len >= 5) {
       uint8_t soc = data[4] & 0x7F;
       if (soc > 0 && soc <= 100) {
+        // Отметку ставим всегда (это и есть автоопределение), а значение
+        // применяем только когда профиль признан AZE0.
         leafNoteAze0Frame();
-        handleEvInstrumentSOC((float)soc);
+        if (!leafIsZe1()) handleEvInstrumentSOC((float)soc);
       }
     }
     // Charge-stop MITM: while armed, forward a modified copy of every LBC

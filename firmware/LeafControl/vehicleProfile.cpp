@@ -1,13 +1,12 @@
 #include "vehicleProfile.h"
 #include "configuration.h"
 
-static unsigned long lastZe1Ms = 0;
+static bool sawZe1 = false;          // 0x59E когда-либо приходил (только ZE1)
 static unsigned long lastAze0Ms = 0;
-static const unsigned long PROFILE_TTL_MS = 180000UL;   // 3 минуты
+static const unsigned long AZE0_TTL_MS = 120000UL;   // 2 минуты
 
 void leafNoteZe1Frame() {
-  unsigned long now = millis();
-  lastZe1Ms = now ? now : 1;
+  sawZe1 = true;
 }
 
 void leafNoteAze0Frame() {
@@ -20,9 +19,10 @@ bool leafIsZe1() {
   if (mode == 1) return true;
   if (mode == 2) return false;
 
+  // 0x59E (SOC приборки) — уникальный признак ZE1: увидели хоть раз, значит ZE1.
+  if (sawZe1) return true;
   unsigned long now = millis();
-  if (lastZe1Ms && now - lastZe1Ms < PROFILE_TTL_MS) return true;
-  if (lastAze0Ms && now - lastAze0Ms < PROFILE_TTL_MS) return false;
+  if (lastAze0Ms && now - lastAze0Ms < AZE0_TTL_MS) return false;
   // Пока шина молчит — считаем машину ZE1: это текущая проверенная плата.
   return true;
 }
