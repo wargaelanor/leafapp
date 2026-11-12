@@ -376,17 +376,16 @@ private fun LeafBottomBar(selected: Int, onSelect: (Int) -> Unit) {
                 Modifier
                     .weight(1f)
                     .fillMaxHeight()
+                    .padding(horizontal = 3.dp, vertical = 4.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(
+                        if (active) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                        else Color.Transparent
+                    )
                     .pressable(interaction) { onSelect(index) },
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
-                Box(
-                    Modifier
-                        .width(24.dp)
-                        .height(2.dp)
-                        .background(if (active) MaterialTheme.colorScheme.primary else Color.Transparent)
-                )
-                Spacer(Modifier.height(6.dp))
                 Icon(
                     tab.icon,
                     contentDescription = tab.label,
