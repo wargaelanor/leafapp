@@ -24,10 +24,10 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FR-TCall.157"
+#define LEAF_FIRMWARE_VERSION "FR-TCall.159"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: two MCP2515 CAN buses + SIM800"
 #else
-#define LEAF_FIRMWARE_VERSION "FR-2can.157"
+#define LEAF_FIRMWARE_VERSION "FR-2can.159"
 #define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: stable scroll, Wi-Fi scan"
 #endif
 
@@ -2522,6 +2522,7 @@ void loop() {
   // Signed compare handles millis() wraparound; no reboot during OTA upload
   if (rebootPendingAt != 0 && !otaInProgress && (long)(millis() - rebootPendingAt) >= 0) {
     Serial.println("### Rebooting after settings save ###");
+    tripLogFinishOpen("reboot");
     recordSoftwareRestart(rebootPendingReason);
     delay(100);
     ESP.restart();
@@ -2617,6 +2618,8 @@ void loop() {
       Serial.printf("### Deep sleep: idle %llu s, wake in %llu min ###\n",
                     (unsigned long long)rtcState.idleSec,
                     (unsigned long long)intervalMin);
+      // Не терять открытую поездку при уходе в сон.
+      tripLogFinishOpen("sleep");
       modemPowerOffNow();
       saveToRtc();
       esp_sleep_enable_timer_wakeup(intervalMin * 60ULL * 1000000ULL);

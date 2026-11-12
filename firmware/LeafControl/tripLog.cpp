@@ -89,6 +89,15 @@ static float chgKwh = 0, chgKwhDay = 0, chgKwhNight = 0;
 
 static void resendUnsent();  // досылка записей после перезагрузки
 
+// Состояние открытой поездки в RTC: переживает перезагрузку и сон, чтобы
+// запись не пропадала, если плата ушла в ребут посреди поездки.
+RTC_DATA_ATTR static uint8_t rtcTripActive = 0;
+RTC_DATA_ATTR static uint32_t rtcTripStart = 0;
+RTC_DATA_ATTR static float rtcTripOdoStart = 0;
+RTC_DATA_ATTR static float rtcTripOdoLast = 0;
+RTC_DATA_ATTR static float rtcTripSocStart = -1;
+RTC_DATA_ATTR static float rtcTripKwh = 0;
+
 static uint32_t epochNow() {
   time_t t = time(nullptr);
   return (t > 1600000000) ? (uint32_t)t : 0;
@@ -227,11 +236,42 @@ void tripLogInit() {
   Serial.printf("[log] history on board: %u trips, %u charges\n",
                 (unsigned)tripsCount, (unsigned)chargesCount);
   resendUnsent();
+
+  // Плата перезагрузилась посреди поездки — записываем то, что успели накопить.
+  if (rtcTripActive) {
+    rtcTripActive = 0;
+    uint32_t endEpoch = epochNow();
+    float km = (rtcTripOdoLast > 0 && rtcTripOdoStart > 0) ? (rtcTripOdoLast - rtcTripOdoStart) : 0;
+    if (km < 0) km = 0;
+    if (rtcTripStart > 0 && km >= 0.05f) {
+      char line[200];
+      snprintf(line, sizeof(line),
+               "{\"s\":%lu,\"e\":%lu,\"d\":%lu,\"k\":%.2f,\"w\":%.3f,\"wd\":%.3f,\"wn\":%.3f,\"s0\":%d,\"s1\":%d,\"r\":\"restored\"}",
+               (unsigned long)rtcTripStart, (unsigned long)(endEpoch ? endEpoch : rtcTripStart),
+               (unsigned long)((endEpoch > rtcTripStart) ? (endEpoch - rtcTripStart) : 0),
+               km, rtcTripKwh, rtcTripKwh, 0.0f,
+               (int)rtcTripSocStart, -1);
+      appendRecord(TRIPS_PATH, TRIPS_LIMIT, line);
+      serverApiOnRecord("trip", line);
+      Serial.printf("[log] restored trip %.2f km after reboot\n", km);
+    }
+  }
+}
+
+static void saveTripToRtc(bool active) {
+  rtcTripActive = active ? 1 : 0;
+  if (!active) return;
+  rtcTripStart = tripStartEpoch;
+  rtcTripOdoStart = tripOdoStart;
+  rtcTripOdoLast = lastOdo;
+  rtcTripSocStart = tripSocStart;
+  rtcTripKwh = tripKwh;
 }
 
 static void finishTrip(const char* reason) {
   if (!tripActive) return;
   tripActive = false;
+  saveTripToRtc(false);
   uint32_t endEpoch = epochNow();
   unsigned long durMs = millis() - tripStartMs;
   float km = (lastOdo > 0 && tripOdoStart > 0) ? (lastOdo - tripOdoStart) : 0;
@@ -408,7 +448,11 @@ void tripLogTick() {
         tripPendMs = now;
         tripPendOdo = lastOdo;
         tripPendSoc = soc;
-      } else if (lastOdo > 0 && tripPendOdo > 0 && (lastOdo - tripPendOdo) >= 0.10f) {
+      }
+      // Счётчик пробега у этой машины идёт шагом 0.1 км, поэтому «движение»
+      // видно не на каждом тике. Копим от стартовой отметки, а не от
+      // предыдущего тика, иначе поездка никогда не запускалась.
+      if (lastOdo > 0 && tripPendOdo > 0 && (lastOdo - tripPendOdo) >= 0.10f) {
         tripActive = true;
         tripPending = false;
         tripStartEpoch = tripPendEpoch;
@@ -419,10 +463,11 @@ void tripLogTick() {
         tripKwh = tripKwhDay = tripKwhNight = 0;
         tripMoveMs = now;
         tripOffSinceMs = 0;
+        saveTripToRtc(true);
         Serial.printf("[log] trip started at %.2f km\n", (double)tripOdoStart);
       }
-    } else if (tripPending) {
-      // манёвр короче 100 м — это не поездка
+    } else if (tripPending && (now - tripPendMs > 120000UL)) {
+      // две минуты без движения — это был не выезд, а манёвр
       tripPending = false;
     }
   }
@@ -431,11 +476,13 @@ void tripLogTick() {
     if (moved) {
       tripMoveMs = now;
       tripOffSinceMs = 0;
+      rtcTripOdoLast = lastOdo;
     }
     if (soc >= 0) tripSocEnd = soc;
     if (wh > 0) {
       tripKwh += wh;
       if (isNight(epoch)) tripKwhNight += wh; else tripKwhDay += wh;
+      rtcTripKwh = tripKwh;
     }
     // Конец поездки: машина не в READY, не едет и не заряжается. Пять минут
     // запаса — чтобы стоянка у магазина не закрывала поездку.
@@ -500,6 +547,11 @@ void tripLogTick() {
   }
 
   if (odo > 0) lastOdo = odo;
+}
+
+// Закрыть открытую поездку перед сном или перезагрузкой.
+void tripLogFinishOpen(const char* reason) {
+  if (tripActive) finishTrip(reason);
 }
 
 bool tripLogIsDriving() {

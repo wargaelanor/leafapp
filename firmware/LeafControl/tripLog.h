@@ -8,6 +8,9 @@
 void tripLogInit();
 void tripLogTick();
 
+// Закрыть открытую поездку (перед сном/перезагрузкой).
+void tripLogFinishOpen(const char* reason);
+
 bool tripLogIsDriving();     // true while a trip is being recorded
 bool tripLogIsCharging();    // true while a charge session is being recorded
 
