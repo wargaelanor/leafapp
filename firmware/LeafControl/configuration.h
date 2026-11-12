@@ -65,6 +65,11 @@ ConfigStatus setUiLite(bool value);
 
 bool getSleepEnabled();
 ConfigStatus setSleepEnabled(bool value);
+
+// Профиль машины: 0 = авто, 1 = ZE1 (2018+), 2 = AZE0/ZE0 (2011-2017).
+int getVehicleProfile();
+void setVehicleProfile(int value);
+
 int getSleepAfterHours();
 ConfigStatus setSleepAfterHours(int value);
 int getWakeFastMinutes();

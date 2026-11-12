@@ -952,6 +952,26 @@
       else box.appendChild(adminRow);
     }
 
+    if (!box.querySelector('[data-lc-profile]')) {
+      const profRow = makeRow('Профиль машины', 'ZE1 / AZE0 — переключить', async () => {
+        try {
+          const c = await api('/api/config');
+          const cur = Number((c.config || {}).vehicle_profile || 0);
+          const names = ['авто', 'ZE1 (2018+)', 'AZE0/ZE0 (2011–2017)'];
+          const next = (cur + 1) % 3;
+          const ok = confirm('Сейчас: ' + names[cur] + '\nПереключить на: ' + names[next] +
+            '?\n\nПлата применит при следующей связи (до 30 секунд).');
+          if (!ok) return;
+          await api('/api/config', { key: 'vehicle_profile', value: next });
+          toast('Профиль: ' + names[next]);
+        } catch (e) { alert(e.message); }
+      });
+      profRow.setAttribute('data-lc-profile', '1');
+      const anchor0 = box.querySelector('[data-lc-xlsx]') || box.querySelector('[data-lc-apk]') ||
+        box.querySelector('[data-lc-logout]');
+      if (anchor0) box.insertBefore(profRow, anchor0); else box.appendChild(profRow);
+    }
+
     if (!box.querySelector('[data-lc-xlsx]')) {
       const xlsxRow = makeRow('История в Excel', 'обзор, дни, сессии и графики', () => {
         location.href = '/api/export/xlsx?days=90';

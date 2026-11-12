@@ -136,6 +136,7 @@ static ConfigBool       conf_uds_enable("uds_enable", true);
 // are never asked for, so the poller does not collect guaranteed timeouts.
 static ConfigBool       conf_uds_tpms("uds_tpms", false);
 static ConfigInt        conf_sleep_after_h("sleep_after_h", 24);
+static ConfigInt        conf_vehicle_profile("vehicle_profile", 0);
 static ConfigInt        conf_wake_fast_min("wake_fast_min", 5);
 static ConfigInt        conf_wake_slow_min("wake_slow_min", 15);
 static ConfigBool       conf_modem_enable("modem_enable", false);
@@ -189,6 +190,7 @@ void initConfiguration() {
     conf_uds_enable.load();
     conf_uds_tpms.load();
     conf_sleep_after_h.load();
+  conf_vehicle_profile.load();
     conf_wake_fast_min.load();
     conf_wake_slow_min.load();
     conf_modem_enable.load();
@@ -299,6 +301,12 @@ ConfigStatus setUiLite(bool value) { return conf_ui_lite.set(value); }
 
 
 bool getSleepEnabled() { return conf_sleep_enabled.get(); }
+int getVehicleProfile() { return conf_vehicle_profile.get(); }
+void setVehicleProfile(int value) {
+  if (value < 0 || value > 2) value = 0;
+  conf_vehicle_profile.set(value);
+  Serial.printf("[cfg] vehicle profile = %d\n", value);
+}
 ConfigStatus setSleepEnabled(bool value) { return conf_sleep_enabled.set(value); }
 bool getUdsEnabled() { return conf_uds_enable.get(); }
 ConfigStatus setUdsEnabled(bool value) { return conf_uds_enable.set(value); }

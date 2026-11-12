@@ -1,4 +1,5 @@
 #include "evCanLeaf.h"
+#include "vehicleProfile.h"
 #include <SPI.h>
 #include <Preferences.h>
 #include "mcp2515.h"
@@ -239,6 +240,15 @@ static void handleEvFrame(uint32_t id, uint8_t len, const uint8_t* data) {
     // OVMS convention: battery output/discharge is positive, charge/regen negative.
     float current = curRaw * -0.5f;
     handleEvPackStatus(voltage, current);
+    // AZE0/ZE0: SOC приборки лежит в этом же кадре, байт 4 (0..100 %).
+    // На ZE1 там всегда 0, поэтому ветка включается только для AZE0.
+    if (!leafIsZe1() && len >= 5) {
+      uint8_t soc = data[4] & 0x7F;
+      if (soc > 0 && soc <= 100) {
+        leafNoteAze0Frame();
+        handleEvInstrumentSOC((float)soc);
+      }
+    }
     // Charge-stop MITM: while armed, forward a modified copy of every LBC
     // frame (see evCanArmChargeStop).
     evCanMitmMaybeForward(data, len);
@@ -266,7 +276,10 @@ static void handleEvFrame(uint32_t id, uint8_t len, const uint8_t* data) {
     // ZE1 dashboard SOC: byte7 * 0.5 (OVMS patch Apr 2026, samr037).
     // Examples: 0x6E -> 55 %, 0xC8 -> 100 %, 0xAC -> 86 %
     float soc = data[7] * 0.5f;
-    if (soc > 0.0f && soc <= 100.0f) handleEvInstrumentSOC(soc);
+    if (soc > 0.0f && soc <= 100.0f) {
+      leafNoteZe1Frame();
+      handleEvInstrumentSOC(soc);
+    }
   } else if (id == 0x11A && len >= 2) {
     // CarOnOffStatus: 4-bit field at bits12-15 (intel), byte1 bits4-7.
     // The old 3-bit extraction could never produce the compared value 8,

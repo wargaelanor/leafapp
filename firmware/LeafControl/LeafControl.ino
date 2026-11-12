@@ -19,16 +19,17 @@
 #include "modemManager.h"
 #include "canLogger.h"
 #include "tripLog.h"
+#include "vehicleProfile.h"
 #include "modemProbe.h"
 #include "boardConfig.h"
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FR-TCall.160"
+#define LEAF_FIRMWARE_VERSION "FR-TCall.161"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: two MCP2515 CAN buses + SIM800"
 #else
-#define LEAF_FIRMWARE_VERSION "FR-2can.160"
-#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: CAN-сессии для разбора"
+#define LEAF_FIRMWARE_VERSION "FR-2can.161"
+#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: профили ZE1/AZE0"
 #endif
 
 // Доступ к версии из других модулей (serverApi.cpp).
@@ -1489,6 +1490,10 @@ void handleApiConfigGet() {
   out += ",\"night_from\":"; out += String((int)tripLogNightFrom());
   out += ",\"night_to\":"; out += String((int)tripLogNightTo());
   out += ",\"ui_lite\":"; out += getUiLite() ? "true" : "false";
+  out += ",\"vehicle_profile\":"; out += String(getVehicleProfile());
+  out += ",\"profile\":\""; out += leafProfileName();
+  out += "\",\"profile_mode\":\""; out += leafProfileModeName();
+  out += "\"";
   out += ",\"modem_enable\":"; out += getModemEnable() ? "true" : "false";
   out += ",\"modem800_apn\":\""; out += getModem800Apn();
   out += "\",\"modem800_user\":\""; out += getModem800User();

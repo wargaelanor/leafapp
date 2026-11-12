@@ -8,6 +8,7 @@
 #include "canLeafZE1.h"
 #include "tripLog.h"
 #include "canLogger.h"
+#include "vehicleProfile.h"
 #include <Update.h>
 #include "configuration.h"
 #include "serverCa.h"
@@ -371,11 +372,12 @@ static String stateJson() {
   time_t tnow = time(nullptr);
   uint32_t ts = (tnow > 1600000000) ? (uint32_t)tnow : 0;
 
-  char body[420];
+  char body[560];
   snprintf(body, sizeof(body),
            "{\"ts\":%lu,\"soc\":%.1f,\"odo\":%.0f,\"cabin\":%.1f,\"amb\":%.1f,"
            "\"batt\":%.1f,\"pack_v\":%.1f,\"pack_kw\":%.2f,\"v12\":%.1f,"
-           "\"hvac\":%d,\"charging\":%d,\"locked\":%d,\"doors\":%d,\"soh\":%d,\"spd\":%.1f,\"bus_age_s\":%lu}",
+           "\"hvac\":%d,\"charging\":%d,\"locked\":%d,\"doors\":%d,\"soh\":%d,\"spd\":%.1f,"
+           "\"bus_age_s\":%lu,\"profile\":\"%s\",\"profile_mode\":\"%s\"}",
            (unsigned long)ts,
            soc >= 0 ? soc : -1.0,
            (double)evData.odometerKm,
@@ -385,7 +387,7 @@ static String stateJson() {
            (lockState == 1) ? 1 : 0,
            (doorFL || doorFR || doorRL || doorRR || doorTrunk) ? 1 : 0,
            evData.soh, 0.0,
-           (unsigned long)busAgeSeconds());
+           (unsigned long)busAgeSeconds(), leafProfileName(), leafProfileModeName());
 
   return String(body);
 }
@@ -406,16 +408,16 @@ static bool sendState() {
 // ---------------------------------------------------------------- settings
 
 static void sendConfig() {
-  char body[420];
+  char body[560];
   snprintf(body, sizeof(body),
            "{\"remote_mode\":%d,\"charge_limit\":%d,\"locking\":%d,\"sleep\":%d,\"sleep_after\":%d,"
            "\"wake_fast\":%d,\"wake_slow\":%d,\"uds\":%d,\"uds_tpms\":%d,"
-           "\"modem\":%d,\"apn\":\"%s\"}",
+           "\"modem\":%d,\"apn\":\"%s\",\"vehicle_profile\":%d}",
            (int)getRemoteTransport(),
            getChargeLimitPct(), getLockingEnabled() ? 1 : 0, getSleepEnabled() ? 1 : 0,
            getSleepAfterHours(), getWakeFastMinutes(), getWakeSlowMinutes(),
            getUdsEnabled() ? 1 : 0, getUdsTpmsEnabled() ? 1 : 0,
-           getModemEnable() ? 1 : 0, getModem800Apn());
+           getModemEnable() ? 1 : 0, getModem800Apn(), getVehicleProfile());
   String resp;
   postJson("/api/device/config", body, resp);
 }
@@ -465,6 +467,7 @@ static void applyConfig(const char* argsJson) {
   else if (!strcmp(key, "wake_slow")) setWakeSlowMinutes(ival);
   else if (!strcmp(key, "uds")) setUdsEnabled(bval);
   else if (!strcmp(key, "uds_tpms")) setUdsTpmsEnabled(bval);
+  else if (!strcmp(key, "vehicle_profile")) setVehicleProfile(ival);
   else if (!strcmp(key, "modem")) setModemEnable(bval);
   else {
     Serial.printf("[srv] unknown config key: %s\n", key);

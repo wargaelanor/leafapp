@@ -1,4 +1,5 @@
 #include "canLeafZE1.h"
+#include "vehicleProfile.h"
 #include "evCanLeaf.h"
 #include "udsLeaf.h"
 #include <Arduino.h>
@@ -137,15 +138,23 @@ void handleDoorsAndLocksMessage(const uint8_t* data, uint8_t len) {
 
 void handleRangeInstrumentMessage(const uint8_t* data, uint8_t len) {
     (void)len;
-    // ZE1 dashboard range confirmed on this car: 05 10 -> 162 km while the
-    // cluster displayed 162 km. The OVMS /5 formula is incorrect for ZE1.
-    uint16_t raw = ((uint16_t)(data[1] & 0x7F) << 5) | (data[2] >> 3);
+    // ZE1: verified on this car (05 10 -> 162 km on the cluster).
+    // AZE0/ZE0: OVMS reads the same frame as (d1<<4 | d2>>4) / 5.
+    uint16_t raw;
+    float km;
+    if (leafIsZe1()) {
+        raw = ((uint16_t)(data[1] & 0x7F) << 5) | (data[2] >> 3);
+        km = (float)raw;
+    } else {
+        raw = ((uint16_t)data[1] << 4) | (data[2] >> 4);
+        km = raw / 5.0f;
+    }
     extern uint16_t lastRangeRawA9;
     if (raw != lastRangeRawA9) {
         lastRangeRawA9 = raw;
-        Serial.printf("0x5A9 dashboard range=%u km\n", raw);
+        Serial.printf("0x5A9 range raw=%u -> %.0f km (%s)\n", raw, km, leafProfileName());
     }
-    if (raw > 0 && raw < 1000) handleInstrumentRange(raw);
+    if (km > 0 && km < 1000) handleInstrumentRange((int)(km + 0.5f));
 }
 
 uint16_t lastRangeRawA9 = 0;
