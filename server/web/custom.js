@@ -142,20 +142,22 @@
 
   // Рисует график по точкам [[epoch, значение], ...] или просто [значение, ...].
   // Ширина берётся из карточки, линия сглаживается, по горизонтали — время.
-  // Двумя пальцами (или колесом) график масштабируется, одним — панорамируется
-  // после увеличения; двойной тап возвращает полный вид.
+  // Для мощности рисуется нулевая линия: выше — потребление, ниже — рекуперация
+  // (зелёным).
   function chart(el, series, opts) {
     if (!el) return;
     opts = opts || {};
     const SVGNS = 'http://www.w3.org/2000/svg';
-    const W0 = Math.max(240, Math.floor(el.clientWidth || (el.parentElement && el.parentElement.clientWidth) || 320));
+    const W = Math.max(240, Math.floor(el.clientWidth || (el.parentElement && el.parentElement.clientWidth) || 320));
     const H = opts.height || 300;
     const padL = 36, padR = 12, padT = 18, padB = 22;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
 
     const all = [];
     series.forEach(sr => {
       const raw = sr.points || (sr.values || []).map(v => [0, v]);
       sr._raw = raw.map(p => [Number(p[0]) || 0, Number(p[1])]).filter(p => isFinite(p[1]));
+      // лёгкое сглаживание 1-2-1: убирает «пилу» телеметрии, форма остаётся
       const sm = sr._raw.map(p => [p[0], p[1]]);
       for (let i = 1; i < sm.length - 1; i++) {
         sm[i][1] = (sr._raw[i - 1][1] + 2 * sr._raw[i][1] + sr._raw[i + 1][1]) / 4;
@@ -170,28 +172,56 @@
       return;
     }
 
+    let min = Math.min(...all), max = Math.max(...all);
+    const step = opts.minSpan || 1;
+    if (max - min < step) {
+      const c = (max + min) / 2;
+      min = c - step / 2;
+      max = c + step / 2;
+    }
+    const span = (max - min) || 1;
+
     let t0 = opts.from, t1 = opts.to;
     if (!t0 || !t1) {
       const tsAll = series.flatMap(sr => (sr.points || []).map(p => Number(p[0]) || 0)).filter(t => t > 0);
       if (tsAll.length) { t0 = Math.min(...tsAll); t1 = Math.max(...tsAll); }
     }
     const hasTime = !!(t0 && t1 && t1 > t0);
-    const fullSpan = Math.max(1, t1 - t0);
-    let vFrom = t0, vTo = t1;
-    const minSpan = Math.max(30, fullSpan / 200);
+    const longSpan = hasTime && (t1 - t0) > 86400;
 
-    const wrap = document.createElement('div');
-    wrap.style.cssText = 'position:relative';
-    el.appendChild(wrap);
+    const xFor = (p, i, n) => {
+      if (hasTime && p[0] > 0) {
+        const f = Math.min(1, Math.max(0, (p[0] - t0) / (t1 - t0)));
+        return padL + f * plotW;
+      }
+      return padL + (n > 1 ? i / (n - 1) : 0.5) * plotW;
+    };
+    const yFor = (v) => padT + plotH - ((v - min) / span) * plotH;
 
-    const resetBtn = document.createElement('button');
-    resetBtn.textContent = 'Сброс';
-    resetBtn.style.cssText = 'position:absolute;right:2px;top:0;border:0;background:var(--surface-2);' +
-      'color:var(--text);border-radius:10px;padding:3px 9px;font-size:11px;display:none';
-    resetBtn.onclick = () => { vFrom = t0; vTo = t1; paint(); };
+    const svg = document.createElementNS(SVGNS, 'svg');
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    svg.setAttribute('width', W);
+    svg.setAttribute('height', H);
+    svg.setAttribute('style', 'display:block;width:100%;height:' + H + 'px');
 
-    let svg = null;
+    // горизонтальная и вертикальная сетка
+    [0, 0.5, 1].forEach(f => {
+      const line = document.createElementNS(SVGNS, 'path');
+      line.setAttribute('d', `M${padL} ${(padT + f * plotH).toFixed(1)} H${W - padR}`);
+      line.setAttribute('stroke', 'var(--line)');
+      line.setAttribute('fill', 'none');
+      svg.appendChild(line);
+    });
+    [0.25, 0.5, 0.75].forEach(f => {
+      const line = document.createElementNS(SVGNS, 'path');
+      line.setAttribute('d', `M${(padL + f * plotW).toFixed(1)} ${padT} V${padT + plotH}`);
+      line.setAttribute('stroke', 'var(--line)');
+      line.setAttribute('fill', 'none');
+      line.setAttribute('opacity', '0.6');
+      svg.appendChild(line);
+    });
 
+    // сглаженная линия: квадратичные сегменты через середины
     const smooth = (pts) => {
       if (!pts.length) return '';
       if (pts.length === 1) return `M${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}`;
@@ -206,361 +236,205 @@
       return d;
     };
 
-    function paint() {
-      const W = Math.max(240, Math.floor(el.clientWidth || W0));
-      const plotW = W - padL - padR, plotH = H - padT - padB;
-      const spanT = Math.max(1, vTo - vFrom);
+    // нулевая линия и зелёная зона рекуперации (только если шкала через ноль)
+    const hasZero = min < 0 && max > 0;
+    let yZero = 0;
+    if (hasZero) {
+      yZero = yFor(0);
+      const zl = document.createElementNS(SVGNS, 'path');
+      zl.setAttribute('d', `M${padL} ${yZero.toFixed(1)} H${W - padR}`);
+      zl.setAttribute('stroke', 'var(--muted)');
+      zl.setAttribute('stroke-width', '1');
+      zl.setAttribute('stroke-dasharray', '4 3');
+      zl.setAttribute('fill', 'none');
+      svg.appendChild(zl);
+    }
 
-      // видимые точки (+1 соседняя с каждой стороны, чтобы линия не обрывалась)
-      const visible = series.map(sr => {
-        const pts = sr._pts;
-        let a = 0, b = pts.length;
-        for (let i = 0; i < pts.length; i++) { if (pts[i][0] >= vFrom) { a = Math.max(0, i - 1); break; } }
-        for (let i = pts.length - 1; i >= 0; i--) { if (pts[i][0] <= vTo) { b = Math.min(pts.length, i + 2); break; } }
-        return pts.slice(a, b);
-      });
+    const defs = document.createElementNS(SVGNS, 'defs');
+    const clipAbove = document.createElementNS(SVGNS, 'clipPath');
+    clipAbove.setAttribute('id', 'clipAbove');
+    const rectAbove = document.createElementNS(SVGNS, 'rect');
+    rectAbove.setAttribute('x', padL); rectAbove.setAttribute('y', padT);
+    rectAbove.setAttribute('width', plotW); rectAbove.setAttribute('height', Math.max(0, yZero - padT));
+    clipAbove.appendChild(rectAbove);
+    const clipBelow = document.createElementNS(SVGNS, 'clipPath');
+    clipBelow.setAttribute('id', 'clipBelow');
+    const rectBelow = document.createElementNS(SVGNS, 'rect');
+    rectBelow.setAttribute('x', padL); rectBelow.setAttribute('y', yZero);
+    rectBelow.setAttribute('width', plotW); rectBelow.setAttribute('height', Math.max(0, padT + plotH - yZero));
+    clipBelow.appendChild(rectBelow);
+    defs.appendChild(clipAbove);
+    defs.appendChild(clipBelow);
+    svg.appendChild(defs);
 
-      const vals = [];
-      visible.forEach((pts, i) => { if (series[i].show !== false) pts.forEach(p => vals.push(p[1])); });
-      if (!vals.length) {
-        const allVals = series.flatMap(sr => sr._pts.map(p => p[1]));
-        vals.push(...allVals);
-      }
-      let min = Math.min(...vals), max = Math.max(...vals);
-      const step = opts.minSpan || 1;
-      if (max - min < step) { const c = (max + min) / 2; min = c - step / 2; max = c + step / 2; }
-      const span = (max - min) || 1;
-
-      const xFor = (ts) => padL + ((ts - vFrom) / spanT) * plotW;
-      const yFor = (v) => padT + plotH - ((v - min) / span) * plotH;
-
-      if (svg) svg.remove();
-      svg = document.createElementNS(SVGNS, 'svg');
-      svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
-      svg.setAttribute('width', W);
-      svg.setAttribute('height', H);
-      svg.setAttribute('style', 'display:block;width:100%;height:' + H + 'px');
-      wrap.appendChild(svg);
-
-      [0, 0.5, 1].forEach(f => {
-        const line = document.createElementNS(SVGNS, 'path');
-        line.setAttribute('d', `M${padL} ${(padT + f * plotH).toFixed(1)} H${W - padR}`);
-        line.setAttribute('stroke', 'var(--line)');
-        line.setAttribute('fill', 'none');
-        svg.appendChild(line);
-      });
-      [0.25, 0.5, 0.75].forEach(f => {
-        const line = document.createElementNS(SVGNS, 'path');
-        line.setAttribute('d', `M${(padL + f * plotW).toFixed(1)} ${padT} V${padT + plotH}`);
-        line.setAttribute('stroke', 'var(--line)');
-        line.setAttribute('fill', 'none');
-        line.setAttribute('opacity', '0.6');
-        svg.appendChild(line);
-      });
-
-      const hasZero = min < 0 && max > 0;
-      let yZero = 0;
-      if (hasZero) {
-        yZero = yFor(0);
-        const zl = document.createElementNS(SVGNS, 'path');
-        zl.setAttribute('d', `M${padL} ${yZero.toFixed(1)} H${W - padR}`);
-        zl.setAttribute('stroke', 'var(--muted)');
-        zl.setAttribute('stroke-width', '1');
-        zl.setAttribute('stroke-dasharray', '4 3');
-        zl.setAttribute('fill', 'none');
-        svg.appendChild(zl);
-      }
-
-      const defs = document.createElementNS(SVGNS, 'defs');
-      const clipAbove = document.createElementNS(SVGNS, 'clipPath');
-      clipAbove.setAttribute('id', 'clipAbove');
-      const rectAbove = document.createElementNS(SVGNS, 'rect');
-      rectAbove.setAttribute('x', padL); rectAbove.setAttribute('y', padT);
-      rectAbove.setAttribute('width', plotW); rectAbove.setAttribute('height', Math.max(0, yZero - padT));
-      clipAbove.appendChild(rectAbove);
-      const clipBelow = document.createElementNS(SVGNS, 'clipPath');
-      clipBelow.setAttribute('id', 'clipBelow');
-      const rectBelow = document.createElementNS(SVGNS, 'rect');
-      rectBelow.setAttribute('x', padL); rectBelow.setAttribute('y', yZero);
-      rectBelow.setAttribute('width', plotW); rectBelow.setAttribute('height', Math.max(0, padT + plotH - yZero));
-      clipBelow.appendChild(rectBelow);
-      defs.appendChild(clipAbove);
-      defs.appendChild(clipBelow);
-      svg.appendChild(defs);
-
-      series.forEach((sr, idx) => {
-        const pts = visible[idx];
-        if (!pts.length) return;
-        const dst = smooth(pts.map(p => [xFor(p[0]), yFor(p[1])]));
-        const mk = (color, clip) => {
-          const path = document.createElementNS(SVGNS, 'path');
-          path.setAttribute('d', dst);
-          path.setAttribute('fill', 'none');
-          path.setAttribute('stroke', color);
-          path.setAttribute('stroke-width', '2');
-          path.setAttribute('stroke-linejoin', 'round');
-          path.setAttribute('stroke-linecap', 'round');
-          if (clip) path.setAttribute('clip-path', 'url(#' + clip + ')');
-          svg.appendChild(path);
-        };
-        if (hasZero && sr.key === 'kw') {
-          mk(sr.color || 'var(--accent)', 'clipAbove');
-          mk('#34c759', 'clipBelow');
-        } else {
-          mk(sr.color || 'var(--accent)', null);
-        }
-      });
-
-      const text = (x, y, str, anchor) => {
-        const e = document.createElementNS(SVGNS, 'text');
-        e.setAttribute('x', x); e.setAttribute('y', y);
-        e.setAttribute('font-size', '10');
-        e.setAttribute('fill', 'var(--muted)');
-        e.setAttribute('text-anchor', anchor || 'start');
-        e.textContent = str;
-        svg.appendChild(e);
+    series.forEach(sr => {
+      const pts = sr._pts;
+      if (!pts.length) return;
+      const dst = smooth(pts.map((p, i) => [xFor(p, i, pts.length), yFor(p[1])]));
+      const mk = (color, clip) => {
+        const path = document.createElementNS(SVGNS, 'path');
+        path.setAttribute('d', dst);
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke', color);
+        path.setAttribute('stroke-width', '2');
+        path.setAttribute('stroke-linejoin', 'round');
+        path.setAttribute('stroke-linecap', 'round');
+        if (clip) path.setAttribute('clip-path', 'url(#' + clip + ')');
+        svg.appendChild(path);
       };
-      text(padL - 4, padT + 4, fmt(max, 1), 'end');
-      text(padL - 4, padT + plotH + 3, fmt(min, 1), 'end');
-      if (hasZero) text(padL - 4, yZero + 3, '0', 'end');
+      if (hasZero && sr.key === 'kw') {
+        // потребление — цветом серии, рекуперация — зелёным
+        mk(sr.color || 'var(--accent)', 'clipAbove');
+        mk('#34c759', 'clipBelow');
+      } else {
+        mk(sr.color || 'var(--accent)', null);
+      }
+    });
 
-      if (hasTime) {
-        const longSpan = (vTo - vFrom) > 86400;
-        const clock = (ts) => {
-          const d = new Date(ts * 1000);
-          const hh = String(d.getHours()).padStart(2, '0');
-          const mm = String(d.getMinutes()).padStart(2, '0');
-          const ss = String(d.getSeconds()).padStart(2, '0');
-          if (longSpan) {
-            return d.getDate().toString().padStart(2, '0') + '.' +
-              String(d.getMonth() + 1).padStart(2, '0') + ' ' + hh + ':' + mm;
-          }
-          return (vTo - vFrom) < 300 ? hh + ':' + mm + ':' + ss : hh + ':' + mm;
-        };
-        const marks = 5;
-        for (let i = 0; i < marks; i++) {
-          const ts = vFrom + (vTo - vFrom) * (i / (marks - 1));
-          const x = padL + plotW * (i / (marks - 1));
-          text(x, H - 6, clock(ts), i === 0 ? 'start' : (i === marks - 1 ? 'end' : 'middle'));
-        }
+    const text = (x, y, str, anchor, cls) => {
+      const e = document.createElementNS(SVGNS, 'text');
+      e.setAttribute('x', x); e.setAttribute('y', y);
+      e.setAttribute('font-size', '10');
+      e.setAttribute('fill', 'var(--muted)');
+      e.setAttribute('text-anchor', anchor || 'start');
+      e.textContent = str;
+      svg.appendChild(e);
+    };
+    text(padL - 4, padT + 4, fmt(max, 1), 'end');
+    text(padL - 4, padT + plotH + 3, fmt(min, 1), 'end');
+    if (hasZero) text(padL - 4, yZero + 3, '0', 'end');
+    if (opts.label) text(W - padR, padT - 6, opts.label, 'end');
 
-        // ---- подсказка: линия, точки на кривых и плашка
-        const vline = document.createElementNS(SVGNS, 'path');
-        vline.setAttribute('stroke', 'var(--muted)');
-        vline.setAttribute('stroke-width', '1');
-        vline.setAttribute('stroke-dasharray', '3 3');
-        vline.setAttribute('fill', 'none');
-        vline.setAttribute('visibility', 'hidden');
-        svg.appendChild(vline);
-
-        const dots = series.map(sr => {
-          const c = document.createElementNS(SVGNS, 'circle');
-          c.setAttribute('r', '3.5');
-          c.setAttribute('fill', sr.color || 'var(--accent)');
-          c.setAttribute('stroke', 'var(--surface)');
-          c.setAttribute('stroke-width', '1.5');
-          c.setAttribute('visibility', 'hidden');
-          svg.appendChild(c);
-          return c;
-        });
-
-        const bubbleBg = document.createElementNS(SVGNS, 'rect');
-        bubbleBg.setAttribute('rx', '5');
-        bubbleBg.setAttribute('fill', 'var(--surface-2)');
-        bubbleBg.setAttribute('stroke', 'var(--line)');
-        bubbleBg.setAttribute('height', '18');
-        bubbleBg.setAttribute('visibility', 'hidden');
-        svg.appendChild(bubbleBg);
-
-        const bubble = document.createElementNS(SVGNS, 'text');
-        bubble.setAttribute('font-size', '10.5');
-        bubble.setAttribute('fill', 'var(--text)');
-        bubble.setAttribute('visibility', 'hidden');
-        svg.appendChild(bubble);
-
-        const hit = document.createElementNS(SVGNS, 'rect');
-        hit.setAttribute('x', padL);
-        hit.setAttribute('y', padT);
-        hit.setAttribute('width', plotW);
-        hit.setAttribute('height', plotH);
-        hit.setAttribute('fill', 'transparent');
-        hit.setAttribute('style', 'cursor:crosshair;touch-action:none');
-        svg.appendChild(hit);
-
-        const clockFull = (ts) => {
-          const d = new Date(ts * 1000);
-          return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') +
-            ':' + String(d.getSeconds()).padStart(2, '0');
-        };
-        const unit = { kw: ' кВт', spd: ' км/ч', soc: ' %', batt: ' °C' };
-
-        const hide = () => {
-          vline.setAttribute('visibility', 'hidden');
-          bubble.setAttribute('visibility', 'hidden');
-          bubbleBg.setAttribute('visibility', 'hidden');
-          dots.forEach(d => d.setAttribute('visibility', 'hidden'));
-        };
-
-        const probeAt = (ts) => {
-          const x = xFor(ts);
-          vline.setAttribute('d', `M${x.toFixed(1)} ${padT} V${padT + plotH}`);
-          vline.setAttribute('visibility', 'visible');
-          const parts = [];
-          series.forEach((sr, idx) => {
-            const dot = dots[idx];
-            const pts = sr._pts;
-            if (sr.show === false || !pts.length || pts[0][0] > ts || pts[pts.length - 1][0] < ts) {
-              dot.setAttribute('visibility', 'hidden');
-              return;
-            }
-            let v;
-            if (ts <= pts[0][0]) v = pts[0][1];
-            else if (ts >= pts[pts.length - 1][0]) v = pts[pts.length - 1][1];
-            else {
-              let i = 1;
-              while (i < pts.length && pts[i][0] < ts) i++;
-              const a = pts[i - 1], b = pts[i];
-              const k = (ts - a[0]) / Math.max(1, b[0] - a[0]);
-              v = a[1] + (b[1] - a[1]) * k;
-            }
-            dot.setAttribute('cx', x.toFixed(1));
-            dot.setAttribute('cy', yFor(v).toFixed(1));
-            dot.setAttribute('fill', (hasZero && sr.key === 'kw' && v < 0) ? '#34c759' : (sr.color || 'var(--accent)'));
-            dot.setAttribute('visibility', 'visible');
-            parts.push(fmt(v, 1) + unit[sr.key]);
-          });
-
-          const labelText = clockFull(ts) + (parts.length ? ' · ' + parts.join(' · ') : '');
-          bubble.textContent = labelText;
-          const tw = labelText.length * 5.6 + 10;
-          const bx = Math.min(W - padR - tw, Math.max(padL, x - tw / 2));
-          bubbleBg.setAttribute('x', bx);
-          bubbleBg.setAttribute('y', padT - 14);
-          bubbleBg.setAttribute('width', tw);
-          bubble.setAttribute('x', bx + 5);
-          bubble.setAttribute('y', padT - 1);
-          bubbleBg.setAttribute('visibility', 'visible');
-          bubble.setAttribute('visibility', 'visible');
-        };
-
-        const tsAt = (clientX) => {
-          const r = svg.getBoundingClientRect();
-          const px = (clientX - r.left) * (W / r.width);
-          const f = Math.min(1, Math.max(0, (px - padL) / plotW));
-          return vFrom + f * (vTo - vFrom);
-        };
-
-        // ---- жесты: 1 палец — подсказка/панорама, 2 пальца — масштаб
-        const pts = new Map();
-        let pinch = null;
-
-        hit.addEventListener('pointerdown', (ev) => {
-          ev.preventDefault();
-          hit.setPointerCapture(ev.pointerId);
-          pts.set(ev.pointerId, ev.clientX);
-          if (pts.size === 1) {
-            probeAt(tsAt(ev.clientX));
-          } else if (pts.size === 2) {
-            const xs = [...pts.values()];
-            pinch = {
-              dist: Math.abs(xs[0] - xs[1]) || 1,
-              centerX: (xs[0] + xs[1]) / 2,
-              centerT: tsAt((xs[0] + xs[1]) / 2),
-              span: vTo - vFrom,
-              from: vFrom, to: vTo,
-            };
-            hide();
-          }
-        });
-
-        hit.addEventListener('pointermove', (ev) => {
-          if (!pts.has(ev.pointerId)) return;
-          ev.preventDefault();
-          const prevX = pts.get(ev.pointerId);
-          pts.set(ev.pointerId, ev.clientX);
-
-          if (pts.size >= 2 && pinch) {
-            const xs = [...pts.values()];
-            const dist = Math.abs(xs[0] - xs[1]) || 1;
-            const centerX = (xs[0] + xs[1]) / 2;
-            const r = svg.getBoundingClientRect();
-            const scale = pinch.dist / dist;
-            let span = Math.min(fullSpan, Math.max(minSpan, pinch.span * scale));
-            const shift = ((centerX - pinch.centerX) * (W / r.width) / plotW) * pinch.span;
-            let c = pinch.centerT - shift;
-            let a = c - span / 2, b = c + span / 2;
-            if (a < t0) { a = t0; b = Math.min(t1, a + span); }
-            if (b > t1) { b = t1; a = Math.max(t0, b - span); }
-            vFrom = a; vTo = b;
-            paint();
-            return;
-          }
-
-          if (pts.size === 1) {
-            // при увеличении один палец сдвигает окно, иначе показывает значения
-            const zoomed = (vTo - vFrom) < fullSpan * 0.98;
-            if (zoomed) {
-              const dx = ev.clientX - prevX;
-              const r = svg.getBoundingClientRect();
-              const shift = (dx * (W / r.width) / plotW) * (vTo - vFrom);
-              if (Math.abs(shift) > 1) {
-                let a = vFrom - shift, b = vTo - shift;
-                if (a < t0) { b += t0 - a; a = t0; }
-                if (b > t1) { a -= b - t1; b = t1; }
-                vFrom = a; vTo = b;
-                paint();
-                return;
-              }
-            }
-            probeAt(tsAt(ev.clientX));
-          }
-        });
-
-        const up = (ev) => {
-          pts.delete(ev.pointerId);
-          if (pts.size < 2) pinch = null;
-          if (pts.size === 0) hide();
-        };
-        hit.addEventListener('pointerup', up);
-        hit.addEventListener('pointercancel', up);
-        hit.addEventListener('pointerleave', (ev) => { if (pts.size === 0) hide(); });
-
-        // двойной тап — вернуть полный вид
-        let lastTap = 0;
-        hit.addEventListener('pointerup', (ev) => {
-          if (pts.size > 0) return;
-          const now = Date.now();
-          if (now - lastTap < 320) { vFrom = t0; vTo = t1; paint(); }
-          lastTap = now;
-        });
-
-        hit.addEventListener('wheel', (ev) => {
-          ev.preventDefault();
-          const k = ev.deltaY > 0 ? 1.25 : 0.8;
-          const c = tsAt(ev.clientX);
-          let span = Math.min(fullSpan, Math.max(minSpan, (vTo - vFrom) * k));
-          let a = c - span / 2, b = c + span / 2;
-          if (a < t0) { a = t0; b = Math.min(t1, a + span); }
-          if (b > t1) { b = t1; a = Math.max(t0, b - span); }
-          vFrom = a; vTo = b;
-          paint();
-        }, { passive: false });
+    if (hasTime) {
+      const clock = (ts) => {
+        const d = new Date(ts * 1000);
+        const hh = String(d.getHours()).padStart(2, '0');
+        const mm = String(d.getMinutes()).padStart(2, '0');
+        return longSpan
+          ? d.getDate().toString().padStart(2, '0') + '.' + String(d.getMonth() + 1).padStart(2, '0') + ' ' + hh + ':' + mm
+          : hh + ':' + mm;
+      };
+      const marks = 5;
+      for (let i = 0; i < marks; i++) {
+        const ts = t0 + (t1 - t0) * (i / (marks - 1));
+        const x = padL + plotW * (i / (marks - 1));
+        text(x, H - 6, clock(ts), i === 0 ? 'start' : (i === marks - 1 ? 'end' : 'middle'));
       }
 
-      resetBtn.style.display = ((vTo - vFrom) < fullSpan * 0.98) ? 'block' : 'none';
-    }
+      // ---- подсказка: линия, точки на кривых и плашка со значениями
+      const vline = document.createElementNS(SVGNS, 'path');
+      vline.setAttribute('stroke', 'var(--muted)');
+      vline.setAttribute('stroke-width', '1');
+      vline.setAttribute('stroke-dasharray', '3 3');
+      vline.setAttribute('fill', 'none');
+      vline.setAttribute('visibility', 'hidden');
+      svg.appendChild(vline);
 
-    wrap.appendChild(resetBtn);
-    paint();
-
-    if (window.ResizeObserver) {
-      let lastW = 0;
-      const ro = new ResizeObserver(() => {
-        const w = el.clientWidth || 0;
-        if (w && Math.abs(w - lastW) > 8) { lastW = w; paint(); }
+      const dots = series.map(sr => {
+        const c = document.createElementNS(SVGNS, 'circle');
+        c.setAttribute('r', '3.5');
+        c.setAttribute('fill', sr.color || 'var(--accent)');
+        c.setAttribute('stroke', 'var(--surface)');
+        c.setAttribute('stroke-width', '1.5');
+        c.setAttribute('visibility', 'hidden');
+        svg.appendChild(c);
+        return c;
       });
-      ro.observe(el);
+
+      const bubbleBg = document.createElementNS(SVGNS, 'rect');
+      bubbleBg.setAttribute('rx', '5');
+      bubbleBg.setAttribute('fill', 'var(--surface-2)');
+      bubbleBg.setAttribute('stroke', 'var(--line)');
+      bubbleBg.setAttribute('height', '18');
+      bubbleBg.setAttribute('visibility', 'hidden');
+      svg.appendChild(bubbleBg);
+
+      const bubble = document.createElementNS(SVGNS, 'text');
+      bubble.setAttribute('font-size', '10.5');
+      bubble.setAttribute('fill', 'var(--text)');
+      bubble.setAttribute('visibility', 'hidden');
+      svg.appendChild(bubble);
+
+      const hit = document.createElementNS(SVGNS, 'rect');
+      hit.setAttribute('x', padL);
+      hit.setAttribute('y', padT);
+      hit.setAttribute('width', plotW);
+      hit.setAttribute('height', plotH);
+      hit.setAttribute('fill', 'transparent');
+      // none: палец не прокручивает страницу, пока ведём по графику
+      hit.setAttribute('style', 'cursor:crosshair;touch-action:none');
+      svg.appendChild(hit);
+
+      const clockFull = (ts) => {
+        const d = new Date(ts * 1000);
+        return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+      };
+      const unit = { kw: ' кВт', spd: ' км/ч', soc: ' %', batt: ' °C' };
+
+      const hide = () => {
+        vline.setAttribute('visibility', 'hidden');
+        bubble.setAttribute('visibility', 'hidden');
+        bubbleBg.setAttribute('visibility', 'hidden');
+        dots.forEach(d => d.setAttribute('visibility', 'hidden'));
+      };
+
+      const show = (ev) => {
+        const r = svg.getBoundingClientRect();
+        const px = (ev.clientX - r.left) * (W / r.width);
+        if (px < padL - 4 || px > W - padR + 4) return hide();
+        const f = Math.min(1, Math.max(0, (px - padL) / plotW));
+        const ts = t0 + f * (t1 - t0);
+        const x = padL + f * plotW;
+
+        vline.setAttribute('d', `M${x.toFixed(1)} ${padT} V${padT + plotH}`);
+        vline.setAttribute('visibility', 'visible');
+
+        const parts = [];
+        series.forEach((sr, idx) => {
+          const dot = dots[idx];
+          if (!sr.show || !sr._pts.length) { dot.setAttribute('visibility', 'hidden'); return; }
+          // значение в точке под пальцем: линейная интерполяция между соседями,
+          // чтобы кружок ехал ровно за курсором, а не прыгал по точкам
+          const pts = sr._pts;
+          if (!pts.length) { dot.setAttribute('visibility', 'hidden'); return; }
+          let v;
+          if (ts <= pts[0][0]) v = pts[0][1];
+          else if (ts >= pts[pts.length - 1][0]) v = pts[pts.length - 1][1];
+          else {
+            let i = 1;
+            while (i < pts.length && pts[i][0] < ts) i++;
+            const a = pts[i - 1], b = pts[i];
+            const k = (ts - a[0]) / Math.max(1, b[0] - a[0]);
+            v = a[1] + (b[1] - a[1]) * k;
+          }
+          dot.setAttribute('cx', x.toFixed(1));
+          dot.setAttribute('cy', yFor(v).toFixed(1));
+          dot.setAttribute('fill', (hasZero && sr.key === 'kw' && v < 0) ? '#34c759' : (sr.color || 'var(--accent)'));
+          dot.setAttribute('visibility', 'visible');
+          parts.push(fmt(v, 1) + unit[sr.key]);
+        });
+
+        const labelText = clockFull(ts) + (parts.length ? ' · ' + parts.join(' · ') : '');
+        bubble.textContent = labelText;
+        const tw = labelText.length * 5.6 + 10;
+        const bx = Math.min(W - padR - tw, Math.max(padL, x - tw / 2));
+        bubbleBg.setAttribute('x', bx);
+        bubbleBg.setAttribute('y', padT - 14);
+        bubbleBg.setAttribute('width', tw);
+        bubble.setAttribute('x', bx + 5);
+        bubble.setAttribute('y', padT - 1);
+        bubbleBg.setAttribute('visibility', 'visible');
+        bubble.setAttribute('visibility', 'visible');
+      };
+
+      hit.addEventListener('pointerdown', (ev) => { ev.preventDefault(); show(ev); });
+      hit.addEventListener('pointermove', (ev) => { ev.preventDefault(); show(ev); });
+      hit.addEventListener('pointerleave', hide);
+      hit.addEventListener('pointerup', hide);
+      hit.addEventListener('pointercancel', hide);
     }
+
+    el.appendChild(svg);
   }
 
   function renderStats(d) {
