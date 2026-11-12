@@ -15,6 +15,7 @@ import json
 import os
 import re
 import secrets
+import shutil
 import sqlite3
 import threading
 import time
@@ -32,6 +33,10 @@ ONLINE_WINDOW_S = 45
 
 # Публичный адрес этого сервера (для ссылок на прошивки и APK).
 SERVER_BASE = os.environ.get("LEAF_SERVER_BASE", "https://leaf.wargaelanor.keenetic.link")
+
+# CAN-сессии платы (тестовый режим): файлы лежат рядом с базой и не теряются
+# при перезапуске контейнера.
+CAN_DIR = os.environ.get("LEAF_CAN_DIR", os.path.join(os.path.dirname(DB_PATH), "can"))
 
 # Ссылка на Android-приложение (release-ассет проекта).
 APP_REV = os.environ.get("LEAF_REV", "sec-2c73f93")
@@ -150,6 +155,17 @@ CREATE TABLE IF NOT EXISTS fcm_tokens (
 CREATE TABLE IF NOT EXISTS app_settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS can_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  device_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  size INTEGER NOT NULL DEFAULT 0,
+  total INTEGER NOT NULL DEFAULT 0,
+  complete INTEGER NOT NULL DEFAULT 0,
+  started_at INTEGER,
+  uploaded_at INTEGER NOT NULL,
+  UNIQUE(device_id, name)
 );
 CREATE TABLE IF NOT EXISTS maintenance (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -573,6 +589,8 @@ class Api(BaseHTTPRequestHandler):
             return self.device_state()
         if path == "/api/device/heartbeat" and method == "POST":
             return self.device_heartbeat()
+        if path == "/api/device/canlog" and method == "POST":
+            return self.device_canlog(q)
         if path == "/api/device/session" and method == "POST":
             return self.device_session()
         if path == "/api/device/cmd" and method == "GET":
@@ -916,6 +934,68 @@ class Api(BaseHTTPRequestHandler):
                 last_ts = ts
                 added += 1
         return self.json(200, {"ok": True, "added": added})
+
+    def device_canlog(self, q):
+        """Кусок CAN-сессии: плата шлёт файл по 192 КБ до полной выгрузки."""
+        dev = self.device()
+        if not dev:
+            return self.err(401, "bad device token")
+        name = (q.get("name") or "").strip()
+        if not re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", name):
+            return self.err(400, "bad name")
+        try:
+            off = max(0, int(q.get("off") or 0))
+            total = max(0, int(q.get("total") or 0))
+        except ValueError:
+            return self.err(400, "bad offset")
+        last = (q.get("last") or "") in ("1", "true", "yes")
+        length = int(self.headers.get("Content-Length") or 0)
+        if length <= 0 or length > 1_000_000:
+            return self.err(413, "bad chunk size")
+
+        folder = os.path.join(CAN_DIR, str(dev["id"]))
+        os.makedirs(folder, exist_ok=True)
+        full = os.path.join(folder, name)
+        if off > 0:
+            # продолжить можно только уже начатый файл: иначе получится дыра
+            if not os.path.isfile(full) or os.path.getsize(full) < off:
+                return self.err(409, "offset mismatch")
+            mode = "r+b"
+        else:
+            mode = "wb"
+        got = 0
+        try:
+            with open(full, mode) as fh:
+                fh.seek(off)
+                while got < length:
+                    piece = self.rfile.read(min(65536, length - got))
+                    if not piece:
+                        break
+                    fh.write(piece)
+                    got += len(piece)
+                fh.truncate()
+        except OSError as exc:  # noqa: BLE001
+            print("CAN WRITE", name, repr(exc), flush=True)
+            return self.err(500, "write failed")
+
+        size = os.path.getsize(full)
+        complete = 1 if (last and (total == 0 or size >= total)) else 0
+        started = 0
+        m = re.match(r"can_(\d+)\.bin$", name)
+        if m:
+            started = int(m.group(1))
+        with db_lock, connect() as c:
+            c.execute(
+                "INSERT INTO can_logs(device_id,name,size,total,complete,started_at,uploaded_at)"
+                " VALUES(?,?,?,?,?,?,?)"
+                " ON CONFLICT(device_id,name) DO UPDATE SET size=excluded.size,"
+                " total=excluded.total, complete=excluded.complete,"
+                " uploaded_at=excluded.uploaded_at",
+                (dev["id"], name, size, total, complete, started, now()),
+            )
+        print("CAN chunk %s off=%d +%d size=%d%s" % (name, off, got, size,
+                                                     " (done)" if complete else ""), flush=True)
+        return self.json(200, {"ok": True, "size": size, "complete": bool(complete)})
 
     def device_sync(self):
         """Один запрос на цикл: состояние + подтверждения + очередь команд."""
@@ -1671,7 +1751,125 @@ class Api(BaseHTTPRequestHandler):
 
     # ---------- admin
 
+    # ---------- CAN-сессии
+
+    def can_log_row(self, cid):
+        with db_lock, connect() as c:
+            return c.execute(
+                "SELECT l.*, d.login AS login FROM can_logs l"
+                " LEFT JOIN devices d ON d.id=l.device_id WHERE l.id=?", (cid,)
+            ).fetchone()
+
+    def send_file(self, full: str, ctype: str, download: str):
+        size = os.path.getsize(full)
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(size))
+        self.send_header("Content-Disposition", 'attachment; filename="%s"' % download)
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        if self.command == "HEAD":
+            return
+        with open(full, "rb") as fh:
+            while True:
+                block = fh.read(65536)
+                if not block:
+                    break
+                self.wfile.write(block)
+
+    def can_log_text(self, bin_path: str, fmt: str) -> str:
+        """Перевод бинарных записей (19 байт) в текст/CSV. Кэшируется рядом."""
+        import struct
+        cache_dir = os.path.join(os.path.dirname(bin_path), "cache")
+        os.makedirs(cache_dir, exist_ok=True)
+        base = os.path.basename(bin_path)
+        out_path = os.path.join(cache_dir, base + "." + fmt)
+        try:
+            if os.path.getmtime(out_path) >= os.path.getmtime(bin_path):
+                return out_path
+        except OSError:
+            pass
+        tmp = out_path + ".tmp"
+        with open(bin_path, "rb") as src, open(tmp, "w", encoding="utf-8", newline="\n") as out:
+            if fmt == "csv":
+                out.write("time_s,bus,dir,id,len,data\n")
+            else:
+                out.write("# Leaf Control CAN log\n# time_s bus dir id len data\n")
+            while True:
+                rec = src.read(19)
+                if len(rec) < 19:
+                    break
+                ms, cid, data8, ln, bus, direction = struct.unpack("<II8sBcc", rec)
+                ln = min(ln, 8)
+                bus_s = bus.decode("latin-1")
+                dir_s = direction.decode("latin-1")
+                hexs = " ".join("%02X" % b for b in data8[:ln])
+                if fmt == "csv":
+                    out.write('%.3f,%s,%s,"0x%03X",%d,%s\n'
+                              % (ms / 1000.0, bus_s, dir_s, cid, ln, hexs))
+                else:
+                    out.write("%d.%03d %s %s 0x%03X %d %s\n"
+                              % (ms // 1000, ms % 1000, bus_s, dir_s, cid, ln, hexs))
+        os.replace(tmp, out_path)
+        return out_path
+
     def admin(self, method: str, path: str, q: dict):
+        if path == "/api/admin/canlog" and method == "GET":
+            with db_lock, connect() as c:
+                rows = c.execute(
+                    "SELECT l.*, d.login AS login FROM can_logs l"
+                    " LEFT JOIN devices d ON d.id=l.device_id"
+                    " ORDER BY l.uploaded_at DESC LIMIT 200").fetchall()
+            items = []
+            for r in rows:
+                items.append({
+                    "id": r["id"], "device": r["login"], "device_id": r["device_id"],
+                    "name": r["name"], "size": r["size"], "total": r["total"],
+                    "complete": bool(r["complete"]), "started_at": r["started_at"],
+                    "uploaded_at": r["uploaded_at"], "frames": r["size"] // 19,
+                })
+            return self.json(200, {"items": items})
+
+        if path.startswith("/api/admin/canlog/") and method == "GET" and path.endswith("/download"):
+            try:
+                cid = int(path.split("/")[4])
+            except (ValueError, IndexError):
+                return self.err(400, "bad id")
+            row = self.can_log_row(cid)
+            if not row:
+                return self.err(404, "not found")
+            full = os.path.join(CAN_DIR, str(row["device_id"]), row["name"])
+            if not os.path.isfile(full):
+                return self.err(404, "file missing")
+            fmt = (q.get("fmt") or "txt").lower()
+            if fmt not in ("bin", "txt", "csv"):
+                return self.err(400, "bad format")
+            if fmt == "bin":
+                return self.send_file(full, "application/octet-stream", row["name"])
+            cached = self.can_log_text(full, fmt)
+            ctype = "text/csv; charset=utf-8" if fmt == "csv" else "text/plain; charset=utf-8"
+            return self.send_file(cached, ctype, row["name"].rsplit(".", 1)[0] + "." + fmt)
+
+        if path.startswith("/api/admin/canlog/") and method == "DELETE":
+            try:
+                cid = int(path.rsplit("/", 1)[-1])
+            except ValueError:
+                return self.err(400, "bad id")
+            row = self.can_log_row(cid)
+            if not row:
+                return self.err(404, "not found")
+            with db_lock, connect() as c:
+                c.execute("DELETE FROM can_logs WHERE id=?", (cid,))
+            folder = os.path.join(CAN_DIR, str(row["device_id"]))
+            for name in (row["name"],
+                         os.path.join("cache", row["name"] + ".txt"),
+                         os.path.join("cache", row["name"] + ".csv")):
+                try:
+                    os.remove(os.path.join(folder, name))
+                except OSError:
+                    pass
+            return self.json(200, {"ok": True})
+
         if path == "/api/admin/devices" and method == "GET":
             status = q.get("status", "pending")
             with db_lock, connect() as c:
@@ -1782,10 +1980,12 @@ class Api(BaseHTTPRequestHandler):
                 row = c.execute("SELECT login FROM devices WHERE id=?", (did,)).fetchone()
                 if not row:
                     return self.err(404, "device not found")
-                for table in ("samples", "dev_sessions", "commands", "schedules", "maintenance"):
+                for table in ("samples", "dev_sessions", "commands", "schedules",
+                              "maintenance", "can_logs"):
                     c.execute("DELETE FROM %s WHERE device_id=?" % table, (did,))
                 c.execute("DELETE FROM devices WHERE id=?", (did,))
                 log_event(c, None, "admin_deleted_device", {"login": row["login"]})
+            shutil.rmtree(os.path.join(CAN_DIR, str(did)), ignore_errors=True)
             return self.json(200, {"ok": True})
 
         if path.startswith("/api/admin/devices/") and method == "POST":
@@ -1938,6 +2138,32 @@ def accounts_cleanup_loop():
         time.sleep(1800)
 
 
+def can_logs_cleanup():
+    """CAN-сессии старше 60 дней и кэш без исходника."""
+    keep_days = int(os.environ.get("LEAF_CAN_KEEP_DAYS", "60"))
+    while True:
+        try:
+            limit = now() - keep_days * 86400
+            with db_lock, connect() as c:
+                rows = c.execute("SELECT id, device_id, name FROM can_logs WHERE uploaded_at < ?",
+                                 (limit,)).fetchall()
+                for r in rows:
+                    c.execute("DELETE FROM can_logs WHERE id=?", (r["id"],))
+                    full = os.path.join(CAN_DIR, str(r["device_id"]), r["name"])
+                    for name in (full,
+                                 os.path.join(CAN_DIR, str(r["device_id"]), "cache", r["name"] + ".txt"),
+                                 os.path.join(CAN_DIR, str(r["device_id"]), "cache", r["name"] + ".csv")):
+                        try:
+                            os.remove(name)
+                        except OSError:
+                            pass
+            if rows:
+                print("can cleanup: removed %d old sessions" % len(rows), flush=True)
+        except Exception as exc:  # noqa: BLE001
+            print("can cleanup error", repr(exc), flush=True)
+        time.sleep(3600)
+
+
 def samples_cleanup():
     keep_days = int(os.environ.get("LEAF_KEEP_DAYS", "365"))
     while True:
@@ -1953,6 +2179,7 @@ def main():
     init_db()
     threading.Thread(target=scheduler_loop, daemon=True).start()
     threading.Thread(target=samples_cleanup, daemon=True).start()
+    threading.Thread(target=can_logs_cleanup, daemon=True).start()
     threading.Thread(target=accounts_cleanup_loop, daemon=True).start()
     port = int(os.environ.get("LEAF_PORT", "8080"))
     srv = ThreadingHTTPServer(("0.0.0.0", port), Api)

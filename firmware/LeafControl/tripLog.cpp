@@ -72,9 +72,11 @@ static unsigned long tripPendMs = 0;
 static float tripPendOdo = 0;
 static float tripPendSoc = -1;
 
+// Признак «машина живёт» для авто-записи CAN: включена, едет, климат, зарядка.
+static bool sessionActive = false;
+
 // --- климат (машина включена, стоит, потребляет) -------------------------
-static bool climActive = false;
-static uint32_t climStartEpoch = 0;
+static bool climActive = false;static uint32_t climStartEpoch = 0;
 static unsigned long climStartMs = 0;
 static float climWh = 0, climWhDay = 0, climWhNight = 0;
 static float climSocStart = -1, climSocEnd = -1;
@@ -540,6 +542,11 @@ void tripLogTick() {
     if (!charging) finishCharge("stopped");
   }
 
+  // Признак активной сессии для авто-записи CAN: машина отвечает по шине и
+  // происходит что-то осмысленное (READY, поездка, климат, зарядка).
+  sessionActive = (evCanLastFrameAgeSec() < 300UL) &&
+                  (ready || tripActive || climActive || chgActive);
+
   // Точка для графиков (копится на плате, уходит пачкой при связи).
   {
     float kw = (dataOk && v > 0) ? (v * i) / 1000.0f : 0.0f;
@@ -560,6 +567,10 @@ bool tripLogIsDriving() {
 
 bool tripLogIsCharging() {
   return chgActive;
+}
+
+bool tripLogSessionActive() {
+  return sessionActive;
 }
 
 static void sendJsonLines(const char* path) {

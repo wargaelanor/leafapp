@@ -1128,6 +1128,14 @@
         <div id="adm-devices"></div>
       </div>
       <div class="card">
+        <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">CAN-сессии для разбора</div></div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:6px">
+          Плата пишет шину во время поездки, климата и зарядки, ещё 5 минут после и сама выгружает сюда.
+          TXT/CSV — расшифровка, BIN — сырые записи.
+        </div>
+        <div id="adm-canlog"></div>
+      </div>
+      <div class="card">
         <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">Журнал</div></div>
         <div id="adm-events"></div>
       </div>`;
@@ -1323,6 +1331,37 @@
           loadAdmin();
         } catch (e) { alert(e.message); }
       });
+
+      // ---- CAN-сессии (тестовый режим)
+      try {
+        const cl = await api('/api/admin/canlog');
+        const items = cl.items || [];
+        const mb = (n) => (n / 1048576).toFixed(2).replace('.', ',') + ' МБ';
+        $('#adm-canlog').innerHTML = items.length
+          ? items.map(x => {
+              const when = admWhen(x.started_at || x.uploaded_at);
+              const link = (fmt, label) =>
+                `<a href="/api/admin/canlog/${x.id}/download?fmt=${fmt}" style="${admBtn(label)};text-decoration:none;display:inline-block">${label}</a>`;
+              return `<div style="display:flex;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)">
+                <div style="flex:1">
+                  <div style="font-size:13px">${x.device || '—'} · ${when}</div>
+                  <div style="font-size:12px;color:var(--muted)">${mb(x.size)} · ${x.frames} кадров${x.complete ? '' : ' · файл не дописан'}</div>
+                </div>
+                ${link('txt', 'TXT')}
+                ${link('csv', 'CSV')}
+                ${link('bin', 'BIN')}
+                <button data-candel="${x.id}" style="${admBtn('×', 'var(--danger)')}">×</button>
+              </div>`;
+            }).join('')
+          : '<div style="font-size:13px;color:var(--muted)">Пока пусто: запись появится после поездки или климата.</div>';
+        $$('#adm-canlog [data-candel]').forEach(b => b.onclick = async () => {
+          if (!confirm('Удалить CAN-сессию с сервера?')) return;
+          try {
+            await api('/api/admin/canlog/' + b.dataset.candel, undefined, 'DELETE');
+            loadAdmin();
+          } catch (e) { alert(e.message); }
+        });
+      } catch (e) { $('#adm-canlog').textContent = e.message; }
 
       // ---- журнал
       const ev = await api('/api/admin/events');

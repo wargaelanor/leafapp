@@ -24,11 +24,11 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FR-TCall.159"
+#define LEAF_FIRMWARE_VERSION "FR-TCall.160"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: two MCP2515 CAN buses + SIM800"
 #else
-#define LEAF_FIRMWARE_VERSION "FR-2can.159"
-#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: stable scroll, Wi-Fi scan"
+#define LEAF_FIRMWARE_VERSION "FR-2can.160"
+#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: CAN-сессии для разбора"
 #endif
 
 // Доступ к версии из других модулей (serverApi.cpp).
@@ -1043,12 +1043,15 @@ void handleReplaySend() {
 
 void handleCanLogStatus() {
   if (!requireDeveloperAuth()) return;
-  char json[180];
+  char json[260];
   snprintf(json, sizeof(json),
-           "{\"recording\":%s,\"full\":%s,\"available\":%s,\"frames\":%lu,\"capacity\":%lu}",
-           canLoggerIsRecording() ? "true" : "false", canLoggerIsFull() ? "true" : "false",
+           "{\"recording\":%s,\"auto\":%s,\"full\":%s,\"available\":%s,\"frames\":%lu,"
+           "\"session_bytes\":%lu,\"pending\":%lu,\"capacity\":%lu}",
+           canLoggerIsRecording() ? "true" : "false", canLoggerIsAuto() ? "true" : "false",
+           canLoggerIsFull() ? "true" : "false",
            canLoggerHasLog() ? "true" : "false",
-           (unsigned long)canLoggerCount(), (unsigned long)canLoggerCapacity());
+           (unsigned long)canLoggerCount(), (unsigned long)canLoggerSessionBytes(),
+           (unsigned long)canLoggerPendingCount(), (unsigned long)canLoggerCapacity());
   server.sendHeader("Cache-Control", "no-store");
   server.send(200, "application/json", json);
 }
@@ -2543,6 +2546,11 @@ void loop() {
     manageVinObdProbe(millis());
     manageUdsTier1(millis());
     tripLogTick();
+    // CAN-сессии для разбора: пишутся, пока машина живёт (поездка, климат,
+    // зарядка) и ещё 5 минут после; затем уходят на сервер и удаляются.
+    if (getRemoteTransport() == RemoteTransport::SERVER) {
+      canLoggerAutoTick(tripLogSessionActive());
+    }
     // clients stayed on "no" through whole charges when the gateway slept.
     // When the CAR-CAN flag is active it drives the publishing itself (with
     // the detailed states); only fill the gap when it is silent.

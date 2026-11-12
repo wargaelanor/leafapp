@@ -14,6 +14,10 @@ void tripLogFinishOpen(const char* reason);
 bool tripLogIsDriving();     // true while a trip is being recorded
 bool tripLogIsCharging();    // true while a charge session is being recorded
 
+// Идёт активная сессия (поездка/климат/зарядка/машина включена) — по ней
+// CanLogger пишет CAN-лог для разбора.
+bool tripLogSessionActive();
+
 // Отметка: запись с таким временем окончания уже ушла на сервер.
 void tripLogNoteRecordSent(uint32_t endEpoch);
 

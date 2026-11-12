@@ -7,6 +7,7 @@
 
 #include "canLeafZE1.h"
 #include "tripLog.h"
+#include "canLogger.h"
 #include <Update.h>
 #include "configuration.h"
 #include "serverCa.h"
@@ -717,6 +718,138 @@ static bool uploadHistory() {
   return true;
 }
 
+// ---------------------------------------------------------------- CAN-сессии
+// Тестовый режим: плата пишет CAN во время поездок, климата и зарядки, затем
+// выгружает файлы кусками по 192 КБ. Один кусок за цикл — команды с сервера
+// не ждут конца многомегабайтной загрузки.
+static char canUpName[40] = {0};
+static size_t canUpTotal = 0;
+static size_t canUpOff = 0;
+
+static int requestBinary(const String& pathAndQuery, const char* file,
+                         size_t off, size_t len, String& response) {
+  String host, basePath;
+  uint16_t port = 443;
+  bool tls = splitUrl(cfgBase, host, port, basePath);
+
+  WiFiClientSecure secure;
+  WiFiClient plain;
+  Client* cli = nullptr;
+  if (tls) {
+    secure.setCACert(SERVER_CA_PEM);
+    secure.setTimeout(20000);
+    secure.setHandshakeTimeout(12);
+    cli = &secure;
+  } else {
+    plain.setTimeout(20000);
+    cli = &plain;
+  }
+  if (cli->connect(host.c_str(), port) != 1) {
+    cli->stop();
+    return -2;
+  }
+
+  String path = pathAndQuery.startsWith("/") ? pathAndQuery : ("/" + pathAndQuery);
+  String req = "POST " + path + " HTTP/1.1\r\n";
+  req += "Host: " + host + "\r\n";
+  req += "User-Agent: LeafControl\r\n";
+  req += "Connection: close\r\n";
+  req += "Content-Type: application/octet-stream\r\n";
+  req += String("Authorization: Bearer ") + cfgToken + "\r\n";
+  req += "Content-Length: " + String((unsigned long)len) + "\r\n\r\n";
+  cli->print(req);
+  cli->flush();
+
+  static uint8_t buf[1024];
+  size_t sent = 0;
+  while (sent < len) {
+    size_t want = len - sent;
+    if (want > sizeof(buf)) want = sizeof(buf);
+    size_t got = canLoggerReadAt(file, off + sent, buf, want);
+    if (!got) { cli->stop(); return -5; }
+    if (cli->write(buf, got) != got) { cli->stop(); return -6; }
+    sent += got;
+    delay(0);
+  }
+  cli->flush();
+
+  response = "";
+  unsigned long deadline = millis() + 25000;
+  while (millis() < deadline) {
+    while (cli->available()) {
+      if (response.length() < 512) response += (char)cli->read();
+      else (void)cli->read();
+    }
+    if (!cli->connected() && !cli->available()) break;
+    delay(1);
+  }
+  cli->stop();
+
+  int code = -3;
+  int sp = response.indexOf(' ');
+  if (sp > 0) code = response.substring(sp + 1, sp + 4).toInt();
+  return code;
+}
+
+static void uploadCanSession() {
+  if (cfgToken[0] == '\0') return;
+  // Файл могли удалить (мало места) — очередь пересоберём заново.
+  if (canUpName[0] != '\0' && !canLoggerExists(canUpName)) {
+    Serial.printf("[srv] CAN %s исчез, откладываю\n", canUpName);
+    canUpName[0] = '\0';
+    canUpOff = 0;
+    canUpTotal = 0;
+  }
+  if (canUpName[0] == '\0') {
+    size_t total = 0;
+    if (!canLoggerNextPending(canUpName, sizeof(canUpName), &total)) return;
+    canUpTotal = total;
+    canUpOff = 0;
+    if (canUpTotal == 0) {
+      canLoggerMarkSent(canUpName);
+      canUpName[0] = '\0';
+      return;
+    }
+    Serial.printf("[srv] CAN-сессия %s (%lu КБ)\n", canUpName,
+                  (unsigned long)(canUpTotal / 1024));
+  }
+
+  static const size_t CHUNK = 192UL * 1024UL;
+  size_t len = canUpTotal - canUpOff;
+  if (len > CHUNK) len = CHUNK;
+  bool last = (canUpOff + len >= canUpTotal);
+
+  String q = "/api/device/canlog?name=";
+  q += canUpName;
+  q += "&off=" + String((unsigned long)canUpOff);
+  q += "&total=" + String((unsigned long)canUpTotal);
+  if (last) q += "&last=1";
+
+  String resp;
+  int code = requestBinary(q, canUpName, canUpOff, len, resp);
+  if (code >= 200 && code < 300) {
+    canUpOff += len;
+    if (canUpOff >= canUpTotal) {
+      Serial.printf("[srv] CAN-сессия %s отправлена\n", canUpName);
+      canLoggerMarkSent(canUpName);
+      canUpName[0] = '\0';
+      canUpOff = 0;
+      canUpTotal = 0;
+    }
+  } else {
+    Serial.printf("[srv] CAN %s @%lu -> %d %s\n", canUpName,
+                  (unsigned long)canUpOff, code, resp.substring(0, 120).c_str());
+    if (code < 0) canUpOff = 0;  // обрыв — файл начинаем заново
+    if (code == 401 || code == 403) {
+      saveToken("");
+      registered = false;
+      setStatus("re-enroll");
+      canUpName[0] = '\0';
+      canUpOff = 0;
+    }
+  }
+}
+
 static bool syncRequest() {
   // Тело = обычное состояние плюс связка, прошивка и подтверждения команд.
   String payload = stateJson();
@@ -991,6 +1124,8 @@ static void serverNetOnce() {
         lastHistMs = now;
         uploadHistory();
       }
+      // CAN-сессии для разбора: по одному куску за цикл.
+      if (canLoggerPendingCount() > 0) uploadCanSession();
     } else if (failCount < 255 && ++failCount >= 3) {
       retryAt = now + 30000UL;
     }
