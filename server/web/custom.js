@@ -952,6 +952,15 @@
       else box.appendChild(adminRow);
     }
 
+    if (!box.querySelector('[data-lc-xlsx]')) {
+      const xlsxRow = makeRow('История в Excel', 'обзор, дни, сессии и графики', () => {
+        location.href = '/api/export/xlsx?days=90';
+      });
+      xlsxRow.setAttribute('data-lc-xlsx', '1');
+      const anchorRow = box.querySelector('[data-lc-apk]') || box.querySelector('[data-lc-logout]');
+      if (anchorRow) box.insertBefore(xlsxRow, anchorRow); else box.appendChild(xlsxRow);
+    }
+
     if (!box.querySelector('[data-lc-apk]')) {
       const apkRow = makeRow('Скачать приложение', 'Android, файл APK', () => {
         location.href = '/app.apk';

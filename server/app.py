@@ -19,9 +19,11 @@ import shutil
 import sqlite3
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
+
+import xlsx as xl
 
 DB_PATH = os.environ.get("LEAF_DB", "/data/leaf.db")
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
@@ -603,6 +605,8 @@ class Api(BaseHTTPRequestHandler):
             return self.get_stats(q)
         if path == "/api/samples" and method == "GET":
             return self.get_samples(q)
+        if path == "/api/export/xlsx" and method == "GET":
+            return self.export_xlsx(q)
         if path == "/api/settings" and method == "GET":
             return self.get_settings()
         if path == "/api/settings" and method == "POST":
@@ -1408,6 +1412,47 @@ class Api(BaseHTTPRequestHandler):
             "settings": cfg,
         })
 
+    # ---------- Excel
+
+    def samples_between(self, device_id, start, end, limit=4000):
+        with db_lock, connect() as c:
+            rows = c.execute(
+                "SELECT ts, payload FROM samples WHERE device_id=? AND ts BETWEEN ? AND ?"
+                " ORDER BY ts LIMIT ?", (device_id, start, end, limit)).fetchall()
+        out = []
+        for r in rows:
+            try:
+                p = json.loads(r["payload"])
+            except Exception:  # noqa: BLE001
+                continue
+            out.append((r["ts"], p))
+        return out
+
+    def export_xlsx(self, q):
+        """Книга Excel: обзор, дни, сессии, телеметрия, диаграммы и ссылки."""
+        u = self.require_user()
+        if not u:
+            return
+        dev = self.pwa_pick_device(u)
+        if not dev:
+            return self.err(404, "device not found")
+        try:
+            days = max(1, min(int(q.get("days", "90")), 365))
+        except ValueError:
+            days = 90
+        since = now() - days * 86400
+        with db_lock, connect() as c:
+            rows = c.execute(
+                "SELECT * FROM dev_sessions WHERE device_id=? AND"
+                " COALESCE(ended_at,started_at)>=? ORDER BY COALESCE(started_at,ended_at)",
+                (dev["id"], since)).fetchall()
+        sessions = [dict(r) for r in rows]
+        data = build_workbook(dev, sessions, days, self.samples_between, now())
+        name = "leaf-%s-%s.xlsx" % (dev["login"], datetime.now().strftime("%Y%m%d"))
+        self._send(200, data,
+                   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                   {"Content-Disposition": 'attachment; filename="%s"' % name})
+
     def get_samples(self, q):
         u = self.require_user()
         if not u:
@@ -2173,6 +2218,323 @@ def samples_cleanup():
         except Exception as exc:  # noqa: BLE001
             print("cleanup error", repr(exc), flush=True)
         time.sleep(3600)
+
+
+TZ_CAR = timezone(timedelta(hours=3))   # Москва, без перехода на летнее время
+
+
+def _local(ts):
+    try:
+        return datetime.fromtimestamp(int(ts), tz=TZ_CAR)
+    except (TypeError, ValueError, OSError):
+        return datetime.fromtimestamp(0, tz=TZ_CAR)
+
+
+def _xl_ts(ts):
+    """Epoch -> серийное число Excel (локальное время машины)."""
+    return (int(ts) + 3 * 3600) / 86400.0 + 25569.0
+
+
+def _fmt_dur(sec):
+    sec = int(sec or 0)
+    h, m = divmod(sec // 60, 60)
+    return "%d:%02d" % (h, m)
+
+
+def build_workbook(dev, sessions, days, sample_fn, generated_at):
+    """Книга: Обзор -> день -> сессия, со ссылками и диаграммами."""
+    wb = xl.Workbook()
+    ov = wb.add("Обзор")
+    allsh = wb.add("Все записи")
+
+    trips = [s for s in sessions if s.get("kind") == "trip"]
+    charges = [s for s in sessions if s.get("kind") == "charge"]
+    climates = [s for s in sessions if s.get("kind") == "climate"]
+
+    by_day = {}
+    for s in sessions:
+        ts = s.get("started_at") or s.get("ended_at") or 0
+        by_day.setdefault(_local(ts).date(), []).append(s)
+    day_list = sorted(by_day.keys())
+
+    total_km = sum(float(s.get("distance_km") or 0) for s in trips)
+    total_kwh = sum(float(s.get("energy_kwh") or 0) for s in trips)
+    charged = sum(float(s.get("energy_kwh") or 0) for s in charges)
+
+    # число листов по сессиям ограничено: книга не должна распухать
+    MAX_SHEETS = 80
+    budget = MAX_SHEETS
+    sheet_for = {}      # id сессии -> имя листа
+    kind_label = {"trip": "Поездка", "charge": "Зарядка", "climate": "Климат"}
+
+    # ---- дни и сессии
+    for d in day_list:
+        items = sorted(by_day[d], key=lambda x: x.get("started_at") or 0)
+        dsh = wb.add("Д " + d.strftime("%d.%m"))
+        dname = dsh.name
+
+        # сначала создаём листы сессий этого дня (они встанут сразу за днём)
+        for s in items:
+            if s.get("kind") not in ("trip", "charge") or budget <= 0:
+                continue
+            prefix = "П" if s.get("kind") == "trip" else "З"
+            st = int(s.get("started_at") or 0)
+            sh = wb.add("%s %s %s" % (prefix, d.strftime("%d.%m"), _local(st).strftime("%H:%M")))
+            sheet_for[s.get("id")] = sh.name
+            fill_session_sheet(sh, s, dname, dev, sample_fn)
+            budget -= 1
+
+        dsh.widths = {1: 16, 2: 16, 3: 11, 4: 9, 5: 12, 6: 15, 7: 11, 8: 10, 10: 9}
+        dsh.set(1, 1, d.strftime("%d.%m.%Y"), xl.S_TITLE)
+        dsh.link(2, 1, "← Обзор", "'Обзор'!A1")
+        dsh.set(3, 1, "Записей за день: %d" % len(items), xl.S_MUTED)
+        dhead = ["Начало", "Конец", "Тип", "Длит.", "Пробег, км", "Энергия, кВт·ч",
+                 "SOC, %", "Открыть"]
+        for i, h in enumerate(dhead, start=1):
+            dsh.set(5, i, h, xl.S_HEADER)
+        dsh.set(5, 10, "Время", xl.S_HEADER)   # подписи оси диаграммы
+        dsh.freeze_rows = 5
+
+        r = 6
+        cats = []
+        vals = []
+        for s in items:
+            st = int(s.get("started_at") or 0)
+            en = int(s.get("ended_at") or 0)
+            if st:
+                dsh.set(r, 1, _xl_ts(st), xl.S_DT)
+            if en:
+                dsh.set(r, 2, _xl_ts(en), xl.S_DT)
+            dsh.set(r, 3, kind_label.get(s.get("kind"), s.get("kind")))
+            dsh.set(r, 4, int(s.get("duration_s") or 0) / 86400.0, xl.S_HHMM)
+            if s.get("kind") == "trip":
+                dsh.set(r, 5, float(s.get("distance_km") or 0), xl.S_NUM1)
+            kwh = float(s.get("energy_kwh") or 0)
+            dsh.set(r, 6, round(kwh, 3), xl.S_NUM3)
+            soc = s.get("soc_end") if s.get("soc_end") is not None else s.get("soc_start")
+            if soc is not None:
+                dsh.set(r, 7, round(float(soc), 1), xl.S_NUM1)
+            target = sheet_for.get(s.get("id"))
+            if target:
+                dsh.link(r, 8, "Открыть", "'%s'!A1" % target)
+            # текстовая метка для оси диаграммы (даты в осях выглядят как числа)
+            dsh.set(r, 10, _local(st).strftime("%H:%M") if st else "—")
+            cats.append(_local(st).strftime("%H:%M") if st else "—")
+            vals.append(kwh)
+            r += 1
+
+        last = max(6, r - 1)
+        if any(vals):
+            dsh.add_chart(xl.Chart(
+                "Энергия по записям, кВт·ч", (11, 3, 22, 21),
+                "'%s'!$J$6:$J$%d" % (dname, last),
+                [xl.Series("кВт·ч", cats, vals, "'%s'!$F$5" % dname,
+                           "'%s'!$F$6:$F$%d" % (dname, last), "1F7A4D", "bar")],
+                kind="bar"))
+
+    # ---- «Все записи»
+    allsh.widths = {1: 12, 2: 16, 3: 16, 4: 11, 5: 9, 6: 12, 7: 15, 8: 12, 9: 12, 10: 10}
+    allsh.set(1, 1, "Все записи за %d дн." % days, xl.S_TITLE)
+    allsh.set(2, 1, "Колонка «Открыть» ведёт на лист сессии (для последних %d записей)." % MAX_SHEETS,
+              xl.S_MUTED)
+    ahead = ["Дата", "Начало", "Конец", "Тип", "Длит.", "Пробег, км",
+             "Энергия, кВт·ч", "SOC нач., %", "SOC кон., %", "Открыть"]
+    for i, h in enumerate(ahead, start=1):
+        allsh.set(4, i, h, xl.S_HEADER)
+    allsh.freeze_rows = 4
+
+    r = 5
+    for s in sorted(sessions, key=lambda x: x.get("started_at") or x.get("ended_at") or 0):
+        st = int(s.get("started_at") or 0)
+        en = int(s.get("ended_at") or 0)
+        allsh.set(r, 1, _local(st).strftime("%d.%m.%Y") if st else "—")
+        if st:
+            allsh.set(r, 2, _xl_ts(st), xl.S_DT)
+        if en:
+            allsh.set(r, 3, _xl_ts(en), xl.S_DT)
+        allsh.set(r, 4, kind_label.get(s.get("kind"), s.get("kind")))
+        allsh.set(r, 5, int(s.get("duration_s") or 0) / 86400.0, xl.S_HHMM)
+        if s.get("kind") == "trip":
+            allsh.set(r, 6, float(s.get("distance_km") or 0), xl.S_NUM1)
+        allsh.set(r, 7, round(float(s.get("energy_kwh") or 0), 3), xl.S_NUM3)
+        if s.get("soc_start") is not None:
+            allsh.set(r, 8, round(float(s["soc_start"]), 1), xl.S_NUM1)
+        if s.get("soc_end") is not None:
+            allsh.set(r, 9, round(float(s["soc_end"]), 1), xl.S_NUM1)
+        target = sheet_for.get(s.get("id"))
+        if target:
+            allsh.link(r, 10, "Открыть", "'%s'!A1" % target)
+        r += 1
+
+    # ---- Обзор
+    ov.widths = {1: 26, 2: 13, 3: 14, 4: 14, 5: 12, 6: 16, 7: 17, 8: 10}
+    ov.set(1, 1, "LeafControl — история поездок и зарядок", xl.S_TITLE)
+    first_day = day_list[0].strftime("%d.%m.%Y") if day_list else "—"
+    last_day = day_list[-1].strftime("%d.%m.%Y") if day_list else "—"
+    ov.set(2, 1, "Машина: %s · период: %s — %s (%d дн.) · сформировано %s"
+           % (dev["name"] or dev["login"], first_day, last_day, days,
+              _local(generated_at).strftime("%d.%m.%Y %H:%M")), xl.S_MUTED)
+
+    ov.set(4, 1, "Итого", xl.S_SECTION)
+    totals = [
+        ("Поездок", len(trips), xl.S_INT),
+        ("Пробег, км", round(total_km, 1), xl.S_NUM1),
+        ("Энергия в поездках, кВт·ч", round(total_kwh, 3), xl.S_NUM3),
+        ("Средний расход, кВт·ч/100 км",
+         round(total_kwh * 100.0 / total_km, 2) if total_km > 0.5 else "—", xl.S_NUM2),
+        ("Зарядок", len(charges), xl.S_INT),
+        ("Заряжено, кВт·ч", round(charged, 3), xl.S_NUM3),
+        ("Сессий с климатом", len(climates), xl.S_INT),
+    ]
+    row = 5
+    for label, value, style in totals:
+        ov.set(row, 1, label)
+        ov.set(row, 2, value, style)
+        row += 1
+
+    ov.set(13, 1, "По дням", xl.S_SECTION)
+    ohead = ["День", "Поездок", "Пробег, км", "Расход, кВт·ч", "Зарядок",
+             "Заряжено, кВт·ч", "кВт·ч/100 км", "Открыть"]
+    for i, h in enumerate(ohead, start=1):
+        ov.set(14, i, h, xl.S_HEADER)
+    ov.freeze_rows = 14
+
+    r = 15
+    cats = []
+    kms = []
+    kwhs = []
+    for d in day_list:
+        items = by_day[d]
+        t = [x for x in items if x.get("kind") == "trip"]
+        c = [x for x in items if x.get("kind") == "charge"]
+        km = sum(float(x.get("distance_km") or 0) for x in t)
+        kwh = sum(float(x.get("energy_kwh") or 0) for x in t)
+        ch = sum(float(x.get("energy_kwh") or 0) for x in c)
+        ov.set(r, 1, d.strftime("%d.%m.%Y"))
+        ov.set(r, 2, len(t), xl.S_INT)
+        ov.set(r, 3, round(km, 1), xl.S_NUM1)
+        ov.set(r, 4, round(kwh, 3), xl.S_NUM3)
+        ov.set(r, 5, len(c), xl.S_INT)
+        ov.set(r, 6, round(ch, 3), xl.S_NUM3)
+        ov.set(r, 7, round(kwh * 100.0 / km, 2) if km > 0.5 else "—", xl.S_NUM2)
+        ov.link(r, 8, "Открыть", "'Д %s'!A1" % d.strftime("%d.%m"))
+        cats.append(d.strftime("%d.%m"))
+        kms.append(round(km, 1))
+        kwhs.append(round(kwh, 3))
+        r += 1
+    last = max(15, r - 1)
+
+    if cats and (any(kms) or any(kwhs)):
+        cats_ref = "'Обзор'!$A$15:$A$%d" % last
+        ov.add_chart(xl.Chart(
+            "Пробег по дням, км", (10, 3, 20, 22), cats_ref,
+            [xl.Series("Пробег, км", cats, kms, "'Обзор'!$C$14",
+                       "'Обзор'!$C$15:$C$%d" % last, "1F7A4D", "bar")], kind="bar"))
+        ov.add_chart(xl.Chart(
+            "Расход по дням, кВт·ч", (10, 23, 20, 42), cats_ref,
+            [xl.Series("Расход, кВт·ч", cats, kwhs, "'Обзор'!$D$14",
+                       "'Обзор'!$D$15:$D$%d" % last, "1565C0", "line")], kind="line"))
+    elif not cats:
+        ov.set(15, 1, "За выбранный период записей нет.", xl.S_MUTED)
+
+    if budget < len(trips) + len(charges):
+        ov.set(last + 2, 1,
+               "Листы по сессиям: показаны последние %d записей. Полный список — на листе «Все записи»."
+               % MAX_SHEETS, xl.S_MUTED)
+
+    return wb.save()
+
+
+def fill_session_sheet(sh, s, dname, dev, sample_fn):
+    """Лист одной сессии: сводка, телеметрия и диаграмма."""
+    kind = "Поездка" if s.get("kind") == "trip" else "Зарядка"
+    st = int(s.get("started_at") or 0)
+    en = int(s.get("ended_at") or 0)
+    sh.widths = {1: 20, 2: 18, 3: 20, 4: 18, 5: 17, 6: 14}
+    sh.set(1, 1, "%s %s" % (kind, _local(st).strftime("%d.%m.%Y")), xl.S_TITLE)
+    sh.link(2, 1, "← %s" % dname, "'%s'!A1" % dname)
+    sh.link(2, 3, "← Обзор", "'Обзор'!A1")
+
+    sh.set(4, 1, "Начало")
+    sh.set(4, 2, _xl_ts(st) if st else "—", xl.S_DT)
+    sh.set(4, 3, "Конец")
+    sh.set(4, 4, _xl_ts(en) if en else "—", xl.S_DT)
+
+    sh.set(5, 1, "Длительность")
+    sh.set(5, 2, int(s.get("duration_s") or 0) / 86400.0, xl.S_HHMM)
+    sh.set(5, 3, "Пробег, км")
+    if s.get("kind") == "trip":
+        sh.set(5, 4, float(s.get("distance_km") or 0), xl.S_NUM1)
+
+    kwh = float(s.get("energy_kwh") or 0)
+    sh.set(6, 1, "Энергия, кВт·ч")
+    sh.set(6, 2, round(kwh, 3), xl.S_NUM3)
+    sh.set(6, 3, "Расход, кВт·ч/100 км")
+    km = float(s.get("distance_km") or 0)
+    if s.get("kind") == "trip" and km > 0.5:
+        sh.set(6, 4, round(kwh * 100.0 / km, 2), xl.S_NUM2)
+
+    sh.set(7, 1, "SOC начало, %")
+    if s.get("soc_start") is not None:
+        sh.set(7, 2, round(float(s["soc_start"]), 1), xl.S_NUM1)
+    sh.set(7, 3, "SOC конец, %")
+    if s.get("soc_end") is not None:
+        sh.set(7, 4, round(float(s["soc_end"]), 1), xl.S_NUM1)
+
+    sh.set(8, 1, "Средняя скорость, км/ч")
+    dur = int(s.get("duration_s") or 0)
+    if dur > 60 and km > 0:
+        sh.set(8, 2, round(km / (dur / 3600.0), 1), xl.S_NUM1)
+
+    pts = sample_fn(dev["id"], (st or en) - 60, (en or st) + 120) if (st or en) else []
+    sh.set(10, 1, "Телеметрия", xl.S_SECTION)
+    thead = ["Время", "SOC, %", "Мощность, кВт", "Батарея, °C", "Скорость, км/ч"]
+    for i, h in enumerate(thead, start=1):
+        sh.set(11, i, h, xl.S_HEADER)
+    sh.freeze_rows = 11
+
+    r = 12
+    cats = []
+    socs = []
+    kws = []
+    for ts, p in pts:
+        cats.append(_local(ts).strftime("%H:%M"))
+        soc = p.get("soc")
+        kw = p.get("pack_kw")
+        batt = p.get("batt")
+        spd = p.get("spd")
+        sh.set(r, 1, _local(ts).strftime("%H:%M:%S"))
+        if isinstance(soc, (int, float)):
+            sh.set(r, 2, round(float(soc), 1), xl.S_NUM1)
+            socs.append(round(float(soc), 1))
+        else:
+            socs.append(None)
+        if isinstance(kw, (int, float)):
+            sh.set(r, 3, round(float(kw), 2), xl.S_NUM2)
+            kws.append(round(float(kw), 2))
+        else:
+            kws.append(None)
+        if isinstance(batt, (int, float)):
+            sh.set(r, 4, round(float(batt), 1), xl.S_NUM1)
+        if isinstance(spd, (int, float)):
+            sh.set(r, 5, round(float(spd), 0), xl.S_INT)
+        r += 1
+
+    if not pts:
+        sh.set(12, 1, "Точек телеметрии за эту сессию нет.", xl.S_MUTED)
+        return
+
+    last = r - 1
+    charts = []
+    if any(v is not None for v in socs):
+        charts.append(xl.Series("SOC, %", cats, socs, "'%s'!$B$11" % sh.name,
+                                "'%s'!$B$12:$B$%d" % (sh.name, last), "1F7A4D", "line"))
+    if any(v is not None for v in kws):
+        charts.append(xl.Series("Мощность, кВт", cats, kws, "'%s'!$C$11" % sh.name,
+                                "'%s'!$C$12:$C$%d" % (sh.name, last), "1565C0", "line"))
+    if charts:
+        sh.add_chart(xl.Chart("SOC и мощность", (6, 9, 17, 30),
+                              "'%s'!$A$12:$A$%d" % (sh.name, last), charts, kind="line"))
 
 
 def main():
