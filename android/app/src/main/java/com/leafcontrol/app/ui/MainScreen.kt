@@ -14,8 +14,11 @@ import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -1310,6 +1313,8 @@ private fun SummaryCell(value: String, label: String, modifier: Modifier = Modif
 
 private data class ChartSeriesDef(val key: String, val label: String, val color: Color)
 
+private val RegenGreen = Color(0xFF34C759)
+
 @Composable
 private fun HistoryChart(
     from: Long,
@@ -1333,7 +1338,9 @@ private fun HistoryChart(
         else -> points.mapNotNull { p -> p.batt?.takeIf { v -> v > -50 }?.let { p.ts to it } }
     }
 
-    val active = defs.filter { selected.contains(it.key) }.map { it to vals(it.key) }.filter { it.second.isNotEmpty() }
+    val active = defs.filter { selected.contains(it.key) }
+        .map { it to vals(it.key) }
+        .filter { it.second.isNotEmpty() }
     val allVals = active.flatMap { it.second.map { p -> p.second } }
 
     if (active.isEmpty() || allVals.isEmpty()) {
@@ -1351,6 +1358,7 @@ private fun HistoryChart(
     val spanY = (yMax - yMin).coerceAtLeast(0.001)
     val spanT = (to - from).coerceAtLeast(1L)
     val gridColor = MaterialTheme.colorScheme.outline
+    val crossZero = yMin < 0.0 && yMax > 0.0
 
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -1361,7 +1369,10 @@ private fun HistoryChart(
                     fontSize = 11.sp,
                     color = if (on) Color.White else MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier
-                        .background(if (on) d.color else MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(14.dp))
+                        .background(
+                            if (on) d.color else MaterialTheme.colorScheme.surfaceVariant,
+                            RoundedCornerShape(14.dp),
+                        )
                         .clickable {
                             selected = if (on) selected - d.key else selected + d.key
                             probeFrac = null
@@ -1382,7 +1393,7 @@ private fun HistoryChart(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
-        Row(Modifier.fillMaxWidth().height(220.dp)) {
+        Row(Modifier.fillMaxWidth().height(240.dp)) {
             Column(
                 Modifier.width(38.dp).fillMaxHeight(),
                 verticalArrangement = Arrangement.SpaceBetween,
@@ -1397,13 +1408,30 @@ private fun HistoryChart(
                     .weight(1f)
                     .fillMaxHeight()
                     .pointerInput(Unit) {
-                        detectTapGestures { off ->
-                            probeFrac = (off.x / size.width.toFloat()).coerceIn(0f, 1f)
+                        // тянем палец по графику — страница не должна уезжать
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            down.consume()
+                            probeFrac = (down.position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                            var pressed = true
+                            while (pressed) {
+                                val ev = awaitPointerEvent()
+                                val ch = ev.changes.firstOrNull() ?: break
+                                if (!ch.pressed) {
+                                    pressed = false
+                                } else {
+                                    probeFrac = (ch.position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                                    ch.consume()
+                                }
+                            }
                         }
                     }
             ) {
                 val w = size.width
                 val h = size.height
+                fun xOf(ts: Long): Float = (((ts - from).toFloat()) / spanT) * w
+                fun yOf(v: Double): Float = h - (((v - yMin) / spanY) * h).toFloat()
+
                 for (i in 0..2) {
                     val y = h * i / 2f
                     drawLine(gridColor, Offset(0f, y), Offset(w, y), 1f)
@@ -1412,19 +1440,53 @@ private fun HistoryChart(
                     val x = w * i / 4f
                     drawLine(gridColor, Offset(x, 0f), Offset(x, h), 1f)
                 }
+
+                val yZero = if (crossZero) yOf(0.0) else null
+                yZero?.let {
+                    drawLine(
+                        gridColor, Offset(0f, it), Offset(w, it), 1.5f,
+                        pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(8f, 6f)),
+                    )
+                }
+
                 active.forEach { pair ->
                     val d = pair.first
                     val list = pair.second
+                    if (list.isEmpty()) return@forEach
                     val path = Path()
-                    list.forEachIndexed { i, p ->
-                        val x = ((p.first - from).toFloat() / spanT) * w
-                        val y = h - (((p.second - yMin) / spanY) * h).toFloat()
-                        if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                    val pts = list.map { Offset(xOf(it.first), yOf(it.second)) }
+                    path.moveTo(pts.first().x, pts.first().y)
+                    for (i in 1 until pts.size - 1) {
+                        val mid = Offset((pts[i].x + pts[i + 1].x) / 2f, (pts[i].y + pts[i + 1].y) / 2f)
+                        path.quadraticBezierTo(pts[i].x, pts[i].y, mid.x, mid.y)
                     }
-                    drawPath(path, d.color, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f))
+                    path.lineTo(pts.last().x, pts.last().y)
+
+                    if (d.key == "kw" && yZero != null) {
+                        clipRect(0f, 0f, w, yZero) {
+                            drawPath(path, d.color, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f))
+                        }
+                        clipRect(0f, yZero, w, h) {
+                            drawPath(path, RegenGreen, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f))
+                        }
+                    } else {
+                        drawPath(path, d.color, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f))
+                    }
                 }
+
                 probeFrac?.let { f ->
-                    drawLine(gridColor, Offset(w * f, 0f), Offset(w * f, h), 1f)
+                    val px = w * f
+                    drawLine(gridColor, Offset(px, 0f), Offset(px, h), 1f)
+                    active.forEach { pair ->
+                        val d = pair.first
+                        val list = pair.second
+                        if (list.isEmpty()) return@forEach
+                        val ts = from + (spanT * f).toLong()
+                        val near = list.minByOrNull { kotlin.math.abs(it.first - ts) } ?: return@forEach
+                        val col = if (d.key == "kw" && near.second < 0.0) RegenGreen else d.color
+                        drawCircle(col, radius = 4f, center = Offset(xOf(near.first), yOf(near.second)))
+                        drawCircle(Color.White, radius = 2f, center = Offset(xOf(near.first), yOf(near.second)))
+                    }
                 }
             }
         }

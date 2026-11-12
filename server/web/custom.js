@@ -114,24 +114,23 @@
   }
 
   // Рисует график по точкам [[epoch, значение], ...] или просто [значение, ...].
-  // Ширина берётся из карточки, поэтому линия растягивается на всю доступную
-  // ширину; по горизонтали подписывается время.
+  // Ширина берётся из карточки, линия сглаживается, по горизонтали — время.
+  // Для мощности рисуется нулевая линия: выше — потребление, ниже — рекуперация
+  // (зелёным).
   function chart(el, series, opts) {
     if (!el) return;
     opts = opts || {};
-    const W = Math.max(240, Math.floor(el.clientWidth || el.parentElement?.clientWidth || 320));
-    // Высота: график должен читаться на телефоне, поэтому по умолчанию высокий.
+    const SVGNS = 'http://www.w3.org/2000/svg';
+    const W = Math.max(240, Math.floor(el.clientWidth || (el.parentElement && el.parentElement.clientWidth) || 320));
     const H = opts.height || 300;
-    const padL = 36, padR = 12, padT = 12, padB = 22;
+    const padL = 36, padR = 12, padT = 18, padB = 22;
     const plotW = W - padL - padR, plotH = H - padT - padB;
 
     const all = [];
-    series.forEach(s => {
-      const raw = s.points || (s.values || []).map(v => [0, v]);
-      s._pts = raw
-        .map(p => [Number(p[0]) || 0, Number(p[1])])
-        .filter(p => isFinite(p[1]));
-      s._pts.forEach(p => all.push(p[1]));
+    series.forEach(sr => {
+      const raw = sr.points || (sr.values || []).map(v => [0, v]);
+      sr._pts = raw.map(p => [Number(p[0]) || 0, Number(p[1])]).filter(p => isFinite(p[1]));
+      sr._pts.forEach(p => all.push(p[1]));
     });
 
     el.innerHTML = '';
@@ -149,45 +148,13 @@
     }
     const span = (max - min) || 1;
 
-    // время: границы сессии (или крайние точки)
     let t0 = opts.from, t1 = opts.to;
     if (!t0 || !t1) {
-      const tsAll = series.flatMap(s => (s.points || []).map(p => Number(p[0]) || 0)).filter(t => t > 0);
-      if (tsAll.length) {
-        t0 = Math.min(...tsAll);
-        t1 = Math.max(...tsAll);
-      }
+      const tsAll = series.flatMap(sr => (sr.points || []).map(p => Number(p[0]) || 0)).filter(t => t > 0);
+      if (tsAll.length) { t0 = Math.min(...tsAll); t1 = Math.max(...tsAll); }
     }
     const hasTime = !!(t0 && t1 && t1 > t0);
     const longSpan = hasTime && (t1 - t0) > 86400;
-
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
-    svg.setAttribute('width', W);
-    svg.setAttribute('height', H);
-    svg.setAttribute('style', 'display:block;width:100%;height:' + H + 'px');
-
-    // горизонтальная сетка
-    [0, 0.5, 1].forEach(f => {
-      const y = padT + f * plotH;
-      const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      line.setAttribute('d', `M${padL} ${y.toFixed(1)} H${W - padR}`);
-      line.setAttribute('stroke', 'var(--line)');
-      line.setAttribute('fill', 'none');
-      line.setAttribute('stroke-width', '1');
-      svg.appendChild(line);
-    });
-    // вертикальная сетка
-    [0.25, 0.5, 0.75].forEach(f => {
-      const x = padL + f * plotW;
-      const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      line.setAttribute('d', `M${x.toFixed(1)} ${padT} V${padT + plotH}`);
-      line.setAttribute('stroke', 'var(--line)');
-      line.setAttribute('fill', 'none');
-      line.setAttribute('stroke-width', '1');
-      line.setAttribute('opacity', '0.6');
-      svg.appendChild(line);
-    });
 
     const xFor = (p, i, n) => {
       if (hasTime && p[0] > 0) {
@@ -196,37 +163,114 @@
       }
       return padL + (n > 1 ? i / (n - 1) : 0.5) * plotW;
     };
+    const yFor = (v) => padT + plotH - ((v - min) / span) * plotH;
 
-    series.forEach(s => {
-      const pts = s._pts;
-      if (!pts.length) return;
-      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      path.setAttribute('d', pts.map((p, i) => {
-        const x = xFor(p, i, pts.length);
-        const y = padT + plotH - ((p[1] - min) / span) * plotH;
-        return (i ? 'L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1);
-      }).join(' '));
-      path.setAttribute('fill', 'none');
-      path.setAttribute('stroke', s.color || 'var(--accent)');
-      path.setAttribute('stroke-width', '2');
-      path.setAttribute('stroke-linejoin', 'round');
-      path.setAttribute('stroke-linecap', 'round');
-      svg.appendChild(path);
+    const svg = document.createElementNS(SVGNS, 'svg');
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    svg.setAttribute('width', W);
+    svg.setAttribute('height', H);
+    svg.setAttribute('style', 'display:block;width:100%;height:' + H + 'px');
+
+    // горизонтальная и вертикальная сетка
+    [0, 0.5, 1].forEach(f => {
+      const line = document.createElementNS(SVGNS, 'path');
+      line.setAttribute('d', `M${padL} ${(padT + f * plotH).toFixed(1)} H${W - padR}`);
+      line.setAttribute('stroke', 'var(--line)');
+      line.setAttribute('fill', 'none');
+      svg.appendChild(line);
+    });
+    [0.25, 0.5, 0.75].forEach(f => {
+      const line = document.createElementNS(SVGNS, 'path');
+      line.setAttribute('d', `M${(padL + f * plotW).toFixed(1)} ${padT} V${padT + plotH}`);
+      line.setAttribute('stroke', 'var(--line)');
+      line.setAttribute('fill', 'none');
+      line.setAttribute('opacity', '0.6');
+      svg.appendChild(line);
     });
 
-    const text = (x, y, str, anchor) => {
-      const e = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      e.setAttribute('x', x);
-      e.setAttribute('y', y);
+    // сглаженная линия: квадратичные сегменты через середины
+    const smooth = (pts) => {
+      if (!pts.length) return '';
+      if (pts.length === 1) return `M${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}`;
+      let d = `M${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}`;
+      for (let i = 1; i < pts.length - 1; i++) {
+        const mx = (pts[i][0] + pts[i + 1][0]) / 2;
+        const my = (pts[i][1] + pts[i + 1][1]) / 2;
+        d += ` Q${pts[i][0].toFixed(1)} ${pts[i][1].toFixed(1)} ${mx.toFixed(1)} ${my.toFixed(1)}`;
+      }
+      const last = pts[pts.length - 1];
+      d += ` L${last[0].toFixed(1)} ${last[1].toFixed(1)}`;
+      return d;
+    };
+
+    // нулевая линия и зелёная зона рекуперации (только если шкала через ноль)
+    const hasZero = min < 0 && max > 0;
+    let yZero = 0;
+    if (hasZero) {
+      yZero = yFor(0);
+      const zl = document.createElementNS(SVGNS, 'path');
+      zl.setAttribute('d', `M${padL} ${yZero.toFixed(1)} H${W - padR}`);
+      zl.setAttribute('stroke', 'var(--muted)');
+      zl.setAttribute('stroke-width', '1');
+      zl.setAttribute('stroke-dasharray', '4 3');
+      zl.setAttribute('fill', 'none');
+      svg.appendChild(zl);
+    }
+
+    const defs = document.createElementNS(SVGNS, 'defs');
+    const clipAbove = document.createElementNS(SVGNS, 'clipPath');
+    clipAbove.setAttribute('id', 'clipAbove');
+    const rectAbove = document.createElementNS(SVGNS, 'rect');
+    rectAbove.setAttribute('x', padL); rectAbove.setAttribute('y', padT);
+    rectAbove.setAttribute('width', plotW); rectAbove.setAttribute('height', Math.max(0, yZero - padT));
+    clipAbove.appendChild(rectAbove);
+    const clipBelow = document.createElementNS(SVGNS, 'clipPath');
+    clipBelow.setAttribute('id', 'clipBelow');
+    const rectBelow = document.createElementNS(SVGNS, 'rect');
+    rectBelow.setAttribute('x', padL); rectBelow.setAttribute('y', yZero);
+    rectBelow.setAttribute('width', plotW); rectBelow.setAttribute('height', Math.max(0, padT + plotH - yZero));
+    clipBelow.appendChild(rectBelow);
+    defs.appendChild(clipAbove);
+    defs.appendChild(clipBelow);
+    svg.appendChild(defs);
+
+    series.forEach(sr => {
+      const pts = sr._pts;
+      if (!pts.length) return;
+      const dst = smooth(pts.map((p, i) => [xFor(p, i, pts.length), yFor(p[1])]));
+      const mk = (color, clip) => {
+        const path = document.createElementNS(SVGNS, 'path');
+        path.setAttribute('d', dst);
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke', color);
+        path.setAttribute('stroke-width', '2');
+        path.setAttribute('stroke-linejoin', 'round');
+        path.setAttribute('stroke-linecap', 'round');
+        if (clip) path.setAttribute('clip-path', 'url(#' + clip + ')');
+        svg.appendChild(path);
+      };
+      if (hasZero && sr.key === 'kw') {
+        // потребление — цветом серии, рекуперация — зелёным
+        mk(sr.color || 'var(--accent)', 'clipAbove');
+        mk('#34c759', 'clipBelow');
+      } else {
+        mk(sr.color || 'var(--accent)', null);
+      }
+    });
+
+    const text = (x, y, str, anchor, cls) => {
+      const e = document.createElementNS(SVGNS, 'text');
+      e.setAttribute('x', x); e.setAttribute('y', y);
       e.setAttribute('font-size', '10');
       e.setAttribute('fill', 'var(--muted)');
       e.setAttribute('text-anchor', anchor || 'start');
       e.textContent = str;
       svg.appendChild(e);
     };
-
     text(padL - 4, padT + 4, fmt(max, 1), 'end');
     text(padL - 4, padT + plotH + 3, fmt(min, 1), 'end');
+    if (hasZero) text(padL - 4, yZero + 3, '0', 'end');
+    if (opts.label) text(W - padR, padT - 6, opts.label, 'end');
 
     if (hasTime) {
       const clock = (ts) => {
@@ -243,20 +287,28 @@
         const x = padL + plotW * (i / (marks - 1));
         text(x, H - 6, clock(ts), i === 0 ? 'start' : (i === marks - 1 ? 'end' : 'middle'));
       }
-    }
-    if (opts.label) text(W - padR, padT + 9, opts.label, 'end');
 
-    // ---- подсказка: время и значения в точке под пальцем/курсором
-    if (hasTime) {
-      const marks = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      marks.setAttribute('stroke', 'var(--muted)');
-      marks.setAttribute('stroke-width', '1');
-      marks.setAttribute('stroke-dasharray', '3 3');
-      marks.setAttribute('fill', 'none');
-      marks.setAttribute('visibility', 'hidden');
-      svg.appendChild(marks);
+      // ---- подсказка: линия, точки на кривых и плашка со значениями
+      const vline = document.createElementNS(SVGNS, 'path');
+      vline.setAttribute('stroke', 'var(--muted)');
+      vline.setAttribute('stroke-width', '1');
+      vline.setAttribute('stroke-dasharray', '3 3');
+      vline.setAttribute('fill', 'none');
+      vline.setAttribute('visibility', 'hidden');
+      svg.appendChild(vline);
 
-      const bubbleBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      const dots = series.map(sr => {
+        const c = document.createElementNS(SVGNS, 'circle');
+        c.setAttribute('r', '3.5');
+        c.setAttribute('fill', sr.color || 'var(--accent)');
+        c.setAttribute('stroke', 'var(--surface)');
+        c.setAttribute('stroke-width', '1.5');
+        c.setAttribute('visibility', 'hidden');
+        svg.appendChild(c);
+        return c;
+      });
+
+      const bubbleBg = document.createElementNS(SVGNS, 'rect');
       bubbleBg.setAttribute('rx', '5');
       bubbleBg.setAttribute('fill', 'var(--surface-2)');
       bubbleBg.setAttribute('stroke', 'var(--line)');
@@ -264,19 +316,20 @@
       bubbleBg.setAttribute('visibility', 'hidden');
       svg.appendChild(bubbleBg);
 
-      const bubble = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      const bubble = document.createElementNS(SVGNS, 'text');
       bubble.setAttribute('font-size', '10.5');
       bubble.setAttribute('fill', 'var(--text)');
       bubble.setAttribute('visibility', 'hidden');
       svg.appendChild(bubble);
 
-      const hit = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      const hit = document.createElementNS(SVGNS, 'rect');
       hit.setAttribute('x', padL);
       hit.setAttribute('y', padT);
       hit.setAttribute('width', plotW);
       hit.setAttribute('height', plotH);
       hit.setAttribute('fill', 'transparent');
-      hit.setAttribute('style', 'cursor:crosshair;touch-action:pan-y');
+      // none: палец не прокручивает страницу, пока ведём по графику
+      hit.setAttribute('style', 'cursor:crosshair;touch-action:none');
       svg.appendChild(hit);
 
       const clockFull = (ts) => {
@@ -284,7 +337,13 @@
         return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
       };
       const unit = { kw: ' кВт', spd: ' км/ч', soc: ' %', batt: ' °C' };
-      const unitShort = { kw: 'кВт', spd: 'км/ч', soc: '%', batt: '°C' };
+
+      const hide = () => {
+        vline.setAttribute('visibility', 'hidden');
+        bubble.setAttribute('visibility', 'hidden');
+        bubbleBg.setAttribute('visibility', 'hidden');
+        dots.forEach(d => d.setAttribute('visibility', 'hidden'));
+      };
 
       const show = (ev) => {
         const r = svg.getBoundingClientRect();
@@ -294,40 +353,46 @@
         const ts = t0 + f * (t1 - t0);
         const x = padL + f * plotW;
 
-        marks.setAttribute('d', `M${x.toFixed(1)} ${padT} V${padT + plotH}`);
-        marks.setAttribute('visibility', 'visible');
+        vline.setAttribute('d', `M${x.toFixed(1)} ${padT} V${padT + plotH}`);
+        vline.setAttribute('visibility', 'visible');
 
         const parts = [];
-        series.forEach(sr => {
-          if (!sr.show || !sr._pts.length) return;
+        series.forEach((sr, idx) => {
+          const dot = dots[idx];
+          if (!sr.show || !sr._pts.length) { dot.setAttribute('visibility', 'hidden'); return; }
           let best = null, bestD = Infinity;
           sr._pts.forEach(pt => {
             const d = Math.abs(pt[0] - ts);
             if (d < bestD) { bestD = d; best = pt; }
           });
-          if (best) parts.push(fmt(best[1], 1) + unit[sr.key]);
+          if (!best) { dot.setAttribute('visibility', 'hidden'); return; }
+          const bx = hasTime ? xFor(best, 0, sr._pts.length) : x;
+          const by = yFor(best[1]);
+          dot.setAttribute('cx', bx.toFixed(1));
+          dot.setAttribute('cy', by.toFixed(1));
+          dot.setAttribute('fill', (hasZero && sr.key === 'kw' && best[1] < 0) ? '#34c759' : (sr.color || 'var(--accent)'));
+          dot.setAttribute('visibility', 'visible');
+          parts.push(fmt(best[1], 1) + unit[sr.key]);
         });
+
         const labelText = clockFull(ts) + (parts.length ? ' · ' + parts.join(' · ') : '');
         bubble.textContent = labelText;
-        const tw = labelText.length * 5.7 + 10;
+        const tw = labelText.length * 5.6 + 10;
         const bx = Math.min(W - padR - tw, Math.max(padL, x - tw / 2));
         bubbleBg.setAttribute('x', bx);
-        bubbleBg.setAttribute('y', padT - 2);
+        bubbleBg.setAttribute('y', padT - 14);
         bubbleBg.setAttribute('width', tw);
         bubble.setAttribute('x', bx + 5);
-        bubble.setAttribute('y', padT + 11);
+        bubble.setAttribute('y', padT - 1);
         bubbleBg.setAttribute('visibility', 'visible');
         bubble.setAttribute('visibility', 'visible');
       };
-      const hide = () => {
-        marks.setAttribute('visibility', 'hidden');
-        bubble.setAttribute('visibility', 'hidden');
-        bubbleBg.setAttribute('visibility', 'hidden');
-      };
-      hit.addEventListener('pointerdown', show);
-      hit.addEventListener('pointermove', show);
+
+      hit.addEventListener('pointerdown', (ev) => { ev.preventDefault(); show(ev); });
+      hit.addEventListener('pointermove', (ev) => { ev.preventDefault(); show(ev); });
       hit.addEventListener('pointerleave', hide);
       hit.addEventListener('pointerup', hide);
+      hit.addEventListener('pointercancel', hide);
     }
 
     el.appendChild(svg);
