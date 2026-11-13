@@ -898,6 +898,26 @@
     });
   }
 
+  /* ---------- переключение дизайна ---------- */
+  function initDesignSwitch() {
+    const row = document.getElementById('design-switch');
+    if (row && !row.dataset.lcBound) {
+      row.dataset.lcBound = '1';
+      row.addEventListener('click', () => {
+        if (!confirm('Переключиться на классический дизайн?\n\nВыбор запомнится, вернуть новый можно будет там же в «Ещё».')) return;
+        try { localStorage.setItem('leafDesign', 'classic'); } catch (e) { /* ignore */ }
+        location.href = '/classic.html';
+      });
+    }
+    try {
+      if (localStorage.getItem('leafDesign') === 'classic' &&
+          (location.pathname === '/' || location.pathname === '/index.html' ||
+           location.pathname === '/app')) {
+        location.replace('/classic.html');
+      }
+    } catch (e) { /* ignore */ }
+  }
+
   function styleSubScreens() {
     ['screen-admin', 'screen-settings', 'screen-claim', 'screen-fw', 'screen-stats'].forEach(toGroups);
   }
@@ -1798,7 +1818,8 @@
     addDeviceChip();
     interceptMore();
     bindCards();
-    loadRole().then(() => { addMoreRows(); showNotices(); styleSubScreens(); });
+    initDesignSwitch();
+  loadRole().then(() => { addMoreRows(); showNotices(); styleSubScreens(); });
   initGarageLimit();
   initClimPlan();
     const obs = new MutationObserver(() => {
