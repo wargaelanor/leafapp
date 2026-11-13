@@ -556,7 +556,7 @@ void tripLogTick() {
   // Точка для графиков (копится на плате, уходит пачкой при связи).
   {
     float kw = (dataOk && v > 0) ? (v * i) / 1000.0f : 0.0f;
-    serverApiHistSample(soc, kw, evData.batteryTemp, 0.0f);
+    serverApiHistSample(soc, kw, evData.batteryTemp, evSpeedKph());
   }
 
   if (odo > 0) lastOdo = odo;
