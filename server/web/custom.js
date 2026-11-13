@@ -1020,6 +1020,17 @@
       card('Плата в сети', 'Имя, под которым плата видна в домашней сети.',
         textField('host_name', 'Имя в сети (DHCP/mDNS)', 'leaf', cfg.host_name || 'leaf') +
         '<div style="font-size:11px;color:var(--muted)">применится после перезагрузки платы</div>') +
+      card('Wi-Fi сети', 'Плата по очереди пробует сохранённые сети. Пароль хранится только в плате.',
+        textField('ssid', 'Сеть 1 (SSID)', 'имя сети', cfg.ssid) +
+        textField('password', 'Пароль сети 1',
+          (cfg.pass_set && cfg.pass_set[0]) ? 'пароль сохранён, можно сменить' : 'введите пароль', '', 'password') +
+        textField('ssid2', 'Сеть 2 (SSID)', 'имя сети', cfg.ssid2) +
+        textField('password2', 'Пароль сети 2',
+          (cfg.pass_set && cfg.pass_set[1]) ? 'пароль сохранён, можно сменить' : 'введите пароль', '', 'password') +
+        textField('ssid3', 'Сеть 3 (SSID)', 'имя сети', cfg.ssid3) +
+        textField('password3', 'Пароль сети 3',
+          (cfg.pass_set && cfg.pass_set[2]) ? 'пароль сохранён, можно сменить' : 'введите пароль', '', 'password') +
+        '<div style="font-size:11px;color:var(--muted)">пустые поля ничего не меняют; плата подключится к новой сети в течение минуты</div>') +
       card('Дополнительно', 'Редко нужные функции.',
         boolRow('locking', 'Блокировка кнопок', 'запрет команд, если выключено') +
         boolRow('uds', 'Расширенная диагностика', 'UDS-запросы VCM/BCM/ABS/TMI') +

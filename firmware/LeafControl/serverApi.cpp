@@ -493,18 +493,23 @@ static bool sendState() {
 // ---------------------------------------------------------------- settings
 
 static void sendConfig() {
-  char body[640];
+  char body[760];
   snprintf(body, sizeof(body),
            "{\"remote_mode\":%d,\"charge_limit\":%d,\"locking\":%d,\"sleep\":%d,\"sleep_after\":%d,"
            "\"wake_fast\":%d,\"wake_slow\":%d,\"uds\":%d,\"uds_tpms\":%d,"
            "\"modem\":%d,\"apn\":\"%s\",\"apn_user\":\"%s\",\"vehicle_profile\":%d,"
-           "\"tariff_day\":%.2f,\"tariff_night\":%.2f,\"night_from\":%u,\"night_to\":%u}",
+           "\"tariff_day\":%.2f,\"tariff_night\":%.2f,\"night_from\":%u,\"night_to\":%u,"
+           "\"ssid\":\"%s\",\"ssid2\":\"%s\",\"ssid3\":\"%s\",\"pass_set\":[%d,%d,%d]}",
            (int)getRemoteTransport(),
            getChargeLimitPct(), getLockingEnabled() ? 1 : 0, getSleepEnabled() ? 1 : 0,
            getSleepAfterHours(), getWakeFastMinutes(), getWakeSlowMinutes(),
            getUdsEnabled() ? 1 : 0, getUdsTpmsEnabled() ? 1 : 0,
            getModemEnable() ? 1 : 0, getModem800Apn(), getModem800User(), getVehicleProfile(),
-           tripLogTariffDay(), tripLogTariffNight(), tripLogNightFrom(), tripLogNightTo());
+           tripLogTariffDay(), tripLogTariffNight(), tripLogNightFrom(), tripLogNightTo(),
+           getWifiSSID(), getWifiSSID2(), getWifiSSID3(),
+           (int)(strlen(getWifiPassword()) > 0),
+           (int)(strlen(getWifiPassword2()) > 0),
+           (int)(strlen(getWifiPassword3()) > 0));
   String resp;
   postJson("/api/device/config", body, resp);
 }
@@ -559,6 +564,43 @@ static void applyConfig(const char* argsJson) {
         setModem800Pass(sval);
         configDirty = true;
         Serial.println("[srv] config apn_pass updated");
+        return;
+      }
+      // Wi-Fi сети (1..3): SSID задаётся строкой, пароль — только вместе с ним.
+      if (!strcmp(key, "ssid")) {
+        setWifiSSID(sval);
+        configDirty = true;
+        Serial.printf("[srv] config ssid = %s\n", sval);
+        return;
+      }
+      if (!strcmp(key, "ssid2")) {
+        setWifiSSID2(sval);
+        configDirty = true;
+        Serial.printf("[srv] config ssid2 = %s\n", sval);
+        return;
+      }
+      if (!strcmp(key, "ssid3")) {
+        setWifiSSID3(sval);
+        configDirty = true;
+        Serial.printf("[srv] config ssid3 = %s\n", sval);
+        return;
+      }
+      if (!strcmp(key, "password")) {
+        setWifiPassword(sval);
+        configDirty = true;
+        Serial.println("[srv] config password updated");
+        return;
+      }
+      if (!strcmp(key, "password2")) {
+        setWifiPassword2(sval);
+        configDirty = true;
+        Serial.println("[srv] config password2 updated");
+        return;
+      }
+      if (!strcmp(key, "password3")) {
+        setWifiPassword3(sval);
+        configDirty = true;
+        Serial.println("[srv] config password3 updated");
         return;
       }
     }

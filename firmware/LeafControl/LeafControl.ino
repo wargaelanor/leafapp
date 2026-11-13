@@ -25,11 +25,11 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FR-TCall.171"
-#define LEAF_FIRMWARE_DESCRIPTION "T-Call: trip end 1/2 min, garbage-session filter, efuse serial"
+#define LEAF_FIRMWARE_VERSION "FR-TCall.172"
+#define LEAF_FIRMWARE_DESCRIPTION "T-Call: wifi networks from app, tariff sync, 1/2 min trip end"
 #else
-#define LEAF_FIRMWARE_VERSION "FR-2can.171"
-#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: trip end 1/2 min, garbage-session filter, efuse serial"
+#define LEAF_FIRMWARE_VERSION "FR-2can.172"
+#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: wifi networks from app, tariff sync, 1/2 min trip end"
 #endif
 
 // Доступ к версии из других модулей (serverApi.cpp).
@@ -1623,6 +1623,14 @@ void handleApiConfigSave() {
   if (jsonStr(body, "modem800_apn", s)) { s.trim(); setModem800Apn(s.c_str()); }
   if (jsonStr(body, "modem800_user", s)) { s.trim(); if (s.length() > 0) setModem800User(s.c_str()); }
   if (jsonStr(body, "modem800_pass", s) && s.length() > 0) setModem800Pass(s.c_str());
+
+  // Wi-Fi сети (1..3): пустые SSID/пароли ничего не меняют.
+  if (jsonStr(body, "ssid", s)) { s.trim(); if (s.length() > 0) setWifiSSID(s.c_str()); }
+  if (jsonStr(body, "password", s) && s.length() > 0) setWifiPassword(s.c_str());
+  if (jsonStr(body, "ssid2", s)) { s.trim(); if (s.length() > 0) setWifiSSID2(s.c_str()); }
+  if (jsonStr(body, "password2", s) && s.length() > 0) setWifiPassword2(s.c_str());
+  if (jsonStr(body, "ssid3", s)) { s.trim(); if (s.length() > 0) setWifiSSID3(s.c_str()); }
+  if (jsonStr(body, "password3", s) && s.length() > 0) setWifiPassword3(s.c_str());
 
   if (!noReboot) {
     rebootPendingAt = millis() + 2000;
