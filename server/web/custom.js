@@ -760,9 +760,9 @@
   ];
   const NUMBERS = [
     ['charge_limit', 'Лимит заряда, %', '0 = выключено, 70–95'],
-    ['sleep_after', 'Усыплять через, ч', ''],
-    ['wake_fast', 'Быстрое пробуждение, мин', ''],
-    ['wake_slow', 'Медленное пробуждение, мин', ''],
+    ['sleep_after', 'Сон при бездействии через, ч', 'пока машина активна, плата не спит'],
+    ['wake_fast', 'После этого — пробуждение каждые, мин', 'пока простой меньше 7 дней'],
+    ['wake_slow', 'После 7 дней простоя — пробуждение каждые, мин', ''],
   ];
 
   async function loadConfig() {
@@ -805,8 +805,14 @@
       '<label style="display:block;font-size:12px;color:var(--muted);margin-bottom:10px">Имя в сети (DHCP/mDNS)' +
       '<input data-text="host_name" value="' + String(cfg.host_name || 'leaf').replace(/"/g, '&quot;') + '" style="' + inputStyle + '">' +
       '<span style="font-size:11px">так плата видна в списке устройств; применится после перезагрузки</span></label>' +
-      '<label style="display:block;font-size:12px;color:var(--muted);margin-bottom:10px">APN модема' +
-      `<input data-text="apn" value="${(cfg.apn || '').replace(/"/g, '&quot;')}" style="${inputStyle}"></label>` +
+      '<div style="font-size:12px;color:var(--muted);margin:14px 0 6px">Интернет через SIM</div>' +
+      '<label style="display:block;font-size:12px;color:var(--muted);margin-bottom:10px">APN (точка доступа)' +
+      `<input data-text="apn" value="${(cfg.apn || '').replace(/"/g, '&quot;')}" placeholder="internet.beeline.ru" style="${inputStyle}"></label>` +
+      '<label style="display:block;font-size:12px;color:var(--muted);margin-bottom:10px">Логин APN' +
+      `<input data-text="apn_user" value="${(cfg.apn_user || '').replace(/"/g, '&quot;')}" placeholder="обычно не нужен" style="${inputStyle}"></label>` +
+      '<label style="display:block;font-size:12px;color:var(--muted);margin-bottom:10px">Пароль APN' +
+      `<input data-text="apn_pass" type="password" value="" placeholder="не менять" style="${inputStyle}">` +
+      '<span style="font-size:11px">пароль не отображается; оставьте пустым, чтобы не менять</span></label>' +
       TOGGLES.map(([k, t, h]) => `
         <label style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)">
           <input data-bool="${k}" type="checkbox" ${cfg[k] ? 'checked' : ''} style="width:18px;height:18px">

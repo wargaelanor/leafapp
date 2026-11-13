@@ -25,10 +25,10 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FR-TCall.166"
+#define LEAF_FIRMWARE_VERSION "FR-TCall.167"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: two MCP2515 CAN buses + SIM800"
 #else
-#define LEAF_FIRMWARE_VERSION "FR-2can.166"
+#define LEAF_FIRMWARE_VERSION "FR-2can.167"
 #define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: поездки по скорости, интернет через SIM800"
 #endif
 
@@ -2665,7 +2665,8 @@ void loop() {
     bool graceOver = !wokeFromTimer || (millis() >= WAKE_GRACE_MS);
 
     if (graceOver && rtcState.idleSec >= (uint64_t)getSleepAfterHours() * 3600ULL) {
-      uint64_t intervalMin = (rtcState.idleSec >= 48ULL * 3600ULL)
+      // Через 7 суток простоя просыпаемся реже (параметр «медленное пробуждение»).
+      uint64_t intervalMin = (rtcState.idleSec >= 168ULL * 3600ULL)
                              ? (uint64_t)getWakeSlowMinutes()
                              : (uint64_t)getWakeFastMinutes();
       Serial.printf("### Deep sleep: idle %llu s, wake in %llu min ###\n",

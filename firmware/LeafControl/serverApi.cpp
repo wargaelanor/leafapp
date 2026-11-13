@@ -487,12 +487,12 @@ static void sendConfig() {
   snprintf(body, sizeof(body),
            "{\"remote_mode\":%d,\"charge_limit\":%d,\"locking\":%d,\"sleep\":%d,\"sleep_after\":%d,"
            "\"wake_fast\":%d,\"wake_slow\":%d,\"uds\":%d,\"uds_tpms\":%d,"
-           "\"modem\":%d,\"apn\":\"%s\",\"vehicle_profile\":%d}",
+           "\"modem\":%d,\"apn\":\"%s\",\"apn_user\":\"%s\",\"vehicle_profile\":%d}",
            (int)getRemoteTransport(),
            getChargeLimitPct(), getLockingEnabled() ? 1 : 0, getSleepEnabled() ? 1 : 0,
            getSleepAfterHours(), getWakeFastMinutes(), getWakeSlowMinutes(),
            getUdsEnabled() ? 1 : 0, getUdsTpmsEnabled() ? 1 : 0,
-           getModemEnable() ? 1 : 0, getModem800Apn(), getVehicleProfile());
+           getModemEnable() ? 1 : 0, getModem800Apn(), getModem800User(), getVehicleProfile());
   String resp;
   postJson("/api/device/config", body, resp);
 }
@@ -524,6 +524,18 @@ static void applyConfig(const char* argsJson) {
         setModem800Apn(sval);
         configDirty = true;
         Serial.printf("[srv] config apn = %s\n", sval);
+        return;
+      }
+      if (!strcmp(key, "apn_user")) {
+        setModem800User(sval);
+        configDirty = true;
+        Serial.printf("[srv] config apn_user = %s\n", sval);
+        return;
+      }
+      if (!strcmp(key, "apn_pass")) {
+        setModem800Pass(sval);
+        configDirty = true;
+        Serial.println("[srv] config apn_pass updated");
         return;
       }
     }

@@ -308,6 +308,46 @@ def cleanup_unused_accounts(c) -> int:
     return len(rows)
 
 
+def mail_settings(c: sqlite3.Connection) -> dict:
+    """Параметры SMTP: из app_settings, иначе из окружения."""
+    rows = c.execute("SELECT key,value FROM app_settings WHERE key LIKE 'smtp_%' OR key='mail_to'")
+    cfg = {r["key"]: r["value"] for r in rows}
+    return {
+        "host": cfg.get("smtp_host") or os.environ.get("LEAF_SMTP_HOST", "smtp.yandex.ru"),
+        "port": int(cfg.get("smtp_port") or os.environ.get("LEAF_SMTP_PORT", "465")),
+        "user": cfg.get("smtp_user") or os.environ.get("LEAF_SMTP_USER", ""),
+        "pass": cfg.get("smtp_pass") or os.environ.get("LEAF_SMTP_PASS", ""),
+        "to": cfg.get("mail_to") or os.environ.get("LEAF_MAIL_TO", "wargaelanor@ya.ru"),
+    }
+
+
+def send_feedback_mail(username: str, text: str, created_at: int) -> None:
+    """Дублирует обращение письмом. Ошибки только в лог — пользователь не ждёт."""
+    try:
+        import smtplib
+        import ssl
+        from email.message import EmailMessage
+
+        with db_lock, connect() as c:
+            cfg = mail_settings(c)
+        if not cfg["user"] or not cfg["pass"]:
+            print("feedback mail: SMTP не настроен", flush=True)
+            return
+        msg = EmailMessage()
+        msg["From"] = cfg["user"]
+        msg["To"] = cfg["to"]
+        msg["Subject"] = "LeafControl: обращение от %s" % username
+        stamp = datetime.fromtimestamp(created_at, tz=timezone.utc).strftime("%d.%m.%Y %H:%M UTC")
+        msg.set_content("Пользователь: %s\nВремя: %s\n\n%s\n" % (username, stamp, text))
+        with smtplib.SMTP_SSL(cfg["host"], cfg["port"],
+                              context=ssl.create_default_context(), timeout=20) as srv:
+            srv.login(cfg["user"], cfg["pass"])
+            srv.send_message(msg)
+        print("feedback mail sent to", cfg["to"], flush=True)
+    except Exception as exc:  # noqa: BLE001
+        print("feedback mail error", repr(exc), flush=True)
+
+
 def log_event(c: sqlite3.Connection, device_id, kind: str, payload: dict) -> None:
     c.execute(
         "INSERT INTO events(device_id, kind, payload, ts) VALUES(?,?,?,?)",
@@ -764,10 +804,13 @@ class Api(BaseHTTPRequestHandler):
             return self.err(400, "слишком коротко")
         if len(text) > 2000:
             text = text[:2000]
+        stamp = now()
         with db_lock, connect() as c:
             c.execute("INSERT INTO feedback(user_id,text,created_at,status) VALUES(?,?,?,'new')",
-                      (u["id"], text, now()))
+                      (u["id"], text, stamp))
             log_event(c, None, "feedback_new", {"username": u["username"]})
+        threading.Thread(target=send_feedback_mail,
+                         args=(u["username"], text, stamp), daemon=True).start()
         return self.json(200, {"ok": True})
 
     def claim_device(self):
@@ -1871,6 +1914,32 @@ class Api(BaseHTTPRequestHandler):
         return out_path
 
     def admin(self, method: str, path: str, q: dict):
+        if path == "/api/admin/mail" and method == "GET":
+            with db_lock, connect() as c:
+                cfg = mail_settings(c)
+            return self.json(200, {"host": cfg["host"], "port": cfg["port"],
+                                   "user": cfg["user"], "to": cfg["to"],
+                                   "configured": bool(cfg["user"] and cfg["pass"])})
+
+        if path == "/api/admin/mail" and method == "POST":
+            data = self.body()
+            pairs = []
+            for key, field in (("smtp_host", "host"), ("smtp_port", "port"),
+                               ("smtp_user", "user"), ("smtp_pass", "pass"),
+                               ("mail_to", "to")):
+                value = data.get(field)
+                if value is None:
+                    continue
+                value = str(value).strip()
+                if field == "pass" and not value:
+                    continue
+                pairs.append((key, value))
+            with db_lock, connect() as c:
+                for key, value in pairs:
+                    c.execute("INSERT OR REPLACE INTO app_settings(key,value) VALUES(?,?)",
+                              (key, value))
+            return self.json(200, {"ok": True, "updated": len(pairs)})
+
         if path == "/api/admin/canlog" and method == "GET":
             with db_lock, connect() as c:
                 rows = c.execute(
