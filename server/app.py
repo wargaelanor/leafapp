@@ -66,6 +66,9 @@ PWA_COMMANDS = {
 
 db_lock = threading.Lock()
 
+# Состояние дополнительного HTTP-порта для плат (SIM800 без TLS).
+PLAIN_STATE = {"port": 0, "ok": False}
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -544,6 +547,8 @@ class Api(BaseHTTPRequestHandler):
             if path == "/api/health":
                 return self.json(200, {"ok": True, "ts": now(), "rev": APP_REV,
                                        "app": APP_VERSION,
+                                       "plain": PLAIN_STATE["ok"],
+                                       "plain_port": PLAIN_STATE["port"],
                                        "host": (self.headers.get("Host") or "")[:64],
                                        "proto": (self.headers.get("X-Forwarded-Proto") or "")[:16],
                                        "fwd_host": (self.headers.get("X-Forwarded-Host") or "")[:64],
@@ -2564,10 +2569,12 @@ def main():
 
     # Порт для плат по обычному HTTP (у контейнера уже проброшен 8090).
     plain_port = int(os.environ.get("LEAF_PLAIN_PORT", "8090"))
+    PLAIN_STATE["port"] = plain_port
     if plain_port and plain_port != port:
         try:
             plain = ThreadingHTTPServer(("0.0.0.0", plain_port), PlainDeviceApi)
             threading.Thread(target=plain.serve_forever, daemon=True).start()
+            PLAIN_STATE["ok"] = True
             print(f"plain device HTTP on :{plain_port} (/api/device only)", flush=True)
         except OSError as exc:  # noqa: BLE001
             print("plain listener failed:", repr(exc), flush=True)
