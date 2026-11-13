@@ -704,6 +704,16 @@
         details.lc-acc>summary::-webkit-details-marker{display:none}
         details.lc-acc>summary .lc-chev{transition:transform .15s}
         details.lc-acc[open]>summary .lc-chev{transform:rotate(90deg)}
+        /* Браузер подсвечивает поля пароля/автозаполнения своим белым фоном
+           даже в тёмной теме — принудительно держим цвет поверхности. */
+        #screen-settings input[type=password]{background:var(--surface);color:var(--text)}
+        #screen-settings input:-webkit-autofill,
+        #screen-settings input:-webkit-autofill:hover,
+        #screen-settings input:-webkit-autofill:focus{
+          -webkit-text-fill-color:var(--text);
+          -webkit-box-shadow:0 0 0 1000px var(--surface) inset;
+          caret-color:var(--text);
+        }
       </style>
       <div class="card" style="margin-top:8px">
         <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">Настройки платы</div></div>
