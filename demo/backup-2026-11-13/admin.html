@@ -1,0 +1,685 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>LeafControl</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon-192.png" sizes="192x192">
+<link rel="icon" href="/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<style>
+:root{
+  --bg:#f2f2f7; --surface:#ffffff; --surface-2:#f7f7fa; --text:#1c1c1e; --muted:#8e8e93;
+  --line:#e5e5ea; --accent:#40a0da; --ok:#34c759; --warn:#ff9500; --danger:#ff3b30;
+  --shadow:0 1px 3px rgba(0,0,0,.06); --r:14px;
+}
+@media (prefers-color-scheme: dark){
+  :root{--bg:#000000; --surface:#1c1c1e; --surface-2:#2c2c2e; --text:#ffffff; --muted:#8e8e93;
+        --line:#38383a; --accent:#40a0da; --ok:#30d158; --warn:#ff9f0a; --danger:#ff453a;
+        --shadow:0 1px 3px rgba(0,0,0,.5);}
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+  font:16px/1.42 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none}
+
+/* ---------- login ---------- */
+.login{max-width:400px;margin:0 auto;padding:14vh 18px}
+.login h1{font-size:26px;font-weight:600;margin:0 0 4px}
+.login .sub{color:var(--muted);font-size:14px;margin-bottom:22px}
+.field{margin-bottom:12px}
+.field label{display:block;font-size:12px;color:var(--muted);margin:0 0 6px}
+.field input{width:100%;padding:13px 14px;border-radius:12px;border:1px solid var(--line);
+  background:var(--surface);font-size:16px}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:14px;
+  border-radius:12px;background:var(--accent);color:#fff;font-weight:600;font-size:16px}
+.btn:disabled{opacity:.45}
+.btn.ghost{background:var(--surface);color:var(--text);border:1px solid var(--line)}
+.btn.danger{background:var(--danger)}
+.hint{font-size:12px;color:var(--muted);min-height:16px}
+.err{font-size:13px;color:var(--danger)}
+
+/* ---------- shell ---------- */
+.shell{display:grid;grid-template-columns:232px 1fr;min-height:100vh}
+.side{background:var(--surface-2);border-right:1px solid var(--line);padding:18px 12px;
+  position:sticky;top:0;height:100vh;display:flex;flex-direction:column}
+.brand{font-size:18px;font-weight:600;padding:0 10px 16px}
+.brand span{display:block;font-size:12px;color:var(--muted);font-weight:400;margin-top:2px}
+.nav{display:flex;flex-direction:column;gap:2px}
+.nav button{display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:10px;
+  color:var(--muted);font-size:15px;text-align:left}
+.nav button.on{background:var(--surface);color:var(--text);box-shadow:var(--shadow)}
+.nav .ic{width:20px;text-align:center;font-size:16px}
+.sidefoot{margin-top:auto;padding:12px 10px 0;font-size:11px;color:var(--muted)}
+.main{padding:18px 22px 40px;max-width:1180px}
+
+/* ---------- topbar ---------- */
+.topbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.topbar h1{font-size:22px;font-weight:600;margin:0}
+.sel{padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);
+  max-width:260px}
+.pill{display:inline-flex;align-items:center;gap:7px;padding:7px 11px;border-radius:999px;
+  background:var(--surface);border:1px solid var(--line);font-size:13px;color:var(--muted)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.dot.on{background:var(--ok)} .dot.off{background:var(--danger)}
+.spacer{flex:1}
+
+/* ---------- cards ---------- */
+.card{background:var(--surface);border-radius:var(--r);box-shadow:var(--shadow);padding:16px}
+.card h2{font-size:14px;font-weight:600;margin:0 0 12px;color:var(--text)}
+.card .cap{font-size:12px;color:var(--muted)}
+.stack{display:flex;flex-direction:column;gap:12px}
+.cols{display:grid;grid-template-columns:minmax(320px,400px) 1fr;gap:14px;align-items:start}
+.grid4{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+/* ---------- hero ---------- */
+.hero{display:flex;flex-direction:column;gap:10px}
+.soc{display:flex;align-items:baseline;gap:8px}
+.soc b{font-size:42px;font-weight:600;letter-spacing:-1px}
+.soc small{font-size:15px;color:var(--muted)}
+.bar{height:10px;border-radius:6px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .4s}
+.hero-meta{display:flex;justify-content:space-between;font-size:13px;color:var(--muted)}
+
+/* ---------- actions ---------- */
+.actions{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.act{background:var(--surface-2);border-radius:12px;padding:14px 8px;text-align:center;
+  font-size:12px;color:var(--text);display:flex;flex-direction:column;align-items:center;gap:6px}
+.act:active{transform:scale(.97)}
+.act .ic{font-size:20px;line-height:1}
+.act.on{outline:2px solid var(--accent) inset;color:var(--accent)}
+.act.stop{color:var(--danger)}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{padding:8px 12px;border-radius:999px;background:var(--surface-2);font-size:13px;color:var(--text)}
+.chip.on{background:var(--accent);color:#fff}
+
+/* ---------- tiles ---------- */
+.tile{background:var(--surface);border-radius:var(--r);box-shadow:var(--shadow);padding:13px}
+.tile .k{font-size:12px;color:var(--muted)}
+.tile .v{font-size:22px;font-weight:600;margin-top:3px;letter-spacing:-.3px}
+
+/* ---------- tables ---------- */
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:10px 6px;border-bottom:1px solid var(--line)}
+th{font-size:12px;font-weight:500;color:var(--muted)}
+tr:last-child td{border-bottom:0}
+
+/* ---------- charts ---------- */
+svg.chart{width:100%;height:150px;display:block}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--muted);margin-top:6px}
+
+/* ---------- toast ---------- */
+.toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,20px);opacity:0;
+  background:rgba(28,28,30,.94);color:#fff;padding:11px 16px;border-radius:12px;font-size:14px;
+  transition:.25s;pointer-events:none;z-index:50;max-width:90vw}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+
+/* ---------- mobile ---------- */
+.tabbar{display:none}
+@media (max-width:900px){
+  .shell{grid-template-columns:1fr}
+  .side{display:none}
+  .main{padding:12px 12px 88px}
+  .cols{grid-template-columns:1fr}
+  .topbar h1{font-size:19px}
+  .soc b{font-size:38px}
+  .tabbar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:20;
+    background:var(--surface-2);border-top:1px solid var(--line);
+    padding:6px 4px calc(6px + env(safe-area-inset-bottom));justify-content:space-around}
+  .tabbar button{display:flex;flex-direction:column;align-items:center;gap:3px;
+    font-size:10px;color:var(--muted);padding:4px 8px;border-radius:10px}
+  .tabbar button.on{color:var(--accent)}
+  .tabbar .ic{font-size:18px}
+}
+.hide{display:none!important}
+</style>
+<style id="pwa-theme">
+:root{
+  --bg:#f2f2f7; --card:#ffffff; --ink:#1c1c1e; --dim:#8e8e93; --line:#e5e5ea;
+  --key:#40a0da; --go:#34c759; --stop:#ff3b30; --warn:#ff9500;
+  --shadow:0 1px 3px rgba(0,0,0,.06); --r:14px;
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#000; --card:#1c1c1e; --ink:#fff; --dim:#8e8e93; --line:#38383a;
+        --key:#40a0da; --go:#30d158; --stop:#ff453a; --warn:#ff9f0a;
+        --shadow:0 1px 3px rgba(0,0,0,.5)}
+}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+.card{border-radius:14px;box-shadow:var(--shadow)}
+.side{background:var(--bg)}
+button{border-radius:10px}
+</style>
+</head>
+<body>
+
+<div class="login" id="loginCard">
+  <h1>LeafControl</h1>
+  <div class="sub">Управление автомобилем</div>
+  <div class="field"><label>Логин</label><input id="lgUser" autocomplete="username" placeholder="admin или логин с платы"></div>
+  <div class="field"><label>Пароль</label><input id="lgPass" type="password" autocomplete="current-password"></div>
+  <div class="hint" id="lgHint"></div>
+  <button class="btn" id="btnLogin" style="margin-top:6px">Войти</button>
+</div>
+
+<div class="shell hide" id="app">
+  <aside class="side">
+    <div class="brand">LeafControl<span id="brandSub">сервер</span></div>
+    <div class="nav" id="navDesktop">
+      <button data-tab="car" class="on"><span class="ic">◉</span>Машина</button>
+      <button data-tab="trips"><span class="ic">↗</span>Поездки</button>
+      <button data-tab="charges"><span class="ic">⚡</span>Зарядки</button>
+      <button data-tab="charts"><span class="ic">▤</span>Графики</button>
+      <button data-tab="admin" id="navAdmin" class="hide"><span class="ic">⚙</span>Админ</button>
+      <button data-tab="me"><span class="ic">◍</span>Профиль</button>
+    </div>
+    <div class="sidefoot">LeafControl · персональный сервер</div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <h1 id="pageTitle">Машина</h1>
+      <select class="sel" id="devSel"></select>
+      <span class="pill"><span class="dot" id="linkDot"></span><span id="linkTxt">—</span></span>
+      <div class="spacer"></div>
+      <button class="btn ghost hide" id="btnInstall" style="width:auto;padding:9px 12px;font-size:13px">Установить</button>
+      <button class="btn ghost" id="btnLogout" style="width:auto;padding:9px 12px;font-size:13px">Выход</button>
+    </div>
+
+    <!-- МАШИНА -->
+    <section id="tab-car">
+      <div class="cols">
+        <div class="stack">
+          <div class="card hero">
+            <div class="soc"><b id="socVal">—</b><small>% заряда</small></div>
+            <div class="bar"><i id="socBar"></i></div>
+            <div class="hero-meta">
+              <span id="heroOdo">пробег —</span>
+              <span id="heroAge">—</span>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>Климат</h2>
+            <div class="chips" id="climChips">
+              <button class="chip" data-min="5">5 мин</button>
+              <button class="chip" data-min="10">10 мин</button>
+              <button class="chip" data-min="15">15 мин</button>
+              <button class="chip on" data-min="20">20 мин</button>
+              <button class="chip" data-min="30">30 мин</button>
+              <button class="chip" data-cmd="clim_off" style="color:var(--danger)">выключить</button>
+            </div>
+            <div class="actions" style="margin-top:12px">
+              <button class="act" data-cmd="lock"><span class="ic">🔒</span>Закрыть</button>
+              <button class="act" data-cmd="unlock"><span class="ic">🔓</span>Открыть</button>
+              <button class="act" data-cmd="lights"><span class="ic">💡</span>Фары</button>
+              <button class="act" data-cmd="horn"><span class="ic">📣</span>Сигнал</button>
+              <button class="act" data-cmd="charge_start"><span class="ic">⚡</span>Заряд</button>
+              <button class="act" data-cmd="charge_stop"><span class="ic">⏹</span>Стоп</button>
+            </div>
+            <div class="row" style="margin-top:10px">
+              <button class="chip" data-cmd="refresh">Обновить данные</button>
+            </div>
+            <div class="hint" id="cmdHint" style="margin-top:8px"></div>
+          </div>
+
+          <div class="card">
+            <h2>Прогрев по расписанию</h2>
+            <div class="row">
+              <input type="time" id="schedT" value="08:00" style="flex:1;padding:11px;border-radius:10px;border:1px solid var(--line);background:var(--surface-2)">
+              <select id="schedM" class="sel" style="width:110px">
+                <option>5</option><option>10</option><option>15</option>
+                <option selected>20</option><option>30</option>
+              </select>
+              <button class="btn" id="btnSched" style="width:auto;padding:11px 16px">Запланировать</button>
+            </div>
+            <div class="hint" id="schedHint" style="margin-top:8px"></div>
+          </div>
+        </div>
+
+        <div class="stack">
+          <div class="grid4" id="tiles"></div>
+          <div class="card">
+            <h2>Заряд батареи, 24 часа</h2>
+            <svg class="chart" id="chSoc" viewBox="0 0 300 150" preserveAspectRatio="none"></svg>
+            <div class="legend"><span>мин / макс</span><span id="chSocAge"></span></div>
+          </div>
+          <div class="card">
+            <h2>Температура батареи</h2>
+            <svg class="chart" id="chBat" viewBox="0 0 300 150" preserveAspectRatio="none"></svg>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ПОЕЗДКИ -->
+    <section id="tab-trips" class="hide">
+      <div class="card">
+        <h2>Поездки за 90 дней</h2>
+        <div class="hint" id="tripsHint"></div>
+        <table><thead><tr><th>Дата</th><th>Время</th><th>Км</th><th>кВт·ч</th><th>Заряд</th></tr></thead>
+        <tbody id="tripsBody"></tbody></table>
+      </div>
+    </section>
+
+    <!-- ЗАРЯДКИ -->
+    <section id="tab-charges" class="hide">
+      <div class="card">
+        <h2>Зарядки за 90 дней</h2>
+        <div class="hint" id="chargesHint"></div>
+        <table><thead><tr><th>Дата</th><th>Время</th><th>кВт·ч</th><th>Заряд</th></tr></thead>
+        <tbody id="chargesBody"></tbody></table>
+      </div>
+    </section>
+
+    <!-- ГРАФИКИ -->
+    <section id="tab-charts" class="hide">
+      <div class="cols" style="grid-template-columns:1fr 1fr">
+        <div class="card"><h2>Заряд, 24 часа</h2><svg class="chart" id="chSoc2" viewBox="0 0 300 150" preserveAspectRatio="none"></svg></div>
+        <div class="card"><h2>Температура батареи</h2><svg class="chart" id="chBat2" viewBox="0 0 300 150" preserveAspectRatio="none"></svg></div>
+      </div>
+    </section>
+
+    <!-- АДМИН -->
+    <section id="tab-admin" class="hide">
+      <div class="stack">
+        <div class="card">
+          <div class="row"><h2 style="margin:0">Заявки на подключение</h2><div class="spacer"></div>
+            <button class="chip" id="btnRefreshPending">Обновить</button></div>
+          <div class="hint" id="adminHint"></div>
+          <table><thead><tr><th>Логин</th><th>Имя</th><th>Прошивка</th><th></th></tr></thead>
+          <tbody id="pendingBody"></tbody></table>
+        </div>
+        <div class="card">
+          <h2>Устройства</h2>
+          <table><thead><tr><th>Логин / MAC</th><th>Статус</th><th>Связь</th></tr></thead>
+          <tbody id="allDevBody"></tbody></table>
+        </div>
+        <div class="card">
+          <h2>Журнал</h2>
+          <table><thead><tr><th>Время</th><th>Событие</th></tr></thead><tbody id="eventsBody"></tbody></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ПРОФИЛЬ -->
+    <section id="tab-me" class="hide">
+      <div class="cols" style="grid-template-columns:minmax(280px,420px) 1fr">
+        <div class="card">
+          <h2>Профиль</h2>
+          <div class="hint" id="meInfo"></div>
+          <div class="field" style="margin-top:10px"><label>Название машины</label><input id="devName" placeholder="Мой Leaf"></div>
+          <button class="btn" id="btnRename">Сохранить название</button>
+          <div class="hint" id="renameHint"></div>
+          <div class="field" style="margin-top:14px"><label>Новый пароль</label><input id="pwNew" type="password" autocomplete="new-password"></div>
+          <div class="field"><label>Текущий пароль</label><input id="pwOld" type="password" autocomplete="current-password"></div>
+          <button class="btn ghost" id="btnPw">Сменить пароль</button>
+          <div class="hint" id="pwHint"></div>
+        </div>
+        <div class="card">
+          <h2>Подключение</h2>
+          <div class="field"><label>Логин устройства</label><input id="devLogin" readonly></div>
+          <div class="field"><label>Адрес сервера</label><input readonly value="https://leaf.wargaelanor.keenetic.link"></div>
+          <div class="hint">Плата выдаёт свой логин и пароль при первом включении. Администратор одобряет устройство в разделе «Админ».</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <nav class="tabbar" id="navMobile">
+    <button data-tab="car" class="on"><span class="ic">◉</span>Машина</button>
+    <button data-tab="trips"><span class="ic">↗</span>Поездки</button>
+    <button data-tab="charges"><span class="ic">⚡</span>Зарядки</button>
+    <button data-tab="charts"><span class="ic">▤</span>Графики</button>
+    <button data-tab="admin" id="mobAdmin" class="hide"><span class="ic">⚙</span>Админ</button>
+    <button data-tab="me"><span class="ic">◍</span>Профиль</button>
+  </nav>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const TITLES = { car: 'Машина', trips: 'Поездки', charges: 'Зарядки', charts: 'Графики', admin: 'Админ', me: 'Профиль' };
+let me = null, devices = [], cur = null, tab = 'car', timer = null, climMin = 20;
+
+async function api(path, body, method) {
+  const opt = { credentials: 'same-origin' };
+  if (body !== undefined) {
+    opt.method = method || 'POST';
+    opt.headers = { 'Content-Type': 'application/json' };
+    opt.body = JSON.stringify(body);
+  }
+  let lastErr = null;
+  const attempts = body === undefined ? 3 : 2;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const r = await fetch(path, opt);
+      let j = null; try { j = await r.json(); } catch {}
+      if (r.ok) return j;
+      if (r.status >= 500) lastErr = new Error('сервер занят (' + r.status + ')');
+      else throw new Error((j && j.error) || ('ошибка ' + r.status));
+    } catch (e) { lastErr = e; }
+    await new Promise((res) => setTimeout(res, 400 * (i + 1)));
+  }
+  throw lastErr || new Error('нет связи');
+}
+
+function toast(text) {
+  const el = $('toast');
+  el.textContent = text;
+  el.classList.add('show');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('show'), 2600);
+}
+const fmtTime = (ts) => ts ? new Date(ts * 1000).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
+const dur = (s) => !s ? '—' : (s >= 3600 ? Math.floor(s / 3600) + ' ч ' + Math.round(s % 3600 / 60) + ' м' : Math.round(s / 60) + ' м');
+const num = (v, d = 1) => (v === null || v === undefined) ? '—' : Number(v).toFixed(d).replace('.', ',');
+
+/* ---------- boot ---------- */
+async function boot() {
+  try { me = await api('/api/auth/me'); await enter(); } catch {}
+  $('btnLogin').onclick = doLogin;
+  $('lgPass').addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
+  $('btnLogout').onclick = async () => { try { await api('/api/auth/logout', {}); } catch {} location.reload(); };
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+}
+
+async function doLogin() {
+  $('lgHint').textContent = '';
+  try {
+    await api('/api/auth/login', { username: $('lgUser').value.trim(), password: $('lgPass').value });
+    me = await api('/api/auth/me');
+    await enter();
+  } catch (e) { $('lgHint').textContent = e.message; $('lgHint').className = 'err'; }
+}
+
+async function enter() {
+  $('loginCard').classList.add('hide');
+  $('app').classList.remove('hide');
+  $('brandSub').textContent = me.user.username + (me.user.role === 'admin' ? ' · админ' : '');
+  const isAdmin = me.user.role === 'admin';
+  $('navAdmin').classList.toggle('hide', !isAdmin);
+  $('mobAdmin').classList.toggle('hide', !isAdmin);
+  if (timer) clearInterval(timer);
+  timer = setInterval(refresh, 10000);
+  try { await loadDevices(); } catch (e) { $('linkTxt').textContent = 'нет связи с сервером'; }
+}
+
+/* ---------- devices ---------- */
+async function loadDevices() {
+  const d = await api('/api/devices');
+  devices = d.devices || [];
+  const sel = $('devSel');
+  sel.innerHTML = '';
+  if (!devices.length) {
+    sel.innerHTML = '<option>нет устройств</option>';
+    cur = null;
+    $('tiles').innerHTML = '';
+    $('linkTxt').textContent = 'нет устройств';
+    $('linkDot').className = 'dot off';
+    return;
+  }
+  for (const x of devices) {
+    const o = document.createElement('option');
+    o.value = x.id;
+    o.textContent = (x.name || x.login) + (x.status === 'active' ? '' : ' · ' + x.status);
+    sel.appendChild(o);
+  }
+  const saved = localStorage.getItem('leafDev');
+  cur = devices.find(x => String(x.id) === saved);
+  if (!cur) {
+    cur = devices.slice().sort((a, b) =>
+      ((b.online ? 1 : 0) - (a.online ? 1 : 0)) || ((b.last_seen || 0) - (a.last_seen || 0)))[0];
+  }
+  sel.value = cur.id;
+  sel.onchange = () => {
+    cur = devices.find(x => String(x.id) === sel.value);
+    localStorage.setItem('leafDev', cur.id);
+    refresh();
+  };
+  await refresh();
+}
+
+/* ---------- state ---------- */
+function renderState(d) {
+  const s = d.state || {};
+  const soc = (s.soc != null && s.soc >= 0) ? Math.round(s.soc) : null;
+  $('socVal').textContent = soc == null ? '—' : soc;
+  $('socBar').style.width = (soc == null ? 0 : Math.max(0, Math.min(100, soc))) + '%';
+  $('socBar').style.background = soc == null ? 'var(--line)'
+    : soc > 60 ? 'var(--ok)' : soc > 25 ? 'var(--warn)' : 'var(--danger)';
+  $('heroOdo').textContent = s.odo ? Math.round(s.odo).toLocaleString('ru-RU') + ' км' : 'пробег —';
+  const age = d.bus_age_s;
+  $('heroAge').textContent = age == null ? '' : (age < 90 ? 'данные ' + age + ' с назад' : 'данные ' + Math.round(age / 60) + ' мин назад');
+
+  const rows = [
+    ['В салоне', (s.cabin != null && s.cabin > -50) ? num(s.cabin) + ' °C' : '—'],
+    ['На улице', (s.amb != null && s.amb > -50) ? num(s.amb) + ' °C' : '—'],
+    ['Батарея', (s.batt != null && s.batt > -50) ? num(s.batt) + ' °C' : '—'],
+    ['Напряжение', s.pack_v > 0 ? num(s.pack_v) + ' В' : '—'],
+    ['Мощность', s.pack_kw != null ? num(s.pack_kw) + ' кВт' : '—'],
+    ['Климат', s.hvac ? 'включён' : 'выключен'],
+    ['Зарядка', s.charging ? 'идёт' : 'нет'],
+    ['Двери', s.doors ? 'открыты' : 'закрыты'],
+  ];
+  $('tiles').innerHTML = rows.map(([k, v]) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+
+  $('linkDot').className = 'dot ' + (d.online ? 'on' : 'off');
+  $('linkTxt').textContent = (d.online ? 'на связи' : 'нет связи')
+    + (d.link ? ' · ' + (d.link === 'wifi' ? 'Wi-Fi' : 'модем') : '');
+
+  document.querySelectorAll('[data-cmd="lock"]').forEach(b => b.classList.toggle('on', !!s.locked));
+  document.querySelectorAll('[data-cmd="charge_start"]').forEach(b => b.classList.toggle('on', !!s.charging));
+  document.querySelectorAll('[data-cmd="clim_off"]').forEach(b => b.classList.toggle('hide', !s.hvac));
+}
+
+async function refresh() {
+  if (!cur) return;
+  try {
+    const d = await api('/api/state?device=' + cur.id);
+    renderState(d);
+    if (tab === 'car' || tab === 'charts') await drawCharts();
+  } catch (e) { /* следующий тик */ }
+}
+
+/* ---------- tabs ---------- */
+function switchTab(t) {
+  tab = t;
+  document.querySelectorAll('#navDesktop button, #navMobile button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
+  ['car', 'trips', 'charges', 'charts', 'admin', 'me'].forEach(x => $('tab-' + x).classList.toggle('hide', x !== t));
+  $('pageTitle').textContent = TITLES[t] || '';
+  if (t === 'trips') loadSessions('trip');
+  if (t === 'charges') loadSessions('charge');
+  if (t === 'charts') drawCharts();
+  if (t === 'admin') loadAdmin();
+  if (t === 'me') {
+    $('meInfo').textContent = 'Пользователь: ' + me.user.username + ' · роль: ' + me.user.role;
+    if (cur) { $('devName').value = cur.name || ''; $('devLogin').value = cur.login || ''; }
+  }
+}
+document.querySelectorAll('#navDesktop button, #navMobile button').forEach(b => b.onclick = () => switchTab(b.dataset.tab));
+
+/* ---------- commands ---------- */
+async function sendCmd(name, args) {
+  if (!cur) return;
+  try {
+    const r = await api('/api/cmd', { device: cur.id, cmd: name, args: args || {} });
+    toast(r.pushed ? 'Команда отправлена на плату' : 'В очереди: плата заберёт в течение ' + r.poll_s + ' с');
+    setTimeout(refresh, 1500);
+  } catch (e) { toast(e.message); }
+}
+
+document.querySelectorAll('[data-cmd]').forEach(b => b.onclick = () => {
+  const name = b.dataset.cmd;
+  if (name === 'lock' || name === 'unlock' || name === 'lights' || name === 'horn') {
+    if (!confirm('Отправить команду на машину?')) return;
+  }
+  sendCmd(name, {});
+});
+
+document.querySelectorAll('#climChips .chip[data-min]').forEach(b => b.onclick = () => {
+  document.querySelectorAll('#climChips .chip').forEach(x => x.classList.remove('on'));
+  b.classList.add('on');
+  climMin = Number(b.dataset.min);
+  sendCmd('clim_on', { minutes: climMin });
+  toast('Климат на ' + climMin + ' мин');
+});
+
+$('btnSched').onclick = async () => {
+  if (!cur) return;
+  const [h, m] = $('schedT').value.split(':').map(Number);
+  const at = new Date(); at.setHours(h, m, 0, 0);
+  if (at.getTime() < Date.now()) at.setDate(at.getDate() + 1);
+  try {
+    await api('/api/sched', { device: cur.id, at: Math.floor(at.getTime() / 1000), minutes: Number($('schedM').value) });
+    $('schedHint').textContent = 'Запланировано на ' + at.toLocaleString('ru-RU');
+  } catch (e) { $('schedHint').textContent = e.message; $('schedHint').className = 'err'; }
+};
+
+/* ---------- sessions ---------- */
+async function loadSessions(kind) {
+  const body = kind === 'trip' ? $('tripsBody') : $('chargesBody');
+  const hint = kind === 'trip' ? $('tripsHint') : $('chargesHint');
+  body.innerHTML = '';
+  if (!cur) return;
+  try {
+    const r = await api('/api/sessions?device=' + cur.id + '&days=90');
+    const rows = (r.sessions || []).filter(s => s.kind === kind);
+    if (!rows.length) { hint.textContent = 'Пока нет записей'; return; }
+    const km = rows.reduce((a, s) => a + (Number(s.distance_km) || 0), 0);
+    const kwh = rows.reduce((a, s) => a + (Number(s.energy_kwh) || 0), 0);
+    hint.textContent = rows.length + ' записей · ' + num(kwh, 1) + ' кВт·ч' + (km ? ' · ' + num(km, 1) + ' км' : '');
+    for (const s of rows) {
+      const tr = document.createElement('tr');
+      const socSpan = (s.soc_start != null && s.soc_end != null)
+        ? Math.round(s.soc_start) + ' → ' + Math.round(s.soc_end) + ' %' : '—';
+      tr.innerHTML = kind === 'trip'
+        ? `<td>${fmtTime(s.ended_at || s.started_at)}</td><td>${dur(s.duration_s)}</td><td>${num(s.distance_km)}</td><td>${num(s.energy_kwh, 2)}</td><td>${socSpan}</td>`
+        : `<td>${fmtTime(s.ended_at || s.started_at)}</td><td>${dur(s.duration_s)}</td><td>${num(s.energy_kwh, 2)}</td><td>${socSpan}</td>`;
+      body.appendChild(tr);
+    }
+  } catch (e) { hint.textContent = e.message; }
+}
+
+/* ---------- charts ---------- */
+function sparkline(svg, values, label) {
+  svg.innerHTML = '';
+  if (!values.length) {
+    svg.innerHTML = '<text x="8" y="20" fill="currentColor" opacity="0.4" font-size="12">нет данных</text>';
+    return;
+  }
+  const w = 300, h = 150, pad = 24;
+  let min = Math.min(...values), max = Math.max(...values);
+  if (max - min < 1) { max += 0.5; min -= 0.5; }
+  const span = max - min;
+  const pts = values.map((v, i) => [pad + i * (w - pad * 2) / Math.max(1, values.length - 1),
+    h - pad - ((v - min) / span) * (h - pad * 2)]);
+  const d = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+  const grid = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  grid.setAttribute('d', `M${pad} ${pad} H${w - pad} M${pad} ${h - pad} H${w - pad}`);
+  grid.setAttribute('stroke', 'currentColor'); grid.setAttribute('stroke-opacity', '0.15'); grid.setAttribute('fill', 'none');
+  svg.appendChild(grid);
+  const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  line.setAttribute('d', d); line.setAttribute('fill', 'none');
+  line.setAttribute('stroke', 'var(--accent)'); line.setAttribute('stroke-width', '2');
+  line.setAttribute('stroke-linejoin', 'round');
+  svg.appendChild(line);
+  const txt = (x, y, s, anchor) => {
+    const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    t.setAttribute('x', x); t.setAttribute('y', y); t.setAttribute('font-size', '11');
+    t.setAttribute('fill', 'currentColor'); t.setAttribute('opacity', '0.55');
+    t.setAttribute('text-anchor', anchor || 'start');
+    t.textContent = s; svg.appendChild(t);
+  };
+  txt(pad, pad - 6, num(max, 1));
+  txt(pad, h - pad + 14, num(min, 1));
+  txt(w - pad, pad - 6, num(values[values.length - 1], 1) + (label || ''), 'end');
+}
+
+async function drawCharts() {
+  if (!cur) return;
+  let pts = [];
+  try { pts = (await api('/api/hist?device=' + cur.id + '&hours=24')).points || []; } catch { return; }
+  const avg = (arr, n) => {
+    if (arr.length <= n) return arr;
+    const out = [];
+    const step = arr.length / n;
+    for (let i = 0; i < n; i++) {
+      const a = Math.floor(i * step), b = Math.max(a + 1, Math.floor((i + 1) * step));
+      let sum = 0, cnt = 0;
+      for (let j = a; j < b && j < arr.length; j++) { sum += arr[j]; cnt++; }
+      out.push(sum / cnt);
+    }
+    return out;
+  };
+  const soc = avg(pts.map(p => Number(p.soc)).filter(v => isFinite(v) && v >= 0), 120);
+  const bat = avg(pts.map(p => Number(p.batt)).filter(v => isFinite(v) && v > -50), 120);
+  ['chSoc', 'chSoc2'].forEach(id => $(id) && sparkline($(id), soc, '%'));
+  ['chBat', 'chBat2'].forEach(id => $(id) && sparkline($(id), bat, '°C'));
+  if ($('chSocAge')) $('chSocAge').textContent = pts.length ? pts.length + ' измерений' : '';
+}
+
+/* ---------- admin ---------- */
+async function loadAdmin() {
+  try {
+    const p = await api('/api/admin/devices?status=pending');
+    $('pendingBody').innerHTML = (p.devices || []).map(d =>
+      `<tr><td>${d.login}</td><td>${d.name || ''}</td><td>${d.fw || ''}</td>
+       <td><button class="chip" onclick="approve(${d.id})">Одобрить</button>
+       <button class="chip" style="color:var(--danger)" onclick="reject(${d.id})">Отклонить</button></td></tr>`
+    ).join('') || '<tr><td colspan="4" class="hint">Заявок нет</td></tr>';
+
+    const all = await api('/api/admin/devices?status=all');
+    $('allDevBody').innerHTML = (all.devices || []).map(d =>
+      `<tr><td>${d.login}<div class="hint">${d.serial || ''}</div></td>
+       <td>${d.status}</td><td>${d.online ? 'на связи' : (d.last_seen ? fmtTime(d.last_seen) : '—')}</td></tr>`
+    ).join('');
+
+    const ev = await api('/api/admin/events');
+    $('eventsBody').innerHTML = (ev.events || []).slice(0, 25).map(e =>
+      `<tr><td>${fmtTime(e.ts)}</td><td>${e.kind}</td></tr>`).join('');
+  } catch (e) { $('adminHint').textContent = e.message; }
+}
+window.approve = async (id) => { await api('/api/admin/devices/' + id + '/approve', {}); toast('Устройство одобрено'); loadAdmin(); loadDevices(); };
+window.reject = async (id) => { await api('/api/admin/devices/' + id + '/reject', {}); toast('Устройство отклонено'); loadAdmin(); };
+$('btnRefreshPending').onclick = loadAdmin;
+
+/* ---------- profile ---------- */
+$('btnRename').onclick = async () => {
+  if (!cur) return;
+  try {
+    await api('/api/devices/' + cur.id, { name: $('devName').value.trim() }, 'PUT');
+    $('renameHint').textContent = 'Сохранено';
+    await loadDevices();
+  } catch (e) { $('renameHint').textContent = e.message; $('renameHint').className = 'err'; }
+};
+$('btnPw').onclick = async () => {
+  try {
+    await api('/api/auth/password', { old: $('pwOld').value, new: $('pwNew').value });
+    $('pwHint').textContent = 'Пароль изменён';
+  } catch (e) { $('pwHint').textContent = e.message; $('pwHint').className = 'err'; }
+};
+
+/* ---------- PWA ---------- */
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault(); deferredPrompt = e; $('btnInstall').classList.remove('hide');
+});
+$('btnInstall').onclick = async () => {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  await deferredPrompt.userChoice;
+  deferredPrompt = null;
+  $('btnInstall').classList.add('hide');
+};
+
+boot();
+</script>
+</body>
+</html>

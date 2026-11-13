@@ -115,6 +115,12 @@ body{background:var(--bg);font-family:'NissanBrand',-apple-system,BlinkMacSystem
 .btn-primary{display:block;width:calc(100% - 32px);margin:0 16px 16px;padding:13px;background:var(--accent);color:#fff;border:none;border-radius:4px;font-size:14px;font-family:inherit;cursor:pointer;letter-spacing:.3px}
 .btn-primary:active{background:#005f8c}
 .btn-primary:disabled{background:#a5cde3}
+.btn-secondary{display:block;width:calc(100% - 32px);margin:0 16px 16px;padding:12px;background:var(--surface);border:1px solid var(--line);color:var(--text);border-radius:10px;font-size:14px;cursor:pointer;font-family:inherit}
+.btn-secondary:active{background:var(--surface-2)}
+.setpoint-row input[type=time]{flex:1;min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text);font-family:inherit}
+.lg{margin:8px 12px 16px}
+.lg-title{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin:0 4px 8px}
+.lg-card{background:var(--surface);border-radius:14px;box-shadow:0 1px 3px rgba(0,0,0,.06);overflow:hidden;padding:6px 16px 10px}
 .btn-primary.charging{background:#34c759}
 .action-buttons{display:flex;justify-content:center;gap:32px;padding:16px 0 20px;background:var(--bg);margin:8px 16px;border-radius:8px}
 .action-btn{display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer}
@@ -198,12 +204,13 @@ html[data-theme="dark"] .dur-btns button.on{color:#08121a}
 .icon-btn svg{width:19px;height:19px}
 .icon-btn.busy svg{animation:fabspin .9s linear infinite}
 @keyframes fabspin{to{transform:rotate(360deg)}}
-.vs-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 16px}
-.vs-cell{background:var(--surface);border-radius:8px;padding:12px;box-shadow:0 1px 3px rgba(0,0,0,.06);display:flex;align-items:center;gap:10px}
-.vs-cell .vsi{width:32px;height:32px;display:flex;align-items:center;justify-content:center;color:var(--accent);flex-shrink:0}
-.vs-cell .vsi svg{width:20px;height:20px}
-.vs-cell .vst{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
-.vs-cell .vsv{font-size:13px;color:var(--text);margin-top:2px}
+.vs-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 12px}
+.vs-cell{background:var(--surface);border-radius:10px;padding:8px 10px;box-shadow:0 1px 3px rgba(0,0,0,.06);display:flex;align-items:center;gap:8px}
+.vs-cell .vsi{width:26px;height:26px;display:flex;align-items:center;justify-content:center;color:var(--accent);flex-shrink:0}
+.vs-cell .vsi svg{width:15px;height:15px}
+.vs-cell .vst{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+.vs-cell .vsv{font-size:12.5px;color:var(--text);margin-top:1px}
+.vs-cell.span2{grid-column:span 2}
 .more-item{background:var(--surface);margin:0 16px;padding:16px;display:flex;align-items:center;gap:14px;border-bottom:1px solid var(--line);cursor:pointer;font-size:14px;color:var(--text)}
 .more-item:last-child{border-bottom:none}
 .more-item .chev{margin-left:auto;color:var(--muted-2)}
@@ -494,6 +501,7 @@ body.demo .demo-banner{display:block}
           </div>
         </div>
         <button class="btn-primary" id="g-charge-btn">Начать зарядку</button>
+        <button class="btn-secondary" id="g-limit-btn" type="button">Лимит зарядки: <span id="g-limit-val">—</span></button>
       </div>
       <div class="action-buttons">
         <div class="action-btn" id="act-lights">
@@ -602,6 +610,12 @@ body.demo .demo-banner{display:block}
           <button class="pill-btn" id="remote-charge"><svg viewBox="0 0 25 25" fill="currentColor"><path d="M14.65 2.17a1.13 1.13 0 00-2.25 0l-.01 4.13h2.25l.01-4.13zM5.63 2.17a1.13 1.13 0 00-2.25 0l-.01 4.13h2.26l0-4.13zm11.65 5.64H.75A.75.75 0 000 8.56v.75c0 .42.34.75.75.75H1.5v3a7.5 7.5 0 006.39 7.4v7.62h2.25V20.46a7.5 7.5 0 006.39-7.4v-3h.75a.75.75 0 00.75-.75v-.75a.75.75 0 00-.75-.75zm-3 5.26a5.26 5.26 0 01-10.52 0v-3h10.52v3z"/></svg>Зарядка</button>
           <button class="pill-btn" onclick="cmd('refresh')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>Обновить</button>
         </div>
+        <div class="setpoint-row">
+          <label>Климат ко времени</label>
+          <input type="time" id="clim-at" value="08:00">
+          <button class="pill-btn" id="clim-plan" type="button">Запланировать</button>
+        </div>
+        <div id="clim-plan-hint" style="font-size:12px;color:var(--muted);margin:-4px 0 12px;padding:0 16px"></div>
         <div class="remote-divider"></div>
         <div class="remote-meta">
           <div class="row">
@@ -694,7 +708,7 @@ body.demo .demo-banner{display:block}
           <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M7 12h10M12 7v10"/></svg></div>
           <div><div class="vst">Общий пробег</div><div class="vsv" id="s-odo">—</div></div>
         </div>
-        <div class="vs-cell">
+        <div class="vs-cell span2">
           <div class="vsi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16v16H4zM8 8h8M8 12h8M8 16h5"/></svg></div>
           <div><div class="vst">VIN</div><div class="vsv" id="s-vin" style="font-size:13px;overflow-wrap:anywhere">—</div></div>
         </div>

@@ -796,7 +796,114 @@
     } catch (e) { /* тихо */ }
   }
 
+  /* ---------- лимит заряда на главной ---------- */
+  async function initGarageLimit() {
+    const btn = document.getElementById('g-limit-btn');
+    const val = document.getElementById('g-limit-val');
+    if (!btn || !val || btn.dataset.lcBound) return;
+    btn.dataset.lcBound = '1';
+    let current = null;
+    try {
+      const c = await api('/api/config');
+      current = Number((c.config || {}).charge_limit);
+    } catch (e) { /* плата ещё не присылала настройки */ }
+    const show = () => {
+      if (!Number.isFinite(current) || current === null) val.textContent = '—';
+      else val.textContent = current ? current + ' %' : 'выключен';
+    };
+    show();
+    btn.onclick = async () => {
+      const def = Number.isFinite(current) && current ? String(current) : '85';
+      const input = prompt('Остановить зарядку при заряде, %\n(0 — выключить лимит):', def);
+      if (input === null) return;
+      const n = parseInt(input, 10);
+      if (!Number.isFinite(n) || n < 0 || n > 100) { toast('Нужно число от 0 до 100'); return; }
+      try {
+        await api('/api/config', { key: 'charge_limit', value: n });
+        current = n;
+        show();
+        toast(n ? 'Лимит ' + n + '% — плата применит при связи' : 'Лимит зарядки выключен');
+      } catch (e) { alert(e.message); }
+    };
+  }
+
+  /* ---------- климат по расписанию ---------- */
+  async function refreshClimPlan() {
+    const hint = document.getElementById('clim-plan-hint');
+    if (!hint) return;
+    try {
+      const r = await api('/api/sched');
+      const pend = (r.schedules || []).filter(x => x.status === 'waiting');
+      if (!pend.length) { hint.textContent = ''; return; }
+      const x = pend[0];
+      const t = new Date(x.at_ts * 1000);
+      const hh = String(t.getHours()).padStart(2, '0');
+      const mm = String(t.getMinutes()).padStart(2, '0');
+      hint.innerHTML = 'Запланировано на ' + hh + ':' + mm +
+        ' <button id="clim-cancel" style="border:0;background:none;color:var(--danger);font-size:12px;text-decoration:underline;cursor:pointer">отменить</button>';
+      const c = document.getElementById('clim-cancel');
+      if (c) c.onclick = async () => {
+        try {
+          await api('/api/sched/cancel', { id: x.id });
+          toast('Расписание отменено');
+          refreshClimPlan();
+        } catch (e) { alert(e.message); }
+      };
+    } catch (e) { hint.textContent = ''; }
+  }
+
+  function initClimPlan() {
+    const btn = document.getElementById('clim-plan');
+    if (!btn || btn.dataset.lcBound) return;
+    btn.dataset.lcBound = '1';
+    btn.onclick = async () => {
+      const time = (document.getElementById('clim-at') || {}).value || '08:00';
+      const parts = time.split(':');
+      const now = new Date();
+      const at = new Date(now.getFullYear(), now.getMonth(), now.getDate(),
+                          parseInt(parts[0], 10) || 0, parseInt(parts[1], 10) || 0);
+      if (at <= now) at.setDate(at.getDate() + 1);
+      const minutes = Number((document.getElementById('hvac-minutes') || {}).value || 15);
+      try {
+        await api('/api/sched', { at: Math.floor(at.getTime() / 1000), minutes });
+        toast('Климат включится в ' + time + ' на ' + minutes + ' мин');
+        refreshClimPlan();
+      } catch (e) { alert(e.message); }
+    };
+    refreshClimPlan();
+  }
+
+  /* ---------- единый стиль подэкранов (как во «Ещё») ---------- */
+  function toGroups(id) {
+    const sec = document.getElementById(id);
+    if (!sec || sec.dataset.lcGroups) return;
+    sec.dataset.lcGroups = '1';
+    sec.querySelectorAll(':scope > .card').forEach(card => {
+      const head = card.querySelector(':scope > .card-header');
+      if (!head) return;
+      const title = (head.textContent || '').trim();
+      const group = document.createElement('div');
+      group.className = 'lg';
+      const t = document.createElement('div');
+      t.className = 'lg-title';
+      t.textContent = title;
+      const body = document.createElement('div');
+      body.className = 'lg-card';
+      while (card.firstChild) body.appendChild(card.firstChild);
+      const old = body.querySelector(':scope > .card-header');
+      if (old) old.remove();
+      group.appendChild(t);
+      group.appendChild(body);
+      card.replaceWith(group);
+    });
+  }
+
+  function styleSubScreens() {
+    ['screen-admin', 'screen-settings', 'screen-claim', 'screen-fw', 'screen-stats'].forEach(toGroups);
+  }
+
   function showSettings() {
+    styleSubScreens();
     $$('.screen').forEach(s => s.classList.remove('active'));
     const sec = $('#screen-settings');
     if (sec) sec.classList.add('active');
@@ -1160,6 +1267,7 @@
   }
 
   function showAdmin() {
+    styleSubScreens();
     $$('.screen').forEach(s => s.classList.remove('active'));
     const sec = $('#screen-admin');
     if (sec) sec.classList.add('active');
@@ -1429,6 +1537,7 @@
   }
 
   function showClaim() {
+    styleSubScreens();
     $$('.screen').forEach(s => s.classList.remove('active'));
     const sec = $('#screen-claim');
     if (sec) sec.classList.add('active');
@@ -1485,6 +1594,7 @@
   }
 
   function showFirmware() {
+    styleSubScreens();
     if (userRole !== 'admin') { toast('Обновление делает администратор'); return; }
     $$('.screen').forEach(s => s.classList.remove('active'));
     const sec = $('#screen-fw');
@@ -1688,7 +1798,9 @@
     addDeviceChip();
     interceptMore();
     bindCards();
-    loadRole().then(() => { addMoreRows(); showNotices(); });
+    loadRole().then(() => { addMoreRows(); showNotices(); styleSubScreens(); });
+  initGarageLimit();
+  initClimPlan();
     const obs = new MutationObserver(() => {
       cleanMore(); interceptMore(); bindCards(); addMoreRows(); bindClaimButton();
     });
