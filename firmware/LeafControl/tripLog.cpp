@@ -443,33 +443,24 @@ void tripLogTick() {
   float powerW = (dataOk && v > 0) ? fabsf(v * i) : 0.0f;
 
   if (!tripActive) {
-    if (moved && epoch) {
-      if (!tripPending) {
-        tripPending = true;
-        tripPendEpoch = epoch;
-        tripPendMs = now;
-        tripPendOdo = lastOdo;
-        tripPendSoc = soc;
-      }
-      // Счётчик пробега у этой машины идёт шагом 0.1 км, поэтому «движение»
-      // видно не на каждом тике. Копим от стартовой отметки, а не от
-      // предыдущего тика, иначе поездка никогда не запускалась.
-      if (lastOdo > 0 && tripPendOdo > 0 && (lastOdo - tripPendOdo) >= 0.10f) {
-        tripActive = true;
-        tripPending = false;
-        tripStartEpoch = tripPendEpoch;
-        tripStartMs = tripPendMs;
-        tripOdoStart = tripPendOdo;
-        tripSocStart = tripPendSoc;
-        tripSocEnd = soc;
-        tripKwh = tripKwhDay = tripKwhNight = 0;
-        tripMoveMs = now;
-        tripOffSinceMs = 0;
-        saveTripToRtc(true);
-        Serial.printf("[log] trip started at %.2f km\n", (double)tripOdoStart);
-      }
+    // Одометр машины отдаёт целые километры, поэтому первое же новое значение
+    // — это уже полноценная поездка. Раньше старт требовал второго километра
+    // в пределах двух минут: в городе километр набегает дольше, и поездки
+    // терялись целиком (12.11.2026 не записалась ни одна).
+    if (moved && epoch && lastOdo > 0) {
+      tripActive = true;
+      tripPending = false;
+      tripStartEpoch = epoch;
+      tripStartMs = now;
+      tripOdoStart = lastOdo;
+      tripSocStart = soc;
+      tripSocEnd = soc;
+      tripKwh = tripKwhDay = tripKwhNight = 0;
+      tripMoveMs = now;
+      tripOffSinceMs = 0;
+      saveTripToRtc(true);
+      Serial.printf("[log] trip started at %.0f km (first new km)\n", (double)tripOdoStart);
     } else if (tripPending && (now - tripPendMs > 120000UL)) {
-      // две минуты без движения — это был не выезд, а манёвр
       tripPending = false;
     }
   }

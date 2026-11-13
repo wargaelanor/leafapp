@@ -201,14 +201,16 @@ static String modemProbeRun() {
   log += String(found);
   log += " бод\n\n";
 
-  String ati = ask("ATI", 900, log);
-  String cpin = ask("AT+CPIN?", 900, log);
-  String csq = ask("AT+CSQ", 900, log);
-  String creg = ask("AT+CREG?", 1200, log);
-  String cops = ask("AT+COPS?", 1200, log);
-  String cgatt = ask("AT+CGATT?", 1200, log);
-  String imei = ask("AT+GSN", 900, log);
-  ask("AT+CGDCONT?", 900, log);
+  // SIM800 отвечает медленно, а echo выключен: слишком короткий таймаут
+  // обрезал ответ (CPIN приходил как "Y") и диагностика врала.
+  String ati = ask("ATI", 1500, log);
+  String cpin = ask("AT+CPIN?", 2500, log);
+  String csq = ask("AT+CSQ", 1500, log);
+  String creg = ask("AT+CREG?", 2000, log);
+  String cops = ask("AT+COPS?", 2000, log);
+  String cgatt = ask("AT+CGATT?", 2000, log);
+  String imei = ask("AT+GSN", 2000, log);
+  ask("AT+CGDCONT?", 2000, log);
 
   bool simOk = cpin.indexOf("READY") >= 0;
   long signal = valueAfter(csq, "+CSQ:", -1);

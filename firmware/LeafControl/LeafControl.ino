@@ -25,17 +25,44 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FR-TCall.161"
+#define LEAF_FIRMWARE_VERSION "FR-TCall.162"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: two MCP2515 CAN buses + SIM800"
 #else
-#define LEAF_FIRMWARE_VERSION "FR-2can.161"
-#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: профили ZE1/AZE0"
+#define LEAF_FIRMWARE_VERSION "FR-2can.162"
+#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: поездки, модем, сторож цикла"
 #endif
 
 // Доступ к версии из других модулей (serverApi.cpp).
 const char* leafFwVersion = LEAF_FIRMWARE_VERSION;
 
 WebServer server(80);
+
+// Сторож основного цикла: если loop() перестал двигаться (зависание в SPI,
+// ожидании сокета, драйвере), плата сама перезагружается и снова поднимает
+// веб-страницу и связь с сервером. gLoopBeat растёт в loop() и в длинных
+// операциях (загрузка CAN-лога, OTA), чтобы они не считались зависанием.
+volatile uint32_t gLoopBeat = 0;
+
+static void loopWatchdogTask(void* arg) {
+  (void)arg;
+  uint32_t last = 0;
+  uint8_t same = 0;
+  for (;;) {
+    vTaskDelay(pdMS_TO_TICKS(5000));
+    uint32_t now = gLoopBeat;
+    if (now == last) {
+      if (++same >= 18) {          // 90 секунд без прогресса
+        Serial.println("### watchdog: loop stalled 90 s, restart ###");
+        delay(50);
+        ESP.restart();
+      }
+    } else {
+      same = 0;
+      last = now;
+    }
+  }
+}
+
 DNSServer dnsServer;
 bool captivePortalActive = false;
 unsigned long rebootPendingAt = 0;
@@ -1180,6 +1207,7 @@ void handleOtaUpload() {
     }
   } else if (upload.status == UPLOAD_FILE_WRITE) {
     otaLastProgressMs = millis();
+    gLoopBeat++;
     if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
       Update.printError(Serial);
     }
@@ -2403,7 +2431,10 @@ void setup() {
       // dropped Accept-Encoding and disabled the gzip path. Ask for everything:
       // this core has no per-request cost worth worrying about here.
       server.collectAllHeaders();
-      server.on("/", handleRootEntry);
+      // Сторож цикла: 5 с тик, перезагрузка после 90 с без прогресса.
+  xTaskCreatePinnedToCore(loopWatchdogTask, "loop-wd", 3072, nullptr, 1, nullptr, 0);
+
+  server.on("/", handleRootEntry);
       server.on("/app", handleRoot);
       server.on("/ui", HTTP_POST, handleUiSwitch);
       server.on("/lite", handleLite);
@@ -2519,6 +2550,7 @@ for (size_t i = 0; i < WEBAPP_ASSET_COUNT; i++) {
 }
 
 void loop() {
+  gLoopBeat++;
   loopHeartbeatMs = millis();
   {
     uint32_t nowTick = loopHeartbeatMs;

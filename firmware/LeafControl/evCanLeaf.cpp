@@ -492,11 +492,16 @@ void setupEvCAN() {
   // SO on GPIO35 (the old draft pin) while the firmware reads GPIO34; that
   // looks exactly like a dead chip (CANSTAT=0x00). GPIO35 is also the battery
   // divider on this board, so it is reported separately.
+  // На T-2CAN GPIO35 занят приёмом UART модема (SIM800 RX). pinMode() снимает
+  // с пина функцию UART, и модем замолкает до перезагрузки — именно поэтому
+  // AT отвечал только в первые секунды после старта.
+#if BOARD_MODEM_RX != 35
   pinMode(35, INPUT);
   delay(2);
   uint8_t gpio35 = digitalRead(35);
-  uint8_t canstat = probeMisoPin(EVCAN_SPI_MISO);
   Serial.printf("EV-CAN: GPIO35 idle=%u (battery divider, not usable for CAN)\n", gpio35);
+#endif
+  uint8_t canstat = probeMisoPin(EVCAN_SPI_MISO);
 
   SPI.begin(EVCAN_SPI_SCLK, EVCAN_SPI_MISO, EVCAN_SPI_MOSI, EVCAN_SPI_CS);
 

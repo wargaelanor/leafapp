@@ -151,6 +151,16 @@ static void attachTask(void*) {
     vTaskDelay(1000);
   }
   if (!atOk) {
+    // Модем мог остаться с сбитым UART (например, пин перевели в GPIO) или
+    // проснуться не на той скорости: один раз переинициализируем линию.
+    Serial.println("[modem] no AT, re-init UART");
+    modemHwBegin();
+    for (int i = 0; i < 3 && !atOk; i++) {
+      if (hwTestAt(2000)) atOk = true;
+      else vTaskDelay(pdMS_TO_TICKS(700));
+    }
+  }
+  if (!atOk) {
     modemPrepared = false;
     attachFailed("[modem] no AT response (boot timeout)");
     return;

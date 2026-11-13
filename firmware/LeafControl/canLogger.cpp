@@ -3,6 +3,7 @@
 #include <FFat.h>
 
 extern WebServer server;
+extern volatile uint32_t gLoopBeat;
 
 // Формат записи: 19 байт, little-endian (совпадает с разбором на сервере).
 struct __attribute__((packed)) CanLogRecord {
@@ -399,6 +400,8 @@ void canLoggerSendDownload() {
       used += snprintf(line + used, sizeof(line) - used, " %02X", record.data[d]);
     }
     textLength += used + 2; // CRLF
+    static uint32_t scanTick = 0;
+    if ((scanTick++ & 0x3FF) == 0) gLoopBeat++;
   }
   if (full) textLength += strlen("# BUFFER FULL - recording stopped automatically\r\n");
   input.seek(0);
@@ -427,6 +430,7 @@ void canLoggerSendDownload() {
     snprintf(line + used, sizeof(line) - used, "\r\n");
     chunk += line;
     if (chunk.length() >= 900) {
+      gLoopBeat++;
       if (!client.connected() || client.write((const uint8_t*)chunk.c_str(), chunk.length()) != chunk.length()) {
         input.close();
         client.stop();
