@@ -255,7 +255,7 @@ static void setStatus(const char* s);  // forward
 // Синхронизация через SIM800 включается, когда на роутере открыт проброс
 // этого порта на сервер. До тех пор не тратим трафик и время на таймауты.
 #ifndef LEAF_MODEM_HTTP
-#define LEAF_MODEM_HTTP 0
+#define LEAF_MODEM_HTTP 1
 #endif
 
 static bool modemHttpReady() {
