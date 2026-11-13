@@ -1746,14 +1746,13 @@
     async function tick() {
       const wide = window.innerWidth >= 720;
       try {
-        const r = await api('/api/devices');
-        const list = (r.devices || []).slice().sort((a, b) => (b.last_seen || 0) - (a.last_seen || 0));
-        const d = list[0];
-        if (!d) { label.textContent = 'нет плат'; b.style.color = 'var(--muted)'; b.title = ''; return; }
-        const on = !!d.online;
-        const age = d.last_seen ? Math.max(0, Math.round(Date.now() / 1000 - d.last_seen)) : -1;
-        const fw = d.fw || '';
-        const who = d.name || d.login || 'плата';
+        // Показываем выбранную машину, а не самую свежую по связи:
+        // /api/status отвечает данными именно текущего устройства.
+        const r = await api('/api/status');
+        const on = !!r.online;
+        const age = (typeof r.age === 'number' && r.age >= 0) ? r.age : -1;
+        const fw = r.fw || '';
+        const who = r.device_name || r.device || 'плата';
         if (on) {
           label.textContent = wide ? (who + ' · на связи · ' + (age >= 0 ? human(age) + ' назад' : '') + (fw ? ' · ' + fw : ''))
                                    : (who + ' · на связи');
@@ -1763,9 +1762,10 @@
                                    : (who + ' · нет связи');
           b.style.color = '#d9534f';
         }
-        b.title = who + (d.login ? ' (' + d.login + ')' : '') + ': ' +
+        b.title = who + ' — текущая машина: ' +
           (on ? 'плата на связи' : 'плата не на связи') +
-          (age >= 0 ? ', ' + human(age) + ' назад' : '') + (fw ? ', прошивка ' + fw : '');
+          (age >= 0 ? ', ' + human(age) + ' назад' : '') +
+          (fw ? ', прошивка ' + fw : '');
       } catch (e) {
         label.textContent = wide ? 'сервер недоступен' : 'нет сервера';
         b.style.color = '#d9534f';
