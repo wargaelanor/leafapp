@@ -450,6 +450,18 @@ bool hwNetworkConnected() {
   return response.indexOf(",1") >= 0 || response.indexOf(",5") >= 0;
 }
 
+// Числовой статус регистрации (вторая цифра CREG) или -1, если модем не
+// отвечает. -1 вместе с неудачным CSQ = модем умер (просадка питания).
+int hwRegState() {
+  String response;
+  if (!commandOk("AT+CREG?", 3000, &response)) return -1;
+  int marker = response.indexOf("+CREG:");
+  if (marker < 0) return -1;
+  int comma = response.indexOf(',', marker);
+  if (comma < 0) return -1;
+  return response.substring(comma + 1).toInt();
+}
+
 // SIM800 reports network time as "yy/MM/dd,hh:mm:ss+zz" (zz is a quarter-hour
 // offset from UTC). Use it to set the board clock when NTP is unavailable.
 bool hwNetworkTime(uint32_t* epoch) {

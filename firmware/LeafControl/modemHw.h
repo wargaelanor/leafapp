@@ -11,6 +11,8 @@ bool hwTestAt(uint32_t timeoutMs);
 bool hwSimReady();
 bool hwSelectNetwork(const char* apn, const char* user);
 bool hwNetworkConnected();
+// Числовой статус регистрации (вторая цифра CREG), -1 если модем не отвечает.
+int hwRegState();
 int16_t hwSignal();
 bool hwGprsConnect(const char* apn, const char* user, const char* pass);
 bool hwGprsDisconnect();

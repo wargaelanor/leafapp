@@ -155,6 +155,14 @@ static void attachTask(void*) {
     // проснуться не на той скорости: один раз переинициализируем линию.
     Serial.println("[modem] no AT, re-init UART");
     modemHwBegin();
+    atOk = hwTestAt(2000);
+  }
+  if (!atOk) {
+    // Модем мог выключиться (просадка питания на всплесках GSM, PWRKEY):
+    // включаем его силой и ждём загрузки.
+    Serial.println("[modem] still no AT, PWRKEY power-on");
+    pulsePwrKey(true);
+    vTaskDelay(pdMS_TO_TICKS(3500));
     for (int i = 0; i < 3 && !atOk; i++) {
       if (hwTestAt(2000)) atOk = true;
       else vTaskDelay(pdMS_TO_TICKS(700));
@@ -187,10 +195,24 @@ static void attachTask(void*) {
 
   start = millis();
   uint8_t probe = 0;
+  uint8_t deadProbes = 0;
   bool netOk = false;
   while (millis() - start < ATTACH_NET_TIMEOUT_MS) {
     if (hwNetworkConnected()) { netOk = true; break; }
-    if ((++probe % 4) == 0) Serial.printf("[modem] waiting for network... rssi=%d\n", (int)hwSignal());
+    if ((++probe % 4) == 0) {
+      int16_t rssi = hwSignal();
+      int creg = modem800::hwRegState();
+      Serial.printf("[modem] waiting for network... rssi=%d creg=%d\n",
+                    (int)rssi, creg);
+      // Если не отвечает и CSQ, и CREG — модем заглох (просадка питания
+      // без аккумулятора, помехи по питанию). Ретраим раньше таймаута.
+      bool dead = (rssi < 0) && (creg < 0);
+      deadProbes = dead ? (uint8_t)(deadProbes + 1) : 0;
+      if (deadProbes >= 3) {
+        attachFailed("[modem] modem stopped answering (power brownout?)");
+        return;
+      }
+    }
     vTaskDelay(2500);
   }
   if (!netOk) {

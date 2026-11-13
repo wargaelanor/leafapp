@@ -25,11 +25,11 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FR-TCall.168"
-#define LEAF_FIRMWARE_DESCRIPTION "T-Call: two MCP2515 CAN buses + SIM800"
+#define LEAF_FIRMWARE_VERSION "FR-TCall.169"
+#define LEAF_FIRMWARE_DESCRIPTION "T-Call: PWRKEY recovery + CREG diagnostics on attach"
 #else
-#define LEAF_FIRMWARE_VERSION "FR-2can.168"
-#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: поездки по скорости, интернет через SIM800"
+#define LEAF_FIRMWARE_VERSION "FR-2can.169"
+#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: PWRKEY recovery + CREG diagnostics on attach"
 #endif
 
 // Доступ к версии из других модулей (serverApi.cpp).
