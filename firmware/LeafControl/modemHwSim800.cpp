@@ -301,6 +301,101 @@ void hwSetSleep(bool enable) {
   Serial.printf("[call] modem sleep %s\n", enable ? "on (CSCLK=2)" : "off");
 }
 
+// ---------------------------------------------------------------- HTTP (AT+HTTP)
+// SIM800 не умеет TLS с SNI, поэтому к серверу ходим по обычному HTTP на
+// отдельный порт (проброс на роутере). Ответ отдаём как есть.
+static bool httpInit() {
+  // bringUpGprs() оставляет модуль в прозрачном режиме (CIPMODE=1) — в нём
+  // AT+HTTPINIT не отвечает. Сначала просто выходим из прозрачного режима.
+  commandOk("AT+CIPMODE=0", 2000);
+  if (commandOk("AT+HTTPINIT", 5000)) return true;
+
+  // Не помогло: закрываем TCP и заново поднимаем bearer (APN уже известен).
+  commandOk("AT+CIPSHUT", 8000);
+  commandOk("AT+SAPBR=3,1,\"CONTYPE\",\"GPRS\"", 2000);
+  String apn = savedApn.length() ? savedApn : String("internet.beeline.ru");
+  commandOk("AT+SAPBR=3,1,\"APN\",\"" + apn + "\"", 2000);
+  commandOk("AT+SAPBR=1,1", 45000);
+  commandOk("AT+HTTPTERM", 2000);
+  return commandOk("AT+HTTPINIT", 5000);
+}
+
+static volatile bool httpBusy = false;
+
+bool hwHttp(int method, const char* url, const char* body, String& response, int& code) {
+  code = 0;
+  response = "";
+  // Один HTTP-запрос за раз: иначе синхронизация и ручная проверка мешают
+  // друг другу на одном UART.
+  if (httpBusy) return false;
+  httpBusy = true;
+  if (!httpInit()) {
+    httpBusy = false;
+    Serial.println("[http] init failed");
+    return false;
+  }
+  bool ok = false;
+
+  do {
+    String cidResp;
+    if (!commandOk("AT+HTTPPARA=\"CID\",1", 4000, &cidResp)) {
+      Serial.printf("[http] cid failed: %s\n", cidResp.c_str());
+      break;
+    }
+    String u = String("AT+HTTPPARA=\"URL\",\"") + url + "\"";
+    String urlResp;
+    if (!commandOk(u, 5000, &urlResp)) {
+      Serial.printf("[http] url failed: %s\n", urlResp.c_str());
+      break;
+    }
+
+    if (method == 1) {
+      if (!commandOk("AT+HTTPPARA=\"CONTENT\",\"application/json\"", 2000)) break;
+      size_t len = body ? strlen(body) : 0;
+      sendCommand("AT+HTTPDATA=" + String((unsigned long)len) + ",20000");
+      String dl;
+      if (!awaitText("DOWNLOAD", 6000, &dl)) { Serial.println("[http] no DOWNLOAD"); break; }
+      if (len) {
+        simSerial.write(reinterpret_cast<const uint8_t*>(body), len);
+        simSerial.flush();
+      }
+      String posted;
+      if (!awaitText("OK", 20000, &posted)) { Serial.println("[http] post not accepted"); break; }
+    }
+
+    sendCommand(method == 1 ? "AT+HTTPACTION=1" : "AT+HTTPACTION=0");
+    String act;
+    if (!awaitText("+HTTPACTION:", 45000, &act)) { Serial.println("[http] no action URC"); break; }
+    Serial.printf("[http] action raw: %s\n", act.substring(act.indexOf("+HTTPACTION:")).c_str());
+    int p = act.indexOf("+HTTPACTION:");
+    int p2 = act.indexOf(',', p);
+    int p3 = act.indexOf(',', p2 + 1);
+    if (p2 < 0 || p3 < 0) break;
+    code = act.substring(p2 + 1, p3).toInt();
+    long declared = act.substring(p3 + 1).toInt();
+
+    sendCommand("AT+HTTPREAD");
+    String rd;
+    if (!awaitText("+HTTPREAD:", 10000, &rd)) { Serial.println("[http] no read"); break; }
+    int nl = rd.indexOf('\n', rd.indexOf("+HTTPREAD:"));
+    if (nl < 0) break;
+    String head = rd.substring(nl + 1);
+    String tail;
+    awaitText("OK", 10000, &tail);
+    String all = head + tail;
+    int okPos = all.lastIndexOf("OK");
+    if (okPos >= 0) all = all.substring(0, okPos);
+    all.trim();
+    (void)declared;
+    response = all;
+    ok = (code >= 200 && code < 400);
+  } while (false);
+
+  commandOk("AT+HTTPTERM", 3000);
+  httpBusy = false;
+  return ok;
+}
+
 bool hwSimReady() {
   String response;
   return commandOk("AT+CPIN?", 3000, &response) && response.indexOf("READY") >= 0;

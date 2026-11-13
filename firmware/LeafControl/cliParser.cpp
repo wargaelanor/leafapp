@@ -5,6 +5,8 @@
 #include "evCanLeaf.h"
 #include "vehicleTypes.h"
 #include "udsLeaf.h"
+#include "modemHw.h"
+#include "modemManager.h"
 
 // Live vehicle state, defined in LeafControl.ino (diagnostics only)
 extern float currentSOC;
@@ -186,7 +188,23 @@ void executeCommand(char* cmd) {
             Serial.println("Usage: set <key> <value>");
         }
     } 
-    else if (strcmp(command, "log") == 0) {
+    else if (strcmp(command, "http") == 0) {
+    // Проверка канала через SIM800: http <url>. Печатает код и начало ответа.
+    char* url = strtok(NULL, " ");
+    if (!url) {
+      Serial.println("Usage: http http://host/path");
+      return;
+    }
+    String resp;
+    int code = 0;
+    modemManagerPause(true);
+    bool ok = modem800::hwHttp(0, url, nullptr, resp, code);
+    modemManagerPause(false);
+    Serial.printf("HTTP %s code=%d len=%u\n", ok ? "ok" : "fail", code,
+                  (unsigned)resp.length());
+    Serial.println(resp.substring(0, 300));
+  }
+  else if (strcmp(command, "log") == 0) {
         char* option = strtok(NULL, " ");
         if (option != NULL && strcmp(option, "on") == 0) {
             canLogFrames = true;

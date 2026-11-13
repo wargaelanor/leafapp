@@ -48,6 +48,8 @@ void handleEvInstrumentSOC(float soc);
 // BMS-reported SOC (diagnostic group 0x01), the honest ZE1 value.
 void handleEvBmsSOC(float soc);
 void handleEvVehicleOn(bool on);
+void handleEvSpeed(float kph);   // 0x284, км/ч
+float evSpeedKph();             // последняя скорость, 0 если данных нет
 void handleBatteryTemp(float temp);
 
 #endif

@@ -72,6 +72,9 @@ static uint32_t tripPendEpoch = 0;
 static unsigned long tripPendMs = 0;
 static float tripPendOdo = 0;
 static float tripPendSoc = -1;
+// Пробег, посчитанный по скорости: одометр машины шагает целыми километрами,
+// и короткая поездка по нему дала бы 0 км.
+static float tripKmSpeed = 0;
 
 // Признак «машина живёт» для авто-записи CAN: включена, едет, климат, зарядка.
 static bool sessionActive = false;
@@ -279,6 +282,8 @@ static void finishTrip(const char* reason) {
   unsigned long durMs = millis() - tripStartMs;
   float km = (lastOdo > 0 && tripOdoStart > 0) ? (lastOdo - tripOdoStart) : 0;
   if (km < 0) km = 0;
+  if (tripKmSpeed > km) km = tripKmSpeed;   // короткие поездки: считаем по скорости
+  tripKmSpeed = 0;
   // Ignore noise: shorter than 20 s and less than 50 m.
   if (durMs < 20000UL && km < 0.05f) return;
 
@@ -443,12 +448,14 @@ void tripLogTick() {
   bool ready = (evData.vehicleOn == 1);
   float powerW = (dataOk && v > 0) ? fabsf(v * i) : 0.0f;
 
+  float speedKph = evSpeedKph();
+  bool speeding = speedKph >= 5.0f;   // поехали (5 км/ч), даже если не набежал километр
+
   if (!tripActive) {
-    // Одометр машины отдаёт целые километры, поэтому первое же новое значение
-    // — это уже полноценная поездка. Раньше старт требовал второго километра
-    // в пределах двух минут: в городе километр набегает дольше, и поездки
-    // терялись целиком (12.11.2026 не записалась ни одна).
-    if (moved && epoch && lastOdo > 0) {
+    // Старт — по скорости выше 5 км/ч или по первому новому километру
+    // одометра (если кадр скорости не пришёл). Раньше требовался второй
+    // километр в пределах двух минут: короткие и городские поездки терялись.
+    if (((speeding && epoch) || (moved && epoch && lastOdo > 0))) {
       tripActive = true;
       tripPending = false;
       tripStartEpoch = epoch;
@@ -457,17 +464,22 @@ void tripLogTick() {
       tripSocStart = soc;
       tripSocEnd = soc;
       tripKwh = tripKwhDay = tripKwhNight = 0;
+      tripKmSpeed = 0;
       tripMoveMs = now;
       tripOffSinceMs = 0;
       saveTripToRtc(true);
-      Serial.printf("[log] trip started at %.0f km (first new km)\n", (double)tripOdoStart);
+      Serial.printf("[log] trip started: %.0f km, %.0f km/h\n",
+                    (double)tripOdoStart, (double)speedKph);
     } else if (tripPending && (now - tripPendMs > 120000UL)) {
       tripPending = false;
     }
   }
 
   if (tripActive) {
-    if (moved) {
+    if (dtMs > 0 && dtMs < 30000UL && speedKph > 0.5f) {
+      tripKmSpeed += speedKph * ((float)dtMs / 3600000.0f);
+    }
+    if (moved || speeding) {
       tripMoveMs = now;
       tripOffSinceMs = 0;
       rtcTripOdoLast = lastOdo;
@@ -481,7 +493,7 @@ void tripLogTick() {
     // Конец поездки: машина не в READY, не едет и не заряжается. Пять минут
     // запаса — чтобы стоянка у магазина не закрывала поездку.
     // Машина выключена = не READY, не едет, не заряжается и не тянет ток.
-    if (!ready && !moved && !charging && powerW < 150.0f) {
+    if (!ready && !moved && !speeding && !charging && powerW < 150.0f) {
       if (tripOffSinceMs == 0) tripOffSinceMs = now;
     } else {
       tripOffSinceMs = 0;

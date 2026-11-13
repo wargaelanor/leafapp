@@ -2149,6 +2149,21 @@ class Api(BaseHTTPRequestHandler):
 
 # ---------------------------------------------------------------- фоновые задачи
 
+class PlainDeviceApi(Api):
+    """Приём плат по обычному HTTP.
+
+    SIM800 не умеет TLS с SNI, поэтому до сервера ему нужен отдельный порт.
+    Здесь открыты только /api/device/* — страницы, вход по паролю и админка
+    на этот порт не попадают.
+    """
+
+    def route(self, method: str):
+        path = urlparse(self.path).path.rstrip("/") or "/"
+        if not path.startswith("/api/device/"):
+            return self.err(403, "https only")
+        return super().route(method)
+
+
 def scheduler_loop():
     while True:
         try:
@@ -2546,6 +2561,17 @@ def main():
     port = int(os.environ.get("LEAF_PORT", "8080"))
     srv = ThreadingHTTPServer(("0.0.0.0", port), Api)
     print(f"LeafControl API on :{port}, db={DB_PATH}", flush=True)
+
+    # Порт для плат по обычному HTTP (у контейнера уже проброшен 8090).
+    plain_port = int(os.environ.get("LEAF_PLAIN_PORT", "8090"))
+    if plain_port and plain_port != port:
+        try:
+            plain = ThreadingHTTPServer(("0.0.0.0", plain_port), PlainDeviceApi)
+            threading.Thread(target=plain.serve_forever, daemon=True).start()
+            print(f"plain device HTTP on :{plain_port} (/api/device only)", flush=True)
+        except OSError as exc:  # noqa: BLE001
+            print("plain listener failed:", repr(exc), flush=True)
+
     srv.serve_forever()
 
 

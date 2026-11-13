@@ -18,6 +18,7 @@ inline constexpr CANMessage<7> battery_capacity_readout = {0x5BC}; // GIDS + SOH
 inline constexpr CANMessage<8> battery_temp_hvb_readout = {0x5C0}; // LBC pack temperature (mux 1/2/3)
 inline constexpr CANMessage<5> battery_temp_vcm_readout = {0x5B3}; // VCM pack temperature (fallback)
 inline constexpr CANMessage<4> odometer_readout = {0x5C5};
+inline constexpr CANMessage<6> speed_readout = {0x284};   // скорость, км/ч (OVMS: d4<<8|d5 / 98)
 inline constexpr CANMessage<7> odometer_units_readout = {0x355};
 inline constexpr CANMessage<4> battery_pack_readout = {0x1DB};
 

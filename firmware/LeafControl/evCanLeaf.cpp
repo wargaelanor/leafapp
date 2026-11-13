@@ -102,6 +102,8 @@ static uint8_t  emptySweeps = 0;
 static uint32_t evHardResets = 0;
 static uint32_t lastEvFrameMs = 0;
 static bool     evFrameSeen = false;
+static float    evSpeed = 0.0f;
+static unsigned long evSpeedMs = 0;
 static uint32_t lastErrRefreshMs = 0;
 // Raw payloads of the frames that carry battery data, for remote decoding.
 static uint8_t  rawPack1db[8];
@@ -659,4 +661,19 @@ uint8_t evCanRawTemp(uint8_t* out) {
 uint32_t evCanLastFrameAgeSec() {
   if (!evFrameSeen) return 0xFFFFFFFFUL;
   return (millis() - lastEvFrameMs) / 1000UL;
+}
+
+// ---- скорость (0x284) ---------------------------------------------------
+void handleEvSpeed(float kph) {
+  if (kph < 0.0f) kph = 0.0f;
+  if (kph > 250.0f) kph = 250.0f;
+  evSpeed = kph;
+  unsigned long now = millis();
+  evSpeedMs = now ? now : 1;
+}
+
+float evSpeedKph() {
+  if (!evSpeedMs) return 0.0f;
+  if (millis() - evSpeedMs > 30000UL) return 0.0f;   // данные устарели
+  return evSpeed;
 }

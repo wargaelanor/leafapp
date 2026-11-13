@@ -281,7 +281,23 @@ static String modemProbeRun() {
     gprsOk = ip.length() > 0 && ip != "0.0.0.0";
 
     if (gprsOk) {
-      log += "\n--- проверка интернета (TCP до сервера:80) ---\n";
+      log += "\n--- проверка HTTP (AT+HTTP, httpbin.org) ---\n";
+  {
+    String httpResp;
+    int httpCode = 0;
+    bool httpOk = modem800::hwHttp(0, "http://httpbin.org/get", nullptr, httpResp, httpCode);
+    log += String("HTTP ") + (httpOk ? "ok" : "fail") + ", код " + String(httpCode);
+    if (httpResp.length()) {
+      String brief = httpResp.substring(0, 120);
+      brief.replace("\r", " ");
+      brief.replace("\n", " ");
+      log += ": ";
+      log += brief;
+    }
+    log += "\n";
+  }
+
+  log += "\n--- проверка интернета (TCP до сервера:80) ---\n";
       String host = "leaf.wargaelanor.keenetic.link";
       String start = ask(("AT+CIPSTART=\"TCP\",\"" + host + "\",80").c_str(), 12000, log);
       tcpOk = start.indexOf("CONNECT OK") >= 0 || start.indexOf("ALREADY CONNECT") >= 0;

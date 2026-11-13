@@ -136,6 +136,17 @@ void handleDoorsAndLocksMessage(const uint8_t* data, uint8_t len) {
     }
 }
 
+// 0x284 — скорость автомобиля. OVMS: (d[4]<<8 | d[5]) / 98 км/ч.
+// Нужна для старта поездки: одометр шагает целыми километрами, поэтому
+// короткие поездки по нему не поймать.
+void handleSpeedMessage(const uint8_t* data, uint8_t len) {
+    if (len < 6) return;
+    uint16_t raw = ((uint16_t)data[4] << 8) | data[5];
+    float kph = raw / 98.0f;
+    if (kph > 250.0f) kph = 250.0f;
+    handleEvSpeed(kph);
+}
+
 void handleRangeInstrumentMessage(const uint8_t* data, uint8_t len) {
     (void)len;
     // ZE1: verified on this car (05 10 -> 162 km on the cluster).
@@ -534,6 +545,7 @@ static const MessageParser parsers[] = {
     // 9.6-11.4 C on this ZE1. Do not publish that unverified fallback.
     CAN_PARSER(odometer_units_readout, handleOdometerUnitsMessage),
     CAN_PARSER(odometer_readout, handleOdometerMessage),
+  CAN_PARSER(speed_readout, handleSpeedMessage),
     { 0x79A, 1, handleVcmResponse },
     { 0x763, 1, handleBcmResponse },   // Tier-1 UDS: BCM (TPMS)
     { 0x760, 1, handleAbsResponse },   // Tier-1 UDS: ABS (brake/accel/angle)

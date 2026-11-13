@@ -23,6 +23,11 @@ void hwRejectCall();
 bool hwAnswerAndPlay(uint8_t recordId);
 bool hwEnableGps();
 bool hwGetGps(float* lat, float* lon, float* alt, float* speed);
+
+// HTTP через встроенный клиент SIM800 (AT+HTTP). TLS модуль не умеет,
+// поэтому сервер принимает устройства на отдельном HTTP-порту.
+// method: 0 = GET, 1 = POST. Возвращает true при коде 2xx/3xx.
+bool hwHttp(int method, const char* url, const char* body, String& response, int& code);
 void hwPulsePwrKey(int pin, bool powerOn);
 }
 

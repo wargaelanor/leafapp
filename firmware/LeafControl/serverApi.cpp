@@ -9,6 +9,8 @@
 #include "tripLog.h"
 #include "canLogger.h"
 #include "vehicleProfile.h"
+#include "modemManager.h"
+#include "modemHw.h"
 #include <Update.h>
 #include "configuration.h"
 #include "serverCa.h"
@@ -243,8 +245,60 @@ static int request(const char* method, const String& pathAndQuery, const char* b
 
 static void setStatus(const char* s);  // forward
 
+// ---------------------------------------------------------------- SIM800 HTTP
+// Наш TLS-сервер модуль не тянет (нет SNI), поэтому через симку ходим на
+// обычный HTTP-порт сервера (проброс на роутере, по умолчанию 8090).
+#ifndef LEAF_PLAIN_PORT
+#define LEAF_PLAIN_PORT 8090
+#endif
+
+// Синхронизация через SIM800 включается, когда на роутере открыт проброс
+// этого порта на сервер. До тех пор не тратим трафик и время на таймауты.
+#ifndef LEAF_MODEM_HTTP
+#define LEAF_MODEM_HTTP 0
+#endif
+
+static bool modemHttpReady() {
+#if LEAF_MODEM_HTTP
+  return modemDataReady();
+#else
+  return false;
+#endif
+}
+
+static bool modemHttp(int method, const String& path, const char* body,
+                      String& resp, int& code) {
+  String host = String(cfgBase);
+  int p = host.indexOf("://");
+  if (p >= 0) host = host.substring(p + 3);
+  p = host.indexOf('/');
+  if (p >= 0) host = host.substring(0, p);
+  String url = String("http://") + host + ":" + String(LEAF_PLAIN_PORT) + path;
+  // Пока идёт HTTP, менеджер модема не должен слать свои AT (опрос вызовов),
+  // иначе ответы перемешиваются и HTTPINIT/HTTPACTION ломаются.
+  modemManagerPause(true);
+  bool ok = modem800::hwHttp(method, url.c_str(), body, resp, code);
+  modemManagerPause(false);
+  return ok;
+}
+
 static bool postJson(const String& path, const char* body, String& resp) {
-  int code = request("POST", path, body, resp);
+  int code;
+  if (WiFi.status() != WL_CONNECTED) {
+    if (!modemHttpReady()) return false;
+    if (modemHttp(1, path, body, resp, code)) return true;
+    if (code > 0) {
+      Serial.printf("[srv] modem POST %s -> %d: %s\n", path.c_str(), code,
+                    resp.substring(0, 120).c_str());
+      if (code == 401 || code == 403) {
+        saveToken("");
+        registered = false;
+        setStatus("re-enroll");
+      }
+    }
+    return false;
+  }
+  code = request("POST", path, body, resp);
   if (code >= 200 && code < 300) return true;
   // Токен отвергнут сервером — забываем его и регистрируемся заново.
   if (code == 401 || code == 403) {
@@ -996,6 +1050,13 @@ static void handleCommandResponse(const String& resp) {
 
 static bool pollCommands() {
   String resp;
+  if (WiFi.status() != WL_CONNECTED) {
+    if (!modemHttpReady()) return false;
+    int mcode = 0;
+    if (!modemHttp(0, "/api/device/cmd?wait=0", nullptr, resp, mcode)) return false;
+    handleCommandResponse(resp);
+    return true;
+  }
   int code = request("GET", "/api/device/cmd?wait=0", nullptr, resp, 6000);
   if (code >= 200 && code < 300) {
     handleCommandResponse(resp);
@@ -1086,8 +1147,9 @@ bool serverApiReady() {
 
 static void serverNetOnce() {
   if (!cfgEnabled) return;
-  if (WiFi.status() != WL_CONNECTED) {
-    setStatus("no wifi");
+  bool wifiUp = (WiFi.status() == WL_CONNECTED);
+  if (!wifiUp && !modemHttpReady()) {
+    setStatus("no link");
     return;
   }
   if (getRemoteTransport() != RemoteTransport::SERVER) return;
@@ -1110,7 +1172,8 @@ static void serverNetOnce() {
   }
 
   static unsigned long lastSyncMs = 0;
-  unsigned long interval = (WiFi.RSSI() < -80) ? 15000UL : 8000UL;
+  // По симке экономим трафик: полная синхронизация раз в минуту.
+  unsigned long interval = wifiUp ? ((WiFi.RSSI() < -80) ? 15000UL : 8000UL) : 60000UL;
   static bool linkOk = false;
   bool syncOk = false;
   if (now - lastSyncMs >= interval) {
@@ -1139,7 +1202,7 @@ static void serverNetOnce() {
   static unsigned long lastPingMs = 0;
   bool pingDue = (lastPingMs == 0) || (now - lastPingMs >= 60000UL) ||
                  (!linkOk && (now - lastPingMs >= 20000UL));
-  if (pingDue && WiFi.status() == WL_CONNECTED) {
+  if (pingDue && (wifiUp || modemHttpReady())) {
     if (sendPing()) {
       lastPingMs = now;
       lastOkMs = millis();
@@ -1161,7 +1224,7 @@ static void serverNetOnce() {
 static void serverNetLoop(void* arg) {
   (void)arg;
   for (;;) {
-    if (WiFi.status() == WL_CONNECTED) {
+    if (WiFi.status() == WL_CONNECTED || modemHttpReady()) {
       serverNetOnce();
     }
     vTaskDelay(pdMS_TO_TICKS(200));
@@ -1173,7 +1236,6 @@ unsigned long serverApiLastOkMs() { return lastOkMs; }
 void serverApiTick() {
   static bool started = false;
   if (started) return;
-  if (WiFi.status() != WL_CONNECTED) return;
   if (xTaskCreatePinnedToCore(serverNetLoop, "leaf-net", 16384, nullptr, 1, nullptr, 0) == pdPASS) {
     started = true;
     Serial.println("[srv] сетевой поток запущен");
