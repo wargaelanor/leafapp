@@ -747,50 +747,96 @@ body.demo .demo-banner{display:block}
 
     <!-- ЕЩЁ -->
     <section class="screen" id="screen-more">
-      <div class="section-title">Приложение</div>
-      <div class="more-item" onclick="openSettings()">
-        <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-1.42 3.42 2 2 0 01-1.41-.59l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-3.42-1.42 2 2 0 01.59-1.41l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 011.42-3.42 2 2 0 011.41.59l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 013.42 1.42 2 2 0 01-.59 1.41l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></div>
-        <span id="more-settings-label">Настройки подключения</span>
-        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+      <style>
+        #screen-more .mg{margin:0 0 16px}
+        #screen-more .mg-title{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin:0 4px 8px}
+        #screen-more .mg-card{background:var(--surface);border-radius:14px;box-shadow:0 1px 3px rgba(0,0,0,.06);overflow:hidden}
+        #screen-more .mg-card .more-item{display:flex;align-items:center;gap:12px;min-height:56px;padding:10px 14px;
+          border-bottom:1px solid var(--line);background:none;color:var(--text);cursor:pointer}
+        #screen-more .mg-card .more-item:last-child{border-bottom:none}
+        #screen-more .mg-card .more-item:active{background:var(--surface-2)}
+        #screen-more .mg-card .mi{width:34px;height:34px;border-radius:9px;background:var(--accent-soft);color:var(--accent);
+          display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+        #screen-more .mg-card .mi svg{width:18px;height:18px}
+        #screen-more .mg-card .mi.gray{background:var(--chip);color:var(--text-2)}
+        #screen-more .mg-card .mi.red{background:rgba(217,48,37,.08);color:#d93025}
+        #screen-more .mg-txt{flex:1;min-width:0}
+        #screen-more .mg-t{font-size:15px;color:var(--text)}
+        #screen-more .mg-s{font-size:12px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        #screen-more .mg-val{font-size:13px;color:var(--muted);white-space:nowrap}
+        #screen-more .mg-danger .mg-t{color:#d93025}
+        #screen-more .mg-card .chev{color:var(--muted);display:flex}
+        #screen-more .mg-card .chev svg{width:18px;height:18px}
+        #screen-more .more-profile{display:flex;align-items:center;gap:12px;padding:14px;margin:8px 0 16px;
+          background:var(--surface);border-radius:14px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+        #screen-more .more-profile .ava{width:44px;height:44px;border-radius:50%;background:var(--accent);color:#fff;
+          display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:600;flex:0 0 auto}
+        #screen-more .more-profile .nm{font-size:16px;color:var(--text)}
+        #screen-more .more-profile .mt{font-size:12px;color:var(--muted);margin-top:2px}
+        #screen-more .more-profile .pill{margin-left:auto;font-size:11px;padding:4px 9px;border-radius:999px;
+          background:var(--accent-soft);color:var(--accent);white-space:nowrap}
+        @media (min-width:900px){
+          #screen-more.active{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-content:start}
+          #screen-more .more-profile,#screen-more #lc-notices,#screen-more #more-logout-group{grid-column:1/-1}
+        }
+      </style>
+
+      <div id="more-profile" class="more-profile"></div>
+
+      <div class="mg"><div class="mg-title">Автомобиль</div><div class="mg-card" id="more-car"></div></div>
+
+      <div class="mg"><div class="mg-title">Данные</div><div class="mg-card" id="more-data"></div></div>
+
+      <div class="mg">
+        <div class="mg-title">Сервис</div>
+        <div class="mg-card" id="more-service">
+          <div class="more-item" id="more-ota" style="display:none" onclick="openFw()">
+            <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg></div>
+            <div class="mg-txt"><div class="mg-t">Обновление прошивки</div><div class="mg-s">только администратор</div></div>
+            <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+          </div>
+          <div class="more-item" id="more-developer" style="display:none" onclick="openDeveloper()">
+            <div class="mi gray"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M8 9l-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg></div>
+            <div class="mg-txt"><div class="mg-t">Для разработчика</div><div class="mg-s">CAN-монитор и запись шины</div></div>
+            <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+          </div>
+          <div class="more-item" id="more-diag" style="display:none" onclick="openDiag()">
+            <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+            <div class="mg-txt"><div class="mg-t">Диагностика</div><div class="mg-s">память, шины, BMS, модем</div></div>
+            <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+          </div>
+          <div class="more-item" id="more-lite" style="display:none" onclick="switchUi('lite')">
+            <div class="mi gray"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 6h16M4 12h10M4 18h13"/></svg></div>
+            <div class="mg-txt"><div class="mg-t">Упрощённая страница</div><div class="mg-s">для слабого сигнала</div></div>
+            <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+          </div>
+        </div>
       </div>
-      <div class="more-item" id="more-ota" style="display:none" onclick="openFw()">
-        <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg></div>
-        Обновление прошивки
-        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+
+      <div class="mg">
+        <div class="mg-title">Информация</div>
+        <div class="mg-card">
+          <div class="more-item" onclick="openAbout()">
+            <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></div>
+            <div class="mg-txt"><div class="mg-t">О приложении</div><div class="mg-s">версия, сервер, справка</div></div>
+            <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+          </div>
+          <!--DEMO-BEGIN-->
+          <div class="more-item" onclick="location.href='?demo=1'">
+            <div class="mi gray"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M10 8.5l6 3.5-6 3.5z" fill="currentColor" stroke="none"/></svg></div>
+            <div class="mg-txt"><div class="mg-t">Демо-режим</div><div class="mg-s">показать без автомобиля</div></div>
+            <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
+          </div>
+          <!--DEMO-END-->
+          <div class="more-item" style="cursor:default">
+            <div class="mi gray"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 12.55a11 11 0 0114.08 0M1.42 9a16 16 0 0121.16 0M8.53 16.11a6 6 0 016.95 0M12 20h.01"/></svg></div>
+            <div class="mg-txt"><div class="mg-t">Режим связи</div></div>
+            <div class="mg-val" id="more-mode">—</div>
+          </div>
+        </div>
       </div>
-      <div class="more-item" id="more-developer" style="display:none" onclick="openDeveloper()">
-        <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 9l-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg></div>
-        Для разработчика
-        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
-      </div>
-      <div class="more-item" id="more-diag" style="display:none" onclick="openDiag()">
-        <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
-        Диагностика
-        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
-      </div>
-      <div class="more-item" id="more-lite" style="display:none" onclick="switchUi('lite')">
-        <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h16M4 12h10M4 18h13"/></svg></div>
-        Упрощённая страница
-        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
-      </div>
-      <div class="more-item" onclick="openAbout()">
-        <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></div>
-        О приложении
-        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
-      </div>
-      <!--DEMO-BEGIN-->
-      <div class="more-item" onclick="location.href='?demo=1'">
-        <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M10 8.5l6 3.5-6 3.5z" fill="currentColor" stroke="none"/></svg></div>
-        Демо-режим
-        <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
-      </div>
-      <!--DEMO-END-->
-      <div class="section-title">Режим</div>
-      <div class="more-item" style="border-bottom:none">
-        <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 12.55a11 11 0 0114.08 0M1.42 9a16 16 0 0121.16 0M8.53 16.11a6 6 0 016.95 0M12 20h.01"/></svg></div>
-        <span id="more-mode">—</span>
-      </div>
-      <div style="height:16px"></div>
+
+      <div class="mg" id="more-logout-group"><div class="mg-card" id="more-logout-card"></div></div>
     </section>
   </div>
 

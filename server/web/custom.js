@@ -771,21 +771,24 @@
       if (!box) {
         box = document.createElement('div');
         box.id = 'lc-notices';
-        box.className = 'card';
-        more.insertBefore(box, more.firstChild);
+        box.className = 'mg';
+        more.insertBefore(box, more.querySelector('.mg') || null);
       }
       box.innerHTML =
-        '<div class="card-header"><div class="accent-line"></div><div style="font-size:16px">Сообщения</div></div>' +
+        '<div class="mg-title">Сообщения</div><div class="mg-card">' +
         items.map(x => `
-          <div style="padding:10px 0;border-bottom:1px solid var(--line)">
-            <div style="font-size:13px;white-space:pre-wrap">${(x.text || '').replace(/</g, '&lt;')}</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:4px">${admWhen(x.created_at)}</div>
-            <button data-notice="${x.id}" style="margin-top:8px;border:0;border-radius:8px;background:var(--surface-2);color:var(--text);padding:7px 11px;font-size:12px">Понятно</button>
-          </div>`).join('');
+          <div class="more-item" style="cursor:default;align-items:flex-start">
+            <div class="mi">${MORE_ICONS.bell}</div>
+            <div class="mg-txt">
+              <div class="mg-t" style="white-space:normal;font-size:14px">${(x.text || '').replace(/</g, '&lt;')}</div>
+              <div class="mg-s" style="margin-top:4px">${admWhen(x.created_at)}</div>
+              <button data-notice="${x.id}" style="margin-top:8px;border:0;border-radius:8px;background:var(--surface-2);color:var(--text);padding:7px 11px;font-size:12px">Понятно</button>
+            </div>
+          </div>`).join('') + '</div>';
       $$('#lc-notices [data-notice]').forEach(b => b.onclick = async () => {
         try {
           await api('/api/notices/read', { id: Number(b.dataset.notice) });
-          const row = b.parentElement;
+          const row = b.closest('.more-item');
           if (row) row.remove();
         } catch (e) { /* тихо */ }
       });
@@ -986,107 +989,136 @@
     } catch { userRole = null; }
   }
 
-  function moreContainer() {
-    const item = document.querySelector('.more-item');
-    return item ? item.parentElement : null;
-  }
+  const MORE_ICONS = {
+    plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+    bolt: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>',
+    gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>',
+    chart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 19h16M7 15V9m5 6V5m5 10v-4"/></svg>',
+    down: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>',
+    install: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M12 8v6m0 0l-2.5-2.5M12 14l2.5-2.5"/></svg>',
+    shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></svg>',
+    out: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>',
+    bell: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M18 8a6 6 0 10-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg>'
+  };
 
-  function makeRow(title, sub, onClick) {
+  function moreRow(title, sub, icon, onClick, opts) {
+    opts = opts || {};
     const row = document.createElement('div');
-    row.setAttribute('data-lc-row', '1');
-    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;' +
-      'padding:16px;margin:0 16px;background:var(--surface);border-bottom:1px solid var(--line);' +
-      'color:var(--text);font-size:15px;cursor:pointer';
-    const left = document.createElement('div');
-    left.textContent = title;
-    if (sub) {
-      const s = document.createElement('div');
-      s.style.cssText = 'font-size:12px;color:var(--muted);margin-top:2px';
-      s.textContent = sub;
-      left.appendChild(s);
+    row.className = 'more-item' + (opts.danger ? ' mg-danger' : '');
+    row.innerHTML =
+      `<div class="mi${opts.gray ? ' gray' : ''}${opts.danger ? ' red' : ''}">${icon || ''}</div>` +
+      `<div class="mg-txt"><div class="mg-t">${title}</div>` +
+      `${sub ? `<div class="mg-s">${sub}</div>` : ''}</div>` +
+      `${opts.value ? `<div class="mg-val">${opts.value}</div>` : ''}` +
+      `${onClick ? '<div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>' : ''}`;
+    if (onClick) {
+      row.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        onClick();
+      }, true);
     }
-    const chev = document.createElement('div');
-    chev.textContent = '›';
-    chev.style.cssText = 'color:var(--muted);font-size:20px;line-height:1';
-    row.appendChild(left);
-    row.appendChild(chev);
-    row.addEventListener('click', (e) => { e.preventDefault(); e.stopImmediatePropagation(); onClick(); }, true);
     return row;
   }
 
-  function addMoreRows() {
-    const box = moreContainer();
+  async function renderMoreProfile() {
+    const box = $('#more-profile');
     if (!box) return;
+    let name = '—';
+    let role = 'Пользователь';
+    let online = false;
+    try {
+      const me = await api('/api/auth/me');
+      if (me && me.user) {
+        name = me.user.username || name;
+        role = me.user.role === 'admin' ? 'Администратор' : 'Владелец';
+      }
+    } catch (e) { /* не критично */ }
+    try {
+      const st = await api('/api/status');
+      online = !!(st && st.online);
+    } catch (e) { /* не критично */ }
+    box.innerHTML =
+      `<div class="ava">${(name[0] || '?').toUpperCase()}</div>` +
+      `<div><div class="nm">${name}</div><div class="mt">${role} · через сервер</div></div>` +
+      `<span class="pill">${online ? 'плата на связи' : 'плата офлайн'}</span>`;
+  }
 
-    if (!box.querySelector('[data-lc-claim]')) {
-      const claimRow = makeRow('Добавить машину', 'привязать плату по коду', showClaim);
-      claimRow.setAttribute('data-lc-claim', '1');
-      const adminRow = box.querySelector('[data-lc-admin]');
-      if (adminRow) box.insertBefore(claimRow, adminRow);
-      else box.appendChild(claimRow);
+  const toggleCarProfile = async () => {
+    try {
+      const c = await api('/api/config');
+      const cur = Number((c.config || {}).vehicle_profile || 0);
+      const names = ['авто', 'ZE1 (2018+)', 'AZE0/ZE0 (2011–2017)'];
+      const next = (cur + 1) % 3;
+      const ok = confirm('Сейчас: ' + names[cur] + '\nПереключить на: ' + names[next] +
+        '?\n\nПлата применит при следующей связи (до 30 секунд).');
+      if (!ok) return;
+      await api('/api/config', { key: 'vehicle_profile', value: next });
+      toast('Профиль: ' + names[next]);
+    } catch (e) { alert(e.message); }
+  };
+
+  function addMoreRows() {
+    const car = $('#more-car');
+    const data = $('#more-data');
+    const service = $('#more-service');
+    const outCard = $('#more-logout-card');
+    if (!car || !data) return;
+
+    if (!car.querySelector('[data-lc-claim]')) {
+      const r = moreRow('Добавить машину', 'привязать плату по коду', MORE_ICONS.plus, showClaim);
+      r.setAttribute('data-lc-claim', '1');
+      car.appendChild(r);
+    }
+    if (!car.querySelector('[data-lc-profile]')) {
+      const r = moreRow('Профиль машины', 'ZE1 / AZE0 — переключить', MORE_ICONS.bolt, toggleCarProfile);
+      r.setAttribute('data-lc-profile', '1');
+      car.appendChild(r);
+    }
+    if (!car.querySelector('[data-lc-settings]')) {
+      const r = moreRow('Настройки подключения', 'Wi-Fi, SIM, тарифы, лимит заряда', MORE_ICONS.gear, showSettings);
+      r.setAttribute('data-lc-settings', '1');
+      const t = r.querySelector('.mg-t');
+      if (t) t.id = 'more-settings-label';
+      car.appendChild(r);
     }
 
-    if (userRole === 'admin' && !box.querySelector('[data-lc-admin]')) {
-      const adminRow = makeRow('Администрирование', 'устройства, пользователи, журнал', showAdmin);
-      adminRow.setAttribute('data-lc-admin', '1');
-      const logout = box.querySelector('[data-lc-logout]');
-      if (logout) box.insertBefore(adminRow, logout);
-      else box.appendChild(adminRow);
+    if (userRole === 'admin' && service && !service.querySelector('[data-lc-admin]')) {
+      const r = moreRow('Администрирование', 'устройства, пользователи, журнал', MORE_ICONS.shield, showAdmin);
+      r.setAttribute('data-lc-admin', '1');
+      service.insertBefore(r, service.firstChild);
     }
 
-    if (!box.querySelector('[data-lc-profile]')) {
-      const profRow = makeRow('Профиль машины', 'ZE1 / AZE0 — переключить', async () => {
-        try {
-          const c = await api('/api/config');
-          const cur = Number((c.config || {}).vehicle_profile || 0);
-          const names = ['авто', 'ZE1 (2018+)', 'AZE0/ZE0 (2011–2017)'];
-          const next = (cur + 1) % 3;
-          const ok = confirm('Сейчас: ' + names[cur] + '\nПереключить на: ' + names[next] +
-            '?\n\nПлата применит при следующей связи (до 30 секунд).');
-          if (!ok) return;
-          await api('/api/config', { key: 'vehicle_profile', value: next });
-          toast('Профиль: ' + names[next]);
-        } catch (e) { alert(e.message); }
-      });
-      profRow.setAttribute('data-lc-profile', '1');
-      const anchor0 = box.querySelector('[data-lc-xlsx]') || box.querySelector('[data-lc-apk]') ||
-        box.querySelector('[data-lc-logout]');
-      if (anchor0) box.insertBefore(profRow, anchor0); else box.appendChild(profRow);
-    }
-
-    if (!box.querySelector('[data-lc-xlsx]')) {
-      const xlsxRow = makeRow('История в Excel', 'обзор, дни, сессии и графики', () => {
+    if (!data.querySelector('[data-lc-xlsx]')) {
+      const r = moreRow('История в Excel', 'обзор, дни, сессии и графики', MORE_ICONS.chart, () => {
         location.href = '/api/export/xlsx?days=90';
       });
-      xlsxRow.setAttribute('data-lc-xlsx', '1');
-      const anchorRow = box.querySelector('[data-lc-apk]') || box.querySelector('[data-lc-logout]');
-      if (anchorRow) box.insertBefore(xlsxRow, anchorRow); else box.appendChild(xlsxRow);
+      r.setAttribute('data-lc-xlsx', '1');
+      data.appendChild(r);
     }
-
-    if (!box.querySelector('[data-lc-apk]')) {
-      const apkRow = makeRow('Скачать приложение', 'Android, файл APK', () => {
+    if (!data.querySelector('[data-lc-apk]')) {
+      const r = moreRow('Скачать приложение', 'Android, файл APK', MORE_ICONS.down, () => {
         location.href = '/app.apk';
-      });
-      apkRow.setAttribute('data-lc-apk', '1');
-      const logout0 = box.querySelector('[data-lc-logout]');
-      if (logout0) box.insertBefore(apkRow, logout0); else box.appendChild(apkRow);
+      }, { gray: true });
+      r.setAttribute('data-lc-apk', '1');
+      data.appendChild(r);
+    }
+    if (!data.querySelector('[data-lc-install]') && !isStandalone()) {
+      const r = moreRow('Установить как приложение', 'ярлык на экран телефона', MORE_ICONS.install, installPwa, { gray: true });
+      r.setAttribute('data-lc-install', '1');
+      data.appendChild(r);
     }
 
-    if (!box.querySelector('[data-lc-install]') && !isStandalone()) {
-      const instRow = makeRow('Установить как приложение', 'ярлык на экран телефона', installPwa);
-      instRow.setAttribute('data-lc-install', '1');
-      const logout1 = box.querySelector('[data-lc-logout]');
-      if (logout1) box.insertBefore(instRow, logout1); else box.appendChild(instRow);
-    }
-
-    if (!box.querySelector('[data-lc-logout]')) {
-      const logoutRow = makeRow('Выйти', 'сменить пользователя', async () => {
-        try { await api('/api/auth/logout', {}); } catch {}
+    if (outCard && !outCard.querySelector('[data-lc-logout]')) {
+      const r = moreRow('Выйти', 'сменить пользователя', MORE_ICONS.out, async () => {
+        try { await api('/api/auth/logout', {}); } catch (e) { /* ignore */ }
         location.href = '/login';
-      });
-      logoutRow.setAttribute('data-lc-logout', '1');
-      box.appendChild(logoutRow);
+      }, { danger: true });
+      r.setAttribute('data-lc-logout', '1');
+      outCard.appendChild(r);
     }
+
+    renderMoreProfile();
   }
 
   function addAdminScreen() {
