@@ -3094,6 +3094,10 @@ async function fwCheck(){
     if(!r.ok) throw 0;
     const releases = await r.json();
     const kind = (S.fw.indexOf('TCALL') >= 0 || (S.board||'').indexOf('T-Call') >= 0) ? 'TCALL' : 'CMD';
+    if(kind === 'TCALL'){
+      $('fw-note').textContent = 'T-Call обновляется только по USB: на 4 МБ не помещаются два слота прошивки (нет второго OTA-раздела). Подключите плату кабелем к компьютеру.';
+      return;
+    }
     const suffix = '-' + kind + '.bin';
     outer:
     for(const rl of releases){

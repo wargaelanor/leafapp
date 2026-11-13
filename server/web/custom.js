@@ -1721,6 +1721,12 @@
       const list = devs.devices || [];
       const dev = list.find(d => d.online) || list[0];
       if (!dev) throw new Error('нет устройств');
+      // T-Call (4 МБ) живёт на схеме без второго OTA-раздела — обновление
+      // по воздуху невозможно в принципе, только по USB.
+      if ((dev.fw || '').indexOf('TCALL') >= 0) {
+        hint.textContent = 'T-Call обновляется только по USB: на 4 МБ не помещаются два слота прошивки. Подключите плату кабелем к компьютеру.';
+        return;
+      }
       const r = await api('/api/admin/firmware/update', { device: dev.id, file });
       hint.textContent = r.pushed
         ? 'Команда отправлена. Плата скачает файл и перезагрузится.'
