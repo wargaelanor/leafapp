@@ -79,7 +79,10 @@ static const uint32_t kRescanIntervalMs = 300000UL;
 static const uint32_t kUnlockedRescanMs = 30000UL;
 static const uint32_t kStaleLockSeconds = 60;    // locked but silent -> re-scan
 
-static uint8_t  activeTiming = 0;
+#ifndef BOARD_EVCAN_START_TIMING
+#define BOARD_EVCAN_START_TIMING 0
+#endif
+static uint8_t  activeTiming = BOARD_EVCAN_START_TIMING;
 static bool     timingLocked = false;
 static bool     scanActive = false;
 static bool     scanCompleted = false;
@@ -531,9 +534,10 @@ void setupEvCAN() {
     Serial.println("EV-CAN: reset returned an error but CANSTAT looks valid; continuing");
   }
 
-  // Always start at 16 MHz / 500k: proven on this car and MCP2515. A stored
-  // index from a false lock used to survive reboots and leave the board deaf.
-  activeTiming = 0;
+  // Стартовый кандидат: T-2CAN — 16 МГц (проверено на машине), T-Call — 8 МГц
+  // (такие кварцы на его модулях). Дальше авто-перебор всё равно проверит
+  // остальные варианты, если кадров нет.
+  activeTiming = BOARD_EVCAN_START_TIMING;
   if (!applyTiming(activeTiming)) {
     Serial.println("EV-CAN: setBitrate/setListenOnlyMode failed");
     return;

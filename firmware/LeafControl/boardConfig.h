@@ -41,11 +41,15 @@
 #define BOARD_EVCAN_INT      0    // polled driver; do not wire INT
 #define BOARD_EVCAN_MCP_RST  0    // 0 = tie RST to 3.3 V, no GPIO
 
-// Crystal on the MCP2515 modules. 16 MHz matches the module already used on
-// this car; the common blue clone boards often carry 8 MHz. If CAR-CAN stays
-// silent while the transceiver is wired, change this to MCP_8MHZ and rebuild.
-#define BOARD_CAR_MCP_CLOCK      MCP_16MHZ
-#define BOARD_CAR_MCP_CLOCK_NAME "16MHz"
+// Кварц на модулях MCP2515 у T-Call — 8 МГц (проверено на железе). При 16 МГц
+// контроллер формально настраивается, но на шине получается неверная скорость,
+// и CAR-CAN «молчит»: команды и одометр не работают. Если однажды попадётся
+// модуль на 16 МГц — вернуть MCP_16MHZ здесь и пересобрать прошивку T-Call.
+#define BOARD_CAR_MCP_CLOCK      MCP_8MHZ
+#define BOARD_CAR_MCP_CLOCK_NAME "8MHz"
+// Индекс в таблице кандидатов EV-CAN (0 = 16 МГц, 1 = 8 МГц). На T-Call оба
+// модуля на 8 МГц, поэтому начинаем сразу с него и не ждём перебора.
+#define BOARD_EVCAN_START_TIMING 1
 
 // Not used by this profile; kept defined so shared diagnostics compile.
 #define BOARD_CAN_TX 0
