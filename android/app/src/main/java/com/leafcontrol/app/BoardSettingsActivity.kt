@@ -156,10 +156,22 @@ private fun BoardSettingsScreen() {
     var status by remember { mutableStateOf("") }
     var reload by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
+    val serverMode = Settings.mode == "server"
 
     LaunchedEffect(reload) {
         busy = true
         loadError = null
+        if (serverMode) {
+            val j = com.leafcontrol.app.net.ServerApi.boardConfig(ctx)
+            busy = false
+            if (j == null) {
+                loadError = "Сервер не отдал настройки платы. Проверьте вход в аккаунт " +
+                    "и что плата хотя бы раз выходила на связь."
+            } else {
+                config = BoardConfigDraft(j)
+            }
+            return@LaunchedEffect
+        }
         var r = LocalApi.getConfigResult(ctx)
         if (r.json == null && r.httpCode == null) {
             // Network error: the saved host may be stale (e.g. 192.168.4.1 from
@@ -221,6 +233,15 @@ private fun BoardSettingsScreen() {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
 
+                if (serverMode) {
+                    Text(
+                        "Настройки читаются через сервер. Здесь меняются режим, модем и APN, " +
+                            "зарядка, сон, замки и имя платы. Wi-Fi и точка доступа — только по " +
+                            "локальной сети, с телефона рядом с платой.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
                 SectionCard("Wi-Fi (основная сеть)") {
                     LabeledField("Сеть (SSID)", c.wifiSsid) { c.wifiSsid = it }
                     PasswordField(
@@ -240,6 +261,7 @@ private fun BoardSettingsScreen() {
                         "Пароль (8+ символов" + (if (c.apPassSet) ", задан — пусто = не менять" else "") + ")",
                         c.apPassword,
                     ) { c.apPassword = it }
+                }
                 }
 
                 SectionCard("Связь с сервером") {
@@ -308,12 +330,14 @@ private fun BoardSettingsScreen() {
                     LabeledField("Пробуждение редкое, мин", c.wakeSlow, KeyboardType.Number) { c.wakeSlow = it }
                 }
 
-                SectionCard("Тариф") {
-                    LabeledField("День, ₽/кВт·ч", c.tariffDay, KeyboardType.Decimal) { c.tariffDay = it }
-                    LabeledField("Ночь, ₽/кВт·ч", c.tariffNight, KeyboardType.Decimal) { c.tariffNight = it }
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        LabeledField("Ночь с", c.nightFrom, KeyboardType.Number, Modifier.weight(1f)) { c.nightFrom = it }
-                        LabeledField("до", c.nightTo, KeyboardType.Number, Modifier.weight(1f)) { c.nightTo = it }
+                if (!serverMode) {
+                    SectionCard("Тариф") {
+                        LabeledField("День, ₽/кВт·ч", c.tariffDay, KeyboardType.Decimal) { c.tariffDay = it }
+                        LabeledField("Ночь, ₽/кВт·ч", c.tariffNight, KeyboardType.Decimal) { c.tariffNight = it }
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            LabeledField("Ночь с", c.nightFrom, KeyboardType.Number, Modifier.weight(1f)) { c.nightFrom = it }
+                            LabeledField("до", c.nightTo, KeyboardType.Number, Modifier.weight(1f)) { c.nightTo = it }
+                        }
                     }
                 }
 
@@ -327,15 +351,25 @@ private fun BoardSettingsScreen() {
                         status = "Сохранение…"
                         val payload = c.toJson()
                         scope.launch {
-                            val r = LocalApi.saveConfig(ctx, payload)
-                            busy = false
-                            status = when {
-                                r == null -> "Плата не ответила — настройки не сохранены"
-                                r.optBoolean("rebooting") -> "Сохранено. Плата перезагружается…"
-                                else -> "Сохранено."
-                            }
-                            if (r != null && r.optBoolean("rebooting")) {
-                                Toast.makeText(ctx, "Плата перезагружается", Toast.LENGTH_SHORT).show()
+                            if (serverMode) {
+                                val ok = com.leafcontrol.app.net.ServerApi.saveBoardConfig(ctx, payload)
+                                busy = false
+                                status = if (ok) {
+                                    "Отправлено на плату через сервер — применится в течение минуты"
+                                } else {
+                                    "Сервер не принял настройки — проверьте связь и вход в аккаунт"
+                                }
+                            } else {
+                                val r = LocalApi.saveConfig(ctx, payload)
+                                busy = false
+                                status = when {
+                                    r == null -> "Плата не ответила — настройки не сохранены"
+                                    r.optBoolean("rebooting") -> "Сохранено. Плата перезагружается…"
+                                    else -> "Сохранено."
+                                }
+                                if (r != null && r.optBoolean("rebooting")) {
+                                    Toast.makeText(ctx, "Плата перезагружается", Toast.LENGTH_SHORT).show()
+                                }
                             }
                         }
                     },

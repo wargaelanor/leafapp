@@ -364,5 +364,63 @@ object ServerApi {
             }
         }
 
+    /** Настройки платы, сохранённые на сервере (режим «Сервер»). */
+    suspend fun boardConfig(context: Context): JSONObject? = withContext(Dispatchers.IO) {
+        val body = get(context, "/api/config") ?: return@withContext null
+        val root = try {
+            JSONObject(body)
+        } catch (_: Exception) {
+            return@withContext null
+        }
+        val cfg = root.optJSONObject("config") ?: JSONObject()
+        val out = JSONObject(cfg.toString())
+        // Ключи сервера -> ключи, которыми пользуется экран настроек.
+        out.put("charge_limit_pct", cfg.optInt("charge_limit", 0))
+        out.put("locking_enabled", cfg.optInt("locking", 0) == 1)
+        out.put("sleep_enable", cfg.optInt("sleep", 0) == 1)
+        out.put("sleep_after_h", cfg.optInt("sleep_after", 24))
+        out.put("wake_fast_min", cfg.optInt("wake_fast", 5))
+        out.put("wake_slow_min", cfg.optInt("wake_slow", 15))
+        out.put("modem_enable", cfg.optInt("modem", 0) == 1)
+        out.put("modem800_apn", cfg.optString("apn"))
+        out.put("modem800_user", cfg.optString("apn_user"))
+        out.put("fw", root.optString("fw"))
+        out.put("board", "через сервер")
+        out
+    }
+
+    /** Отправляет настройки на плату командами set_config через сервер. */
+    suspend fun saveBoardConfig(context: Context, board: JSONObject): Boolean =
+        withContext(Dispatchers.IO) {
+            val pairs = listOf(
+                "remote_mode" to board.optInt("remote_mode", 1),
+                "charge_limit" to board.optInt("charge_limit_pct", 0),
+                "locking" to (if (board.optBoolean("locking_enabled")) 1 else 0),
+                "sleep" to (if (board.optBoolean("sleep_enable")) 1 else 0),
+                "sleep_after" to (board.optString("sleep_after_h").toIntOrNull() ?: 24),
+                "wake_fast" to (board.optString("wake_fast_min").toIntOrNull() ?: 5),
+                "wake_slow" to (board.optString("wake_slow_min").toIntOrNull() ?: 15),
+                "modem" to (if (board.optBoolean("modem_enable")) 1 else 0),
+                "apn" to board.optString("modem800_apn"),
+                "apn_user" to board.optString("modem800_user"),
+                "host_name" to board.optString("host_name"),
+            )
+            for ((k, v) in pairs) {
+                if (!postConfig(context, k, v)) return@withContext false
+            }
+            val pass = board.optString("modem800_pass")
+            if (pass.isNotEmpty() && !postConfig(context, "apn_pass", pass)) return@withContext false
+            true
+        }
+
+    private fun postConfig(context: Context, key: String, value: Any): Boolean {
+        val payload = JSONObject().put("key", key).put("value", value).toString()
+        return try {
+            client.newCall(request("/api/config", "POST", payload)).execute().use { it.isSuccessful }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     fun encoded(value: String): String = URLEncoder.encode(value, "UTF-8")
 }

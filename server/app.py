@@ -42,12 +42,12 @@ CAN_DIR = os.environ.get("LEAF_CAN_DIR", os.path.join(os.path.dirname(DB_PATH), 
 
 # Ссылка на Android-приложение (release-ассет проекта).
 APP_REV = os.environ.get("LEAF_REV", "sec-2c73f93")
-APP_VERSION = "1.55"  # версия APK, лежащего на этом сервере
-APP_NOTES = "Excel-выгрузка истории: обзор, дни, сессии, графики"
+APP_VERSION = "1.56"  # версия APK, лежащего на этом сервере
+APP_NOTES = "Настройки платы читаются и сохраняются через сервер"
 
 APK_URL = os.environ.get(
     "LEAF_APK_URL",
-    "https://github.com/wargaelanor/leafapp/releases/download/android-v1.55/LeafControl-1.55-debug.apk",
+    "https://github.com/wargaelanor/leafapp/releases/download/android-v1.56/LeafControl-1.56-debug.apk",
 )
 
 # Команды, которые шлёт PWA (те же пути, что у платы).
