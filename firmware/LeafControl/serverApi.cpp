@@ -317,6 +317,21 @@ static bool postJson(const String& path, const char* body, String& resp) {
   return false;
 }
 
+// Часы без Wi-Fi/NTP уходят в прошлое, и сервер отбрасывает точки истории
+// как старые (ts <= последнего). Поэтому сверяем время по ответу сервера.
+extern void setBoardEpoch(uint32_t epoch);
+
+static void syncClockFrom(const String& resp) {
+  int p = resp.indexOf("\"ts\":");
+  if (p < 0) return;
+  long ts = resp.substring(p + 5).toInt();
+  if (ts < 1600000000L) return;
+  long drift = (long)time(nullptr) - ts;
+  if (drift > 120 || drift < -120) {
+    setBoardEpoch((uint32_t)ts);
+  }
+}
+
 static void setStatus(const char* s) {
   snprintf(statusText, sizeof(statusText), "%s", s);
 }
@@ -721,7 +736,9 @@ static bool sendPing() {
            WiFi.RSSI(),
            (unsigned long)(millis() / 1000UL));
   String resp;
-  return postJson("/api/device/ping", body, resp);
+  if (!postJson("/api/device/ping", body, resp)) return false;
+  syncClockFrom(resp);
+  return true;
 }
 
 
@@ -944,6 +961,7 @@ static bool syncRequest() {
 
   String resp;
   if (!postJson("/api/device/sync", payload.c_str(), resp)) return false;
+  syncClockFrom(resp);
 
   portENTER_CRITICAL(&mboxMux);
   outAckCount = 0;

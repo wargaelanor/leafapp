@@ -1064,7 +1064,8 @@ class Api(BaseHTTPRequestHandler):
             want_cfg = (now() - (dev["config_ts"] or 0)) > 300
             online = True
         self.json(200, {"ok": True, "cmd": cmd, "poll_s": 5, "config": want_cfg,
-                        "online": online, "claim_code": dev["claim_code"] or ""})
+                        "online": online, "claim_code": dev["claim_code"] or "",
+                        "ts": now()})
 
     def device_state(self):
         dev = self.device()

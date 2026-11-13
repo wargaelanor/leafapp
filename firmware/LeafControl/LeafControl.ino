@@ -25,10 +25,10 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FR-TCall.165"
+#define LEAF_FIRMWARE_VERSION "FR-TCall.166"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: two MCP2515 CAN buses + SIM800"
 #else
-#define LEAF_FIRMWARE_VERSION "FR-2can.165"
+#define LEAF_FIRMWARE_VERSION "FR-2can.166"
 #define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: поездки по скорости, интернет через SIM800"
 #endif
 
