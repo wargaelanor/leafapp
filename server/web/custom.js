@@ -699,11 +699,20 @@
     sec.className = 'screen';
     sec.id = 'screen-settings';
     sec.innerHTML = `
+      <style>
+        details.lc-acc>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px}
+        details.lc-acc>summary::-webkit-details-marker{display:none}
+        details.lc-acc>summary .lc-chev{transition:transform .15s}
+        details.lc-acc[open]>summary .lc-chev{transform:rotate(90deg)}
+      </style>
       <div class="card" style="margin-top:8px">
         <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">Настройки платы</div></div>
-        <div id="cfg-info" style="font-size:12px;color:var(--muted);margin-bottom:12px"></div>
-        <div id="cfg-fields"></div>
-        <button id="cfg-save" style="margin-top:12px;width:100%;padding:12px;border:0;border-radius:8px;background:var(--accent);color:#fff;font-weight:600">Применить на плате</button>
+        <div id="cfg-info" style="font-size:12px;color:var(--muted)"></div>
+        <div style="font-size:11px;color:var(--muted);margin-top:6px">Разделы ниже раскрываются нажатием.</div>
+      </div>
+      <div id="cfg-fields"></div>
+      <div class="card">
+        <button id="cfg-save" style="width:100%;padding:12px;border:0;border-radius:8px;background:var(--accent);color:#fff;font-weight:600">Применить настройки на плате</button>
         <div id="cfg-hint" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
       </div>
       <div class="card">
@@ -740,6 +749,38 @@
         } finally { btn.disabled = false; }
       };
     }, 0);
+  }
+
+  async function showNotices() {
+    try {
+      const res = await api('/api/notices');
+      const items = (res.items || []).filter(x => !x.read_at);
+      const more = $('#screen-more');
+      if (!items.length || !more) return;
+      let box = document.getElementById('lc-notices');
+      if (!box) {
+        box = document.createElement('div');
+        box.id = 'lc-notices';
+        box.className = 'card';
+        more.insertBefore(box, more.firstChild);
+      }
+      box.innerHTML =
+        '<div class="card-header"><div class="accent-line"></div><div style="font-size:16px">Сообщения</div></div>' +
+        items.map(x => `
+          <div style="padding:10px 0;border-bottom:1px solid var(--line)">
+            <div style="font-size:13px;white-space:pre-wrap">${(x.text || '').replace(/</g, '&lt;')}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:4px">${admWhen(x.created_at)}</div>
+            <button data-notice="${x.id}" style="margin-top:8px;border:0;border-radius:8px;background:var(--surface-2);color:var(--text);padding:7px 11px;font-size:12px">Понятно</button>
+          </div>`).join('');
+      $$('#lc-notices [data-notice]').forEach(b => b.onclick = async () => {
+        try {
+          await api('/api/notices/read', { id: Number(b.dataset.notice) });
+          const row = b.parentElement;
+          if (row) row.remove();
+        } catch (e) { /* тихо */ }
+      });
+      toast(items.length === 1 ? 'Есть новое сообщение' : 'Есть новые сообщения');
+    } catch (e) { /* тихо */ }
   }
 
   function showSettings() {
@@ -785,12 +826,17 @@
 
     const inputStyle = 'width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--text)';
 
-    const card = (title, desc, body) => `
-      <div class="card">
-        <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">${title}</div></div>
-        ${desc ? `<div style="font-size:12px;color:var(--muted);margin-bottom:10px">${desc}</div>` : ''}
-        ${body}
-      </div>`;
+    const card = (title, desc, body, open) => `
+      <details class="card lc-acc"${open ? ' open' : ''}>
+        <summary>
+          <div style="flex:1">
+            <div style="font-size:16px">${title}</div>
+            ${desc ? `<div style="font-size:12px;color:var(--muted);margin-top:2px">${desc}</div>` : ''}
+          </div>
+          <div class="lc-chev" style="color:var(--muted);font-size:20px;line-height:1">›</div>
+        </summary>
+        <div style="margin-top:12px">${body}</div>
+      </details>`;
     const numField = (k, t, h) => `
       <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:10px">${t}
         <input data-num="${k}" type="number" value="${cfg[k] !== undefined ? cfg[k] : ''}" style="${inputStyle}">
@@ -817,7 +863,7 @@
            <input type="radio" name="cfgmode" value="0" ${cfg.remote_mode === 0 ? 'checked' : ''} style="width:18px;height:18px;margin-top:2px">
            <span style="font-size:14px">Без подключения — только плата
              <span style="display:block;font-size:11px;color:var(--muted)">локальная страница и приём звонков, в интернет не выходит</span></span>
-         </label>`) +
+         </label>`, true) +
       card('Зарядка', 'Остановка заряда по проценту с приборки.',
         numField('charge_limit', 'Лимит заряда, %', '0 — выключено, обычно 70–95')) +
       card('Сон и пробуждение', 'Плата засыпает, когда машина долго стоит, и периодически просыпается на связь.',
@@ -1141,12 +1187,22 @@
               <div style="font-size:12px;color:var(--muted);margin-top:4px">
                 ${x.username || 'без пользователя'} · ${admWhen(x.created_at)}${x.status === 'done' ? ' · прочитано' : ''}</div>
             </div>
-            ${x.status === 'done' ? '' : `<button data-fb="${x.id}" style="${admBtn('Прочитано')}">Прочитано</button>`}
+            ${x.status === 'done' ? '' : `<button data-fb-close="${x.id}" style="${admBtn('Закрыть и уведомить')}">Закрыть и уведомить</button>`}
+            <button data-fb-del="${x.id}" style="${admBtn('Удалить', 'var(--danger)')}">Удалить</button>
           </div>`).join('')
         : '<div style="font-size:13px;color:var(--muted)">Обращений нет</div>';
-      $$('#adm-feedback [data-fb]').forEach(b => b.onclick = async () => {
+      $$('#adm-feedback [data-fb-close]').forEach(b => b.onclick = async () => {
         try {
-          await api('/api/admin/feedback/' + b.dataset.fb, { status: 'done' });
+          await api('/api/admin/feedback/' + b.dataset.fbClose, { action: 'close', notify: true });
+          toast('Закрыто, пользователь получит сообщение');
+          loadAdmin();
+        } catch (e) { alert(e.message); }
+      });
+      $$('#adm-feedback [data-fb-del]').forEach(b => b.onclick = async () => {
+        if (!confirm('Удалить обращение без уведомления?')) return;
+        try {
+          await api('/api/admin/feedback/' + b.dataset.fbDel, undefined, 'DELETE');
+          toast('Обращение удалено');
           loadAdmin();
         } catch (e) { alert(e.message); }
       });
@@ -1590,7 +1646,7 @@
     addDeviceChip();
     interceptMore();
     bindCards();
-    loadRole().then(() => addMoreRows());
+    loadRole().then(() => { addMoreRows(); showNotices(); });
     const obs = new MutationObserver(() => {
       cleanMore(); interceptMore(); bindCards(); addMoreRows(); bindClaimButton();
     });

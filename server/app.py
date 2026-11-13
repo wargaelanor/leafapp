@@ -172,6 +172,14 @@ CREATE TABLE IF NOT EXISTS can_logs (
   uploaded_at INTEGER NOT NULL,
   UNIQUE(device_id, name)
 );
+CREATE TABLE IF NOT EXISTS notices (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  text TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  read_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS notices_user ON notices(user_id, read_at);
 CREATE TABLE IF NOT EXISTS maintenance (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   device_id INTEGER NOT NULL,
@@ -615,6 +623,30 @@ class Api(BaseHTTPRequestHandler):
             return self.register()
         if path == "/api/feedback" and method == "POST":
             return self.post_feedback()
+        if path == "/api/notices" and method == "GET":
+            u = self.require_user()
+            if not u:
+                return
+            with db_lock, connect() as c:
+                rows = c.execute(
+                    "SELECT id,text,created_at,read_at FROM notices WHERE user_id=?"
+                    " ORDER BY id DESC LIMIT 20", (u["id"],)).fetchall()
+            items = [dict(r) for r in rows]
+            return self.json(200, {"items": items,
+                                   "unread": sum(1 for x in items if not x["read_at"])})
+        if path == "/api/notices/read" and method == "POST":
+            u = self.require_user()
+            if not u:
+                return
+            nid = self.body().get("id")
+            with db_lock, connect() as c:
+                if nid:
+                    c.execute("UPDATE notices SET read_at=? WHERE id=? AND user_id=? AND read_at IS NULL",
+                              (now(), int(nid), u["id"]))
+                else:
+                    c.execute("UPDATE notices SET read_at=? WHERE user_id=? AND read_at IS NULL",
+                              (now(), u["id"]))
+            return self.json(200, {"ok": True})
         if path == "/api/claim" and method == "POST":
             return self.claim_device()
         if path == "/api/auth/login" and method == "POST":
@@ -2210,9 +2242,38 @@ class Api(BaseHTTPRequestHandler):
                 fid = int(path.rsplit("/", 1)[-1])
             except ValueError:
                 return self.err(400, "bad id")
-            st = (self.body().get("status") or "done")
+            data = self.body()
+            st = data.get("status") or "done"
+            notify = bool(data.get("notify"))
             with db_lock, connect() as c:
+                row = c.execute("SELECT * FROM feedback WHERE id=?", (fid,)).fetchone()
+                if not row:
+                    return self.err(404, "feedback not found")
                 c.execute("UPDATE feedback SET status=? WHERE id=?", (st, fid))
+                if notify and row["user_id"]:
+                    excerpt = (row["text"] or "").strip().replace("\n", " ")
+                    if len(excerpt) > 80:
+                        excerpt = excerpt[:80] + "…"
+                    text = ("Ваше обращение «%s» рассмотрено — проблема решена. "
+                            "Спасибо, что сообщили!" % excerpt)
+                    c.execute("INSERT INTO notices(user_id,text,created_at) VALUES(?,?,?)",
+                              (row["user_id"], text, now()))
+                    log_event(c, None, "feedback_closed_notified",
+                              {"feedback": fid, "user_id": row["user_id"]})
+            return self.json(200, {"ok": True, "notified": notify})
+
+        if path.startswith("/api/admin/feedback/") and method == "DELETE":
+            try:
+                fid = int(path.rsplit("/", 1)[-1])
+            except ValueError:
+                return self.err(400, "bad id")
+            with db_lock, connect() as c:
+                row = c.execute("SELECT user_id,text FROM feedback WHERE id=?", (fid,)).fetchone()
+                if not row:
+                    return self.err(404, "feedback not found")
+                c.execute("DELETE FROM feedback WHERE id=?", (fid,))
+                log_event(c, None, "feedback_deleted",
+                          {"feedback": fid, "user_id": row["user_id"]})
             return self.json(200, {"ok": True})
 
         if path == "/api/admin/events" and method == "GET":
