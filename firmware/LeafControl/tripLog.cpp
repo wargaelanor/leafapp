@@ -27,6 +27,7 @@ extern EvBatteryData evData;
 extern bool isChargingNow;
 extern float currentSOC;
 extern void requestVehicleWake();
+extern void noteVehicleAwake();
 extern WebServer server;
 
 static const char* TRIPS_PATH   = "/trips.jsonl";
@@ -537,6 +538,7 @@ void tripLogTick() {
   // происходит что-то осмысленное (READY, поездка, климат, зарядка).
   sessionActive = (evCanLastFrameAgeSec() < 300UL) &&
                   (ready || tripActive || climActive || chgActive);
+  if (sessionActive) noteVehicleAwake();
 
   // Точка для графиков (копится на плате, уходит пачкой при связи).
   {

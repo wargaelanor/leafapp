@@ -25,11 +25,11 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FR-TCall.162"
+#define LEAF_FIRMWARE_VERSION "FR-TCall.163"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: two MCP2515 CAN buses + SIM800"
 #else
-#define LEAF_FIRMWARE_VERSION "FR-2can.162"
-#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: поездки, модем, сторож цикла"
+#define LEAF_FIRMWARE_VERSION "FR-2can.163"
+#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: сон только по простою, модем"
 #endif
 
 // Доступ к версии из других модулей (serverApi.cpp).
@@ -244,6 +244,14 @@ struct RtcState {
 RTC_DATA_ATTR RtcState rtcState = {0};
 bool wokeFromTimer = false;
 bool timerRefreshActive = false;
+
+// Машина проснулась/едет/климат/зарядка — счётчик простоя сбрасывается.
+// Раньше idleSec обнулялся только действиями пользователя в веб/приложении,
+// поэтому через сутки плата начинала засыпать каждые 5-15 минут даже во время
+// поездки: терялись поездки и пропадала веб-страница.
+void noteVehicleAwake() {
+  rtcState.idleSec = 0;
+}
 
 void noteCarActivity() {
   // A scheduled refresh wakes the CAN buses itself. Do not treat those frames
@@ -2641,7 +2649,8 @@ void loop() {
   bool callControlKeepsAwake = getModemEnable() && getModemCallEnabled();
   if (getSleepEnabled() && !callControlKeepsAwake && !canLoggerIsRecording() &&
       !otaInProgress && activeSequence == CanSequence::NONE &&
-      !isChargingNow && !tripLogIsCharging() && !isHvacOn) {
+      !isChargingNow && !tripLogIsCharging() && !isHvacOn &&
+      !tripLogSessionActive()) {
     static unsigned long lastIdleTickMs = 0;
     unsigned long now = millis();
     if (lastIdleTickMs == 0) lastIdleTickMs = now;
