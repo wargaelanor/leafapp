@@ -121,6 +121,28 @@ body{background:var(--bg);font-family:'NissanBrand',-apple-system,BlinkMacSystem
 .lg{margin:8px 12px 16px}
 .lg-title{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin:0 4px 8px}
 .lg-card{background:var(--surface);border-radius:14px;box-shadow:0 1px 3px rgba(0,0,0,.06);overflow:hidden;padding:6px 16px 10px}
+.lg-card.tbl-card{padding:0}
+.tbl-wrap{overflow:auto}
+table.tbl{width:100%;border-collapse:collapse;font-size:14px}
+.tbl thead th{text-align:left;font-size:11px;font-weight:700;color:var(--muted);padding:9px 14px;border-bottom:1px solid var(--line);white-space:nowrap;background:var(--surface-2);text-transform:uppercase;letter-spacing:.5px}
+.tbl tbody td{padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:middle}
+.tbl tbody tr:last-child td{border-bottom:0}
+.tbl td.mono{font-family:ui-monospace,Consolas,monospace;font-size:12.5px}
+.tbl td.right,.tbl th.right{text-align:right}
+.adm-sub{font-size:11.5px;color:var(--muted);margin-top:2px}
+.adm-tbtn{border:0;border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;background:var(--surface-2);color:var(--text);font-family:inherit}
+.adm-tbtn-acc{background:var(--accent);color:#fff}
+.adm-tbtn-del{background:rgba(217,48,37,.08);color:#d93025}
+.adm-empty{padding:22px 14px;text-align:center;color:var(--muted);font-size:13px}
+.log-row{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line)}
+.log-row:last-child{border-bottom:0}
+.log-row time{font-size:11.5px;color:var(--muted);flex-shrink:0;padding-top:2px;width:86px;font-variant-numeric:tabular-nums}
+.log-row .lt{flex:1;font-size:13px;line-height:1.45;min-width:0}
+.log-row .lt .mono{font-family:ui-monospace,Consolas,monospace;font-size:12px}
+.lg-badge{display:inline-flex;align-items:center;height:18px;padding:0 7px;border-radius:6px;font-size:10.5px;font-weight:700;white-space:nowrap;background:var(--chip);color:var(--muted);margin-left:6px;vertical-align:middle}
+.lg-badge.ok{background:rgba(31,157,85,.12);color:#1f9d55}
+.lg-badge.warn{background:rgba(199,125,26,.12);color:#c77d1a}
+.lg-badge.danger{background:rgba(217,48,37,.08);color:#d93025}
 .btn-primary.charging{background:#34c759}
 .action-buttons{display:flex;justify-content:center;gap:32px;padding:16px 0 20px;background:var(--bg);margin:8px 16px;border-radius:8px}
 .action-btn{display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer}

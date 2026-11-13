@@ -1296,6 +1296,13 @@
     loadAdmin();
   }
 
+  const admBleed = (id) => {
+    const el = document.getElementById(id);
+    if (el && el.parentElement && el.parentElement.classList.contains('lg-card')) {
+      el.parentElement.classList.add('tbl-card');
+    }
+  };
+
   const admBtn = (label, color) =>
     `border:0;border-radius:8px;background:var(--surface-2);color:${color || 'var(--text)'};padding:7px 11px;font-size:12px`;
   const admWhen = (sec) => {
@@ -1318,14 +1325,21 @@
       const p = await api('/api/admin/devices?status=pending');
       const pend = p.devices || [];
       $('#adm-pending').innerHTML = pend.length
-        ? pend.map(d => `
-          <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)">
-            <div style="flex:1">${d.login}
-              <div style="font-size:12px;color:var(--muted)">${d.serial || ''} · ${d.fw || ''}${d.claim_code ? ' · код ' + d.claim_code : ''}</div></div>
-            <button data-ok="${d.id}" style="${admBtn('Привязать')};background:var(--accent);color:#fff">Привязать</button>
-            <button data-no="${d.id}" style="${admBtn('Удалить', 'var(--danger)')}">Удалить</button>
-          </div>`).join('')
-        : '<div style="font-size:13px;color:var(--muted)">Заявок нет</div>';
+        ? `<div class="tbl-wrap"><table class="tbl">
+            <thead><tr><th>Логин платы</th><th>Прошивка</th><th class="right">Действие</th></tr></thead>
+            <tbody>${pend.map(d => `
+              <tr>
+                <td class="mono">${d.login}
+                  <div class="adm-sub">${d.serial || ''}${d.claim_code ? ' · код ' + d.claim_code : ''}</div></td>
+                <td class="mono">${(d.fw || '—').replace(/^FR-/, '')}</td>
+                <td class="right"><div class="row-acts">
+                  <button data-ok="${d.id}" class="adm-tbtn adm-tbtn-acc">Привязать</button>
+                  <button data-no="${d.id}" class="adm-tbtn adm-tbtn-del">Удалить</button>
+                </div></td>
+              </tr>`).join('')}</tbody>
+          </table></div>`
+        : '<div class="adm-empty">Новых заявок нет — список обновится сам</div>';
+      admBleed('adm-pending');
 
       $$('#adm-pending [data-ok]').forEach(b => b.onclick = async () => {
         const username = prompt('К какому пользователю привязать? (логин)');
@@ -1355,10 +1369,12 @@
             <div style="flex:1">
               <div style="font-size:13px;white-space:pre-wrap">${(x.text || '').replace(/</g, '&lt;')}</div>
               <div style="font-size:12px;color:var(--muted);margin-top:4px">
-                ${x.username || 'без пользователя'} · ${admWhen(x.created_at)}${x.status === 'done' ? ' · прочитано' : ''}</div>
+                ${x.username || 'без пользователя'} · ${admWhen(x.created_at)}${x.status === 'done' ? '<span class="lg-badge ok">прочитано</span>' : '<span class="lg-badge warn">новое</span>'}</div>
             </div>
-            ${x.status === 'done' ? '' : `<button data-fb-close="${x.id}" style="${admBtn('Закрыть и уведомить')}">Закрыть и уведомить</button>`}
-            <button data-fb-del="${x.id}" style="${admBtn('Удалить', 'var(--danger)')}">Удалить</button>
+            <div class="row-acts" style="flex-shrink:0">
+              ${x.status === 'done' ? '' : `<button data-fb-close="${x.id}" class="adm-tbtn adm-tbtn-acc">Закрыть и уведомить</button>`}
+              <button data-fb-del="${x.id}" class="adm-tbtn adm-tbtn-del">Удалить</button>
+            </div>
           </div>`).join('')
         : '<div style="font-size:13px;color:var(--muted)">Обращений нет</div>';
       $$('#adm-feedback [data-fb-close]').forEach(b => b.onclick = async () => {
@@ -1451,15 +1467,24 @@
 
       // ---- устройства
       const all = await api('/api/admin/devices?status=all');
-      $('#adm-devices').innerHTML = (all.devices || []).map(d => `
-        <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)">
-          <div style="flex:1">${d.login}
-            <div style="font-size:12px;color:var(--muted)">${d.serial || ''} · ${d.owner || 'без владельца'} · ${admAgo(d.last_seen)}${d.claim_code ? ' · код ' + d.claim_code : ''}</div></div>
-          <div style="font-size:12px;color:${d.online ? 'var(--accent)' : 'var(--muted)'}">${d.online ? 'на связи' : 'офлайн'}</div>
-          <button data-assign="${d.id}" style="${admBtn('Привязать')}">Привязать</button>
-          ${d.owner ? `<button data-unbind="${d.id}" style="${admBtn('Отвязать', 'var(--danger)')}">Отвязать</button>` : ''}
-          <button data-del-dev="${d.id}" style="${admBtn('Удалить', 'var(--danger)')}">Удалить</button>
-        </div>`).join('');
+      $('#adm-devices').innerHTML = (all.devices || []).length
+        ? `<div class="tbl-wrap"><table class="tbl">
+            <thead><tr><th>Устройство</th><th>Статус</th><th>Связь</th><th class="right">Действия</th></tr></thead>
+            <tbody>${(all.devices || []).map(d => `
+              <tr>
+                <td class="mono">${d.login}
+                  <div class="adm-sub">${d.serial || ''} · ${d.owner || 'без владельца'}${d.claim_code ? ' · код ' + d.claim_code : ''}</div></td>
+                <td><span class="lg-badge ${d.online ? 'ok' : ''}">${d.online ? 'на связи' : 'офлайн'}</span></td>
+                <td>${admAgo(d.last_seen)}</td>
+                <td class="right"><div class="row-acts">
+                  <button data-assign="${d.id}" class="adm-tbtn">Привязать</button>
+                  ${d.owner ? `<button data-unbind="${d.id}" class="adm-tbtn adm-tbtn-del">Отвязать</button>` : ''}
+                  <button data-del-dev="${d.id}" class="adm-tbtn adm-tbtn-del">Удалить</button>
+                </div></td>
+              </tr>`).join('')}</tbody>
+          </table></div>`
+        : '<div class="adm-empty">Устройств нет</div>';
+      admBleed('adm-devices');
 
       $$('#adm-devices [data-assign]').forEach(b => b.onclick = async () => {
         const username = prompt('Логин пользователя:');
@@ -1521,12 +1546,31 @@
       // ---- журнал
       const ev = await api('/api/admin/events');
       const events = (ev.events || []).slice(0, 60);
+      const evLabel = (k) => {
+        if (k.startsWith('cmd_')) return 'команда';
+        if (k.startsWith('admin_')) return 'админ';
+        if (k.startsWith('device_')) return 'плата';
+        if (k.startsWith('feedback')) return 'обращение';
+        if (k.startsWith('config')) return 'настройки';
+        if (k.startsWith('can')) return 'CAN';
+        return 'событие';
+      };
+      const evTone = (k) => /delete|reject/i.test(k) ? 'danger'
+        : /created|approve|assign|done|queued/i.test(k) ? 'ok'
+        : /fail|error|offline/i.test(k) ? 'warn' : '';
       $('#adm-events').innerHTML = events.length
-        ? events.map(e => `<div style="display:flex;gap:10px;padding:6px 0;font-size:12px;border-bottom:1px solid var(--line)">
-            <span style="color:var(--muted);min-width:78px">${admWhen(e.ts)}</span>
-            <span style="flex:1">${e.kind}${e.device_id ? ' · #' + e.device_id : ''}</span>
-          </div>`).join('')
-        : '<div style="font-size:13px;color:var(--muted)">Пусто</div>';
+        ? events.map(e => {
+            const d = new Date(e.ts * 1000);
+            const hh = String(d.getHours()).padStart(2, '0');
+            const mm = String(d.getMinutes()).padStart(2, '0');
+            const same = d.toDateString() === new Date().toDateString();
+            const when = same ? hh + ':' + mm
+              : String(d.getDate()).padStart(2, '0') + '.' + String(d.getMonth() + 1).padStart(2, '0') + ' ' + hh + ':' + mm;
+            return `<div class="log-row"><time>${when}</time>
+              <span class="lt"><span class="mono">${e.kind}</span>${e.device_id ? ' · плата #' + e.device_id : ''}
+                <span class="lg-badge ${evTone(e.kind)}">${evLabel(e.kind)}</span></span></div>`;
+          }).join('')
+        : '<div class="adm-empty">Пусто</div>';
     } catch (e) {
       $('#adm-pending').innerHTML = '<div style="font-size:12px;color:var(--muted)">' + e.message + '</div>';
     }
