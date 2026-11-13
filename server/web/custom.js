@@ -785,39 +785,59 @@
 
     const inputStyle = 'width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--text)';
 
+    const card = (title, desc, body) => `
+      <div class="card">
+        <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">${title}</div></div>
+        ${desc ? `<div style="font-size:12px;color:var(--muted);margin-bottom:10px">${desc}</div>` : ''}
+        ${body}
+      </div>`;
+    const numField = (k, t, h) => `
+      <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:10px">${t}
+        <input data-num="${k}" type="number" value="${cfg[k] !== undefined ? cfg[k] : ''}" style="${inputStyle}">
+        ${h ? `<span style="font-size:11px">${h}</span>` : ''}
+      </label>`;
+    const boolRow = (k, t, h) => `
+      <label style="display:flex;align-items:center;gap:10px;padding:8px 0">
+        <input data-bool="${k}" type="checkbox" ${cfg[k] ? 'checked' : ''} style="width:18px;height:18px">
+        <span style="font-size:14px">${t}${h ? `<span style="display:block;font-size:11px;color:var(--muted)">${h}</span>` : ''}</span>
+      </label>`;
+    const textField = (k, t, ph, value, type) => `
+      <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:10px">${t}
+        <input data-text="${k}" type="${type || 'text'}" value="${String(value === undefined || value === null ? '' : value).replace(/"/g, '&quot;')}" placeholder="${ph || ''}" style="${inputStyle}">
+      </label>`;
+
     fields.innerHTML =
-      '<div style="font-size:12px;color:var(--muted);margin-bottom:6px">Режим работы</div>' +
-      `<label style="display:flex;align-items:flex-start;gap:10px;padding:8px 0">
-         <input type="radio" name="cfgmode" value="1" ${cfg.remote_mode === 1 ? 'checked' : ''} style="width:18px;height:18px;margin-top:2px">
-         <span style="font-size:14px">Сервер — лёгкий интерфейс, постоянная связь
-           <span style="display:block;font-size:11px;color:var(--muted)">экономит ресурсы платы, звонки работают</span></span>
-       </label>` +
-      `<label style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)">
-         <input type="radio" name="cfgmode" value="0" ${cfg.remote_mode === 0 ? 'checked' : ''} style="width:18px;height:18px;margin-top:2px">
-         <span style="font-size:14px">Без подключения — полный web
-           <span style="display:block;font-size:11px;color:var(--muted)">вся страница на плате, в интернет не выходит</span></span>
-       </label>` +
-      NUMBERS.map(([k, t, h]) => `
-        <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:10px">${t}
-          <input data-num="${k}" type="number" value="${cfg[k] !== undefined ? cfg[k] : ''}" style="${inputStyle}">
-          ${h ? `<span style="font-size:11px">${h}</span>` : ''}
-        </label>`).join('') +
-      '<label style="display:block;font-size:12px;color:var(--muted);margin-bottom:10px">Имя в сети (DHCP/mDNS)' +
-      '<input data-text="host_name" value="' + String(cfg.host_name || 'leaf').replace(/"/g, '&quot;') + '" style="' + inputStyle + '">' +
-      '<span style="font-size:11px">так плата видна в списке устройств; применится после перезагрузки</span></label>' +
-      '<div style="font-size:12px;color:var(--muted);margin:14px 0 6px">Интернет через SIM</div>' +
-      '<label style="display:block;font-size:12px;color:var(--muted);margin-bottom:10px">APN (точка доступа)' +
-      `<input data-text="apn" value="${(cfg.apn || '').replace(/"/g, '&quot;')}" placeholder="internet.beeline.ru" style="${inputStyle}"></label>` +
-      '<label style="display:block;font-size:12px;color:var(--muted);margin-bottom:10px">Логин APN' +
-      `<input data-text="apn_user" value="${(cfg.apn_user || '').replace(/"/g, '&quot;')}" placeholder="обычно не нужен" style="${inputStyle}"></label>` +
-      '<label style="display:block;font-size:12px;color:var(--muted);margin-bottom:10px">Пароль APN' +
-      `<input data-text="apn_pass" type="password" value="" placeholder="не менять" style="${inputStyle}">` +
-      '<span style="font-size:11px">пароль не отображается; оставьте пустым, чтобы не менять</span></label>' +
-      TOGGLES.map(([k, t, h]) => `
-        <label style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)">
-          <input data-bool="${k}" type="checkbox" ${cfg[k] ? 'checked' : ''} style="width:18px;height:18px">
-          <span style="font-size:14px">${t}${h ? `<span style="display:block;font-size:11px;color:var(--muted)">${h}</span>` : ''}</span>
-        </label>`).join('');
+      card('Режим работы', 'Как плата связана с интернетом и сервером.',
+        `<label style="display:flex;align-items:flex-start;gap:10px;padding:8px 0">
+           <input type="radio" name="cfgmode" value="1" ${cfg.remote_mode === 1 ? 'checked' : ''} style="width:18px;height:18px;margin-top:2px">
+           <span style="font-size:14px">Сервер — всегда на связи
+             <span style="display:block;font-size:11px;color:var(--muted)">данные и команды идут через сервер, звонки работают</span></span>
+         </label>
+         <label style="display:flex;align-items:flex-start;gap:10px;padding:8px 0">
+           <input type="radio" name="cfgmode" value="0" ${cfg.remote_mode === 0 ? 'checked' : ''} style="width:18px;height:18px;margin-top:2px">
+           <span style="font-size:14px">Без подключения — только плата
+             <span style="display:block;font-size:11px;color:var(--muted)">локальная страница и приём звонков, в интернет не выходит</span></span>
+         </label>`) +
+      card('Зарядка', 'Остановка заряда по проценту с приборки.',
+        numField('charge_limit', 'Лимит заряда, %', '0 — выключено, обычно 70–95')) +
+      card('Сон и пробуждение', 'Плата засыпает, когда машина долго стоит, и периодически просыпается на связь.',
+        boolRow('sleep', 'Глубокий сон', '') +
+        numField('sleep_after', 'Сон при бездействии через, ч', 'пока машина активна, плата не спит') +
+        numField('wake_fast', 'После этого — пробуждение каждые, мин', 'пока простой меньше 7 дней') +
+        numField('wake_slow', 'После 7 дней простоя — пробуждение каждые, мин', '')) +
+      card('Интернет через SIM', 'Резервный канал, когда Wi-Fi нет. Нужен APN оператора.',
+        boolRow('modem', 'Модем SIM800', 'интернет и приём звонков') +
+        textField('apn', 'APN (точка доступа)', 'internet.beeline.ru', cfg.apn) +
+        textField('apn_user', 'Логин APN', 'обычно не нужен', cfg.apn_user) +
+        textField('apn_pass', 'Пароль APN', 'не менять', '', 'password') +
+        '<div style="font-size:11px;color:var(--muted)">пароль не отображается; пустое поле — не менять</div>') +
+      card('Плата в сети', 'Имя, под которым плата видна в домашней сети.',
+        textField('host_name', 'Имя в сети (DHCP/mDNS)', 'leaf', cfg.host_name || 'leaf') +
+        '<div style="font-size:11px;color:var(--muted)">применится после перезагрузки платы</div>') +
+      card('Дополнительно', 'Редко нужные функции.',
+        boolRow('locking', 'Блокировка кнопок', 'запрет команд, если выключено') +
+        boolRow('uds', 'Расширенная диагностика', 'UDS-запросы VCM/BCM/ABS/TMI') +
+        boolRow('uds_tpms', 'TPMS', 'если установлен модуль давления'));
 
     $('#cfg-name').value = meta.login ? '' : '';
     try {
