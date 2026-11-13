@@ -1227,6 +1227,13 @@
       service.insertBefore(r, service.firstChild);
     }
 
+    // Пункт прошивок в app.html включается только на локальном хосте платы;
+    // администратору на сервере он тоже нужен (обновление по воздуху).
+    if (userRole === 'admin') {
+      const otaRow = $('#more-ota');
+      if (otaRow) otaRow.style.display = 'flex';
+    }
+
     if (!data.querySelector('[data-lc-xlsx]')) {
       const r = moreRow('История в Excel', 'обзор, дни, сессии и графики', MORE_ICONS.chart, () => {
         location.href = '/api/export/xlsx?days=90';
