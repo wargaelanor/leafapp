@@ -308,16 +308,24 @@ static bool httpInit() {
   // bringUpGprs() оставляет модуль в прозрачном режиме (CIPMODE=1) — в нём
   // AT+HTTPINIT не отвечает. Сначала просто выходим из прозрачного режима.
   commandOk("AT+CIPMODE=0", 2000);
-  if (commandOk("AT+HTTPINIT", 5000)) return true;
+  String r1;
+  bool ok1 = commandOk("AT+HTTPINIT", 5000, &r1);
+  Serial.printf("[http] init1=%d resp=%s\n", ok1, r1.length() ? r1.c_str() : "-");
+  if (ok1) return true;
 
   // Не помогло: закрываем TCP и заново поднимаем bearer (APN уже известен).
   commandOk("AT+CIPSHUT", 8000);
   commandOk("AT+SAPBR=3,1,\"CONTYPE\",\"GPRS\"", 2000);
   String apn = savedApn.length() ? savedApn : String("internet.beeline.ru");
   commandOk("AT+SAPBR=3,1,\"APN\",\"" + apn + "\"", 2000);
-  commandOk("AT+SAPBR=1,1", 45000);
+  String sb;
+  bool sap = commandOk("AT+SAPBR=1,1", 45000, &sb);
+  Serial.printf("[http] sapbr=%d resp=%s\n", sap, sb.length() ? sb.c_str() : "-");
   commandOk("AT+HTTPTERM", 2000);
-  return commandOk("AT+HTTPINIT", 5000);
+  String r2;
+  bool ok2 = commandOk("AT+HTTPINIT", 5000, &r2);
+  Serial.printf("[http] init2=%d resp=%s\n", ok2, r2.length() ? r2.c_str() : "-");
+  return ok2;
 }
 
 static volatile bool httpBusy = false;
@@ -327,7 +335,7 @@ bool hwHttp(int method, const char* url, const char* body, String& response, int
   response = "";
   // Один HTTP-запрос за раз: иначе синхронизация и ручная проверка мешают
   // друг другу на одном UART.
-  if (httpBusy) return false;
+  if (httpBusy) { Serial.println("[http] busy"); return false; }
   httpBusy = true;
   if (!httpInit()) {
     httpBusy = false;
@@ -366,6 +374,18 @@ bool hwHttp(int method, const char* url, const char* body, String& response, int
     sendCommand(method == 1 ? "AT+HTTPACTION=1" : "AT+HTTPACTION=0");
     String act;
     if (!awaitText("+HTTPACTION:", 45000, &act)) { Serial.println("[http] no action URC"); break; }
+    // awaitText возвращается сразу по маркеру, а хвост строки
+    // "+HTTPACTION: 0,200,123" приходит следующим пакетом — добираем его.
+    {
+      int mark = act.indexOf("+HTTPACTION:");
+      unsigned long t0 = millis();
+      while (millis() - t0 < 1500) {
+        while (simSerial.available()) act += (char)simSerial.read();
+        int nl = act.indexOf('\n', mark);
+        if (nl > 0) break;
+        delay(5);
+      }
+    }
     Serial.printf("[http] action raw: %s\n", act.substring(act.indexOf("+HTTPACTION:")).c_str());
     int p = act.indexOf("+HTTPACTION:");
     int p2 = act.indexOf(',', p);
@@ -377,6 +397,16 @@ bool hwHttp(int method, const char* url, const char* body, String& response, int
     sendCommand("AT+HTTPREAD");
     String rd;
     if (!awaitText("+HTTPREAD:", 10000, &rd)) { Serial.println("[http] no read"); break; }
+    {
+      int mark = rd.indexOf("+HTTPREAD:");
+      unsigned long t0 = millis();
+      while (millis() - t0 < 1000) {
+        while (simSerial.available()) rd += (char)simSerial.read();
+        int nl0 = rd.indexOf('\n', mark);
+        if (nl0 > 0) break;
+        delay(5);
+      }
+    }
     int nl = rd.indexOf('\n', rd.indexOf("+HTTPREAD:"));
     if (nl < 0) break;
     String head = rd.substring(nl + 1);

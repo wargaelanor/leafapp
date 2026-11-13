@@ -427,9 +427,15 @@ class Api(BaseHTTPRequestHandler):
 
     def device(self):
         auth = self.headers.get("Authorization") or ""
-        if not auth.startswith("Bearer "):
+        if auth.startswith("Bearer "):
+            token = auth[7:].strip()
+        else:
+            # AT+HTTP на SIM800 не умеет свои заголовки — плата присылает токен
+            # параметром. Сервер не логирует URL, поэтому он не утекает в логи.
+            q = parse_qs(urlparse(self.path).query)
+            token = (q.get("token") or [""])[0].strip()
+        if not token:
             return None
-        token = auth[7:].strip()
         with db_lock, connect() as c:
             return c.execute("SELECT * FROM devices WHERE device_token=?", (token,)).fetchone()
 

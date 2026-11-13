@@ -273,7 +273,13 @@ static bool modemHttp(int method, const String& path, const char* body,
   if (p >= 0) host = host.substring(p + 3);
   p = host.indexOf('/');
   if (p >= 0) host = host.substring(0, p);
-  String url = String("http://") + host + ":" + String(LEAF_PLAIN_PORT) + path;
+  // У AT+HTTP нельзя задать свой заголовок Authorization, поэтому токен платы
+  // передаём параметром в URL (этот порт открыт только для /api/device/*).
+  String full = path;
+  full += (full.indexOf('?') >= 0) ? "&" : "?";
+  full += "token=";
+  full += cfgToken;
+  String url = String("http://") + host + ":" + String(LEAF_PLAIN_PORT) + full;
   // Пока идёт HTTP, менеджер модема не должен слать свои AT (опрос вызовов),
   // иначе ответы перемешиваются и HTTPINIT/HTTPACTION ломаются.
   modemManagerPause(true);
