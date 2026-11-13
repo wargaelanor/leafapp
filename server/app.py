@@ -713,21 +713,43 @@ class Api(BaseHTTPRequestHandler):
         if path in ("/api/trips/clear", "/api/charges/clear") and method == "POST":
             return self.json(200, {"ok": True})
         if path == "/api/tariff":
+            b = self.body()
+            dev, uid = None, 0
+            if method == "POST":
+                u = self.require_user()
+                if u:
+                    uid = u["id"]
+                    dev = (self.owned_device(u, str(b.get("device", "") or ""))
+                           or self.pwa_pick_device(u))
+            pairs = {"tariff_day": b.get("day"), "tariff_night": b.get("night"),
+                     "night_from": b.get("from"), "night_to": b.get("to")}
             with db_lock, connect() as c:
                 if method == "POST":
-                    b = self.body()
-                    pairs = {"tariff_day": b.get("day"), "tariff_night": b.get("night"),
-                             "night_from": b.get("from"), "night_to": b.get("to")}
                     for k, v in pairs.items():
                         if v is not None:
                             c.execute("INSERT OR REPLACE INTO app_settings(key,value) VALUES(?,?)",
                                       (k, str(v)))
-                cfg = self.settings_all(c)
+                    # Тариф уезжает и на плату: единый источник — сервер.
+                    if dev:
+                        for k, v in pairs.items():
+                            if v is None:
+                                continue
+                            c.execute(
+                                "INSERT INTO commands(device_id,user_id,name,args,status,created_at)"
+                                " VALUES(?,?,?,?,?,?)",
+                                (dev["id"], uid, "set_config",
+                                 json.dumps({"key": k, "value": v}, ensure_ascii=False),
+                                 "queued", now()),
+                            )
+                    cfg = self.settings_all(c)
+                else:
+                    cfg = self.settings_all(c)
             return self.json(200, {
                 "day": float(cfg["tariff_day"]), "night": float(cfg["tariff_night"]),
                 "from": int(float(cfg["night_from"])), "to": int(float(cfg["night_to"])),
                 "petrol_price": float(cfg["petrol_price"]),
                 "petrol_l100": float(cfg["petrol_l100"]),
+                "pushed": dev["id"] if dev else None,
             })
         if path == "/api/device/select" and method == "POST":
             u = self.require_user()

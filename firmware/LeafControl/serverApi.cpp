@@ -493,16 +493,18 @@ static bool sendState() {
 // ---------------------------------------------------------------- settings
 
 static void sendConfig() {
-  char body[560];
+  char body[640];
   snprintf(body, sizeof(body),
            "{\"remote_mode\":%d,\"charge_limit\":%d,\"locking\":%d,\"sleep\":%d,\"sleep_after\":%d,"
            "\"wake_fast\":%d,\"wake_slow\":%d,\"uds\":%d,\"uds_tpms\":%d,"
-           "\"modem\":%d,\"apn\":\"%s\",\"apn_user\":\"%s\",\"vehicle_profile\":%d}",
+           "\"modem\":%d,\"apn\":\"%s\",\"apn_user\":\"%s\",\"vehicle_profile\":%d,"
+           "\"tariff_day\":%.2f,\"tariff_night\":%.2f,\"night_from\":%u,\"night_to\":%u}",
            (int)getRemoteTransport(),
            getChargeLimitPct(), getLockingEnabled() ? 1 : 0, getSleepEnabled() ? 1 : 0,
            getSleepAfterHours(), getWakeFastMinutes(), getWakeSlowMinutes(),
            getUdsEnabled() ? 1 : 0, getUdsTpmsEnabled() ? 1 : 0,
-           getModemEnable() ? 1 : 0, getModem800Apn(), getModem800User(), getVehicleProfile());
+           getModemEnable() ? 1 : 0, getModem800Apn(), getModem800User(), getVehicleProfile(),
+           tripLogTariffDay(), tripLogTariffNight(), tripLogNightFrom(), tripLogNightTo());
   String resp;
   postJson("/api/device/config", body, resp);
 }
@@ -510,6 +512,17 @@ static void sendConfig() {
 static void applyConfig(const char* argsJson) {
   char key[24] = {0};
   if (!jsonString(argsJson, "\"key\"", key, sizeof(key))) return;
+
+  // Число после "value": работает и для 8.0, и для "8.0" (строка в кавычках).
+  auto valueDouble = [&]() -> double {
+    const char* vp = strstr(argsJson, "\"value\"");
+    if (!vp) return NAN;
+    vp = strchr(vp, ':');
+    if (!vp) return NAN;
+    vp++;
+    while (*vp == ' ' || *vp == '"') vp++;
+    return atof(vp);
+  };
 
   const char* vp = strstr(argsJson, "\"value\"");
   if (!vp) return;
@@ -566,6 +579,20 @@ static void applyConfig(const char* argsJson) {
   else if (!strcmp(key, "uds_tpms")) setUdsTpmsEnabled(bval);
   else if (!strcmp(key, "vehicle_profile")) setVehicleProfile(ival);
   else if (!strcmp(key, "modem")) setModemEnable(bval);
+  else if (!strcmp(key, "tariff_day") || !strcmp(key, "tariff_night") ||
+           !strcmp(key, "night_from") || !strcmp(key, "night_to")) {
+    // Тариф приходит с сервера (сохранённый в приложении) — применяем и
+    // запоминаем в NVS, чтобы поездки считались в рублях.
+    double d = valueDouble();
+    if (isnan(d)) return;
+    double day = tripLogTariffDay(), night = tripLogTariffNight();
+    uint8_t from = tripLogNightFrom(), to = tripLogNightTo();
+    if (!strcmp(key, "tariff_day")) day = d;
+    else if (!strcmp(key, "tariff_night")) night = d;
+    else if (!strcmp(key, "night_from")) from = (uint8_t)d;
+    else to = (uint8_t)d;
+    tripLogSetTariff(day, night, from, to);
+  }
   else {
     Serial.printf("[srv] unknown config key: %s\n", key);
     return;
