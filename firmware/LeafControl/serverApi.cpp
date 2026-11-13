@@ -4,6 +4,7 @@
 #include <math.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+#include <esp_mac.h>
 
 #include "canLeafZE1.h"
 #include "tripLog.h"
@@ -380,10 +381,19 @@ static void registerDevice() {
   if (now - lastRegisterMs < 15000UL) return;
   lastRegisterMs = now;
 
+  // Серийник для панели: заводской MAC чипа из eFuse — один и тот же с
+  // рождения платы, не зависит от того, подключался ли Wi-Fi.
+  uint8_t m[6] = {0};
+  esp_efuse_mac_get_default(m);
+  char buf[18];
+  snprintf(buf, sizeof(buf), "%02X:%02X:%02X:%02X:%02X:%02X",
+           m[0], m[1], m[2], m[3], m[4], m[5]);
+  String mac(buf);
+
   char body[320];
   snprintf(body, sizeof(body),
            "{\"login\":\"%s\",\"password\":\"%s\",\"name\":\"Leaf\",\"serial\":\"%s\",\"fw\":\"%s\"}",
-           cfgLogin, cfgPass, WiFi.macAddress().c_str(), leafFwVersion);
+           cfgLogin, cfgPass, mac.c_str(), leafFwVersion);
 
   String resp;
   if (!postJson("/api/device/enroll", body, resp)) {

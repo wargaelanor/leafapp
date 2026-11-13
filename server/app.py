@@ -940,7 +940,17 @@ class Api(BaseHTTPRequestHandler):
             if not row and login:
                 row = c.execute("SELECT * FROM devices WHERE login=?", (login,)).fetchone()
             if row:
-                c.execute("UPDATE devices SET fw=?, last_seen=? WHERE id=?", (fw, now(), row["id"]))
+                # serial может смениться (перепрошивка, MAC-источник) —
+                # обновляем, если он ещё не занят другой платой.
+                sets, params = "fw=?, last_seen=?", [fw, now()]
+                if serial and not c.execute(
+                    "SELECT 1 FROM devices WHERE serial=? AND id<>?",
+                    (serial, row["id"]),
+                ).fetchone():
+                    sets += ", serial=?"
+                    params.append(serial)
+                params.append(row["id"])
+                c.execute(f"UPDATE devices SET {sets} WHERE id=?", params)
                 return self.json(200, {
                     "device_token": row["device_token"],
                     "status": row["status"],
