@@ -284,8 +284,9 @@ static void finishTrip(const char* reason) {
   if (km < 0) km = 0;
   if (tripKmSpeed > km) km = tripKmSpeed;   // короткие поездки: считаем по скорости
   tripKmSpeed = 0;
-  // Ignore noise: shorter than 20 s and less than 50 m.
-  if (durMs < 20000UL && km < 0.05f) return;
+  // Ignore noise: ни одной полной минуты и меньше 500 м — мусор
+  // (бывает при кратких пробуждениях платы без реальной поездки).
+  if (durMs < 60000UL && km < 0.5f) return;
 
   char line[200];
   // "w"/"wd"/"wn" are watt-hours (Wh), not kWh. The PWA stores Wh directly.
@@ -498,9 +499,9 @@ void tripLogTick() {
     } else {
       tripOffSinceMs = 0;
     }
-    // Страховка: шина молчит 15 минут — машина точно спит.
-    bool busSilent = evCanLastFrameAgeSec() > 900UL;
-    if ((tripOffSinceMs != 0 && now - tripOffSinceMs > 480000UL) || busSilent) {
+    // Страховка: шина молчит 2 минуты — машина точно спит.
+    bool busSilent = evCanLastFrameAgeSec() > 120UL;
+    if ((tripOffSinceMs != 0 && now - tripOffSinceMs > 60000UL) || busSilent) {
       finishTrip("off");
     }
   }

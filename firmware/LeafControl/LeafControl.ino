@@ -25,11 +25,11 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FR-TCall.170"
-#define LEAF_FIRMWARE_DESCRIPTION "T-Call: PWRKEY recovery, CREG diag, efuse serial"
+#define LEAF_FIRMWARE_VERSION "FR-TCall.171"
+#define LEAF_FIRMWARE_DESCRIPTION "T-Call: trip end 1/2 min, garbage-session filter, efuse serial"
 #else
-#define LEAF_FIRMWARE_VERSION "FR-2can.170"
-#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: PWRKEY recovery, CREG diag, efuse serial"
+#define LEAF_FIRMWARE_VERSION "FR-2can.171"
+#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: trip end 1/2 min, garbage-session filter, efuse serial"
 #endif
 
 // Доступ к версии из других модулей (serverApi.cpp).
