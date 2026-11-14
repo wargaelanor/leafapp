@@ -25,11 +25,11 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FR-TCall.172"
-#define LEAF_FIRMWARE_DESCRIPTION "T-Call: wifi networks from app, tariff sync, 1/2 min trip end"
+#define LEAF_FIRMWARE_VERSION "FR-TCall.173"
+#define LEAF_FIRMWARE_DESCRIPTION "T-Call: OTA-capable partitions (min_spiffs), gz-only UI, wifi from app, tariff sync"
 #else
-#define LEAF_FIRMWARE_VERSION "FR-2can.172"
-#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: wifi networks from app, tariff sync, 1/2 min trip end"
+#define LEAF_FIRMWARE_VERSION "FR-2can.173"
+#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: wifi networks from app, tariff sync, trip end 1/2 min"
 #endif
 
 // Доступ к версии из других модулей (serverApi.cpp).
@@ -419,7 +419,11 @@ void handleLite() {
   client.setTimeout(2000);
   String accept = server.header("Accept-Encoding");
   accept.toLowerCase();
+#ifdef WEBAPP_GZ_ONLY
+  bool useGzip = true;
+#else
   bool useGzip = accept.indexOf("gzip") >= 0;
+#endif
   const unsigned char* body = useGzip ? LITE_HTML_GZ : (const unsigned char*)LITE_HTML;
   const size_t len = useGzip ? LITE_HTML_GZ_LEN : sizeof(LITE_HTML) - 1;
   server.setContentLength(len);
@@ -574,9 +578,14 @@ void handleRoot() {
   // access point the uncompressed 100 KB took minutes, the gzip copy is ~25 KB.
   NetworkClient& client = server.client();
   client.setTimeout(2000);
+#ifdef WEBAPP_GZ_ONLY
+  // T-Call: сырой HTML не зашит (место под второй OTA-слот), всегда gzip.
+  bool useGzip = true;
+#else
   String accept = server.header("Accept-Encoding");
   accept.toLowerCase();
   bool useGzip = accept.indexOf("gzip") >= 0;
+#endif
   const unsigned char* body = useGzip ? INDEX_HTML_GZ : (const unsigned char*)INDEX_HTML;
   const size_t htmlLen = useGzip ? INDEX_HTML_GZ_LEN : sizeof(INDEX_HTML) - 1;
   server.setContentLength(htmlLen);

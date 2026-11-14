@@ -66,9 +66,11 @@
 #define BOARD_PMU_SDA 21
 #define BOARD_PMU_SCL 22
 
-// 4 MB flash, OTA + a small history partition.
-#define BOARD_TRIPS_LIMIT   (96UL * 1024UL)
-#define BOARD_CHARGES_LIMIT (24UL * 1024UL)
+// 4 MB flash, two OTA slots (min_spiffs) + 128 KB history partition.
+// History capacity is capped below the 128 KB partition size so SPIFFS
+// metadata always has room.
+#define BOARD_TRIPS_LIMIT   (80UL * 1024UL)
+#define BOARD_CHARGES_LIMIT (20UL * 1024UL)
 
 #else
 // -------------------------------------------------------------------------

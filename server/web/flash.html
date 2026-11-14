@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0f1216">
+  <title>Leaf Control · Прошивка по USB</title>
+  <style>
+    :root{
+      --bg:#f4f5f7; --surface:#fff; --surface-2:#f9f9f9; --chip:#eceef1;
+      --text:#333; --text-2:#555; --text-strong:#13172c; --muted:#707070;
+      --line:#f1f1f1; --accent:#0077ac; --accent-soft:rgba(0,119,172,.12);
+    }
+    @media (prefers-color-scheme: dark){
+      :root{
+        --bg:#0f1216; --surface:#181c21; --surface-2:#1e232a; --chip:#232931;
+        --text:#e6e9ed; --text-2:#b6bec7; --text-strong:#f3f6f9; --muted:#96a0aa;
+        --line:#2f3640; --accent:#4aa8d8; --accent-soft:rgba(74,168,216,.16);
+      }
+    }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; background:var(--bg); color:var(--text);
+           font:15px/1.55 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; }
+    main { width:min(860px,calc(100% - 28px)); margin:0 auto; padding:34px 0 60px; }
+    .eyebrow { color:var(--accent); font-size:12px; font-weight:750; letter-spacing:.14em; text-transform:uppercase; }
+    h1 { margin:8px 0 10px; color:var(--text-strong); font-size:30px; letter-spacing:-.02em; }
+    .lead { max-width:640px; color:var(--muted); }
+    .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin:26px 0 16px; }
+    .board { position:relative; display:block; padding:18px; border:1px solid var(--line);
+             border-radius:16px; background:var(--surface); cursor:pointer; transition:.18s ease; }
+    .board:hover { transform:translateY(-2px); }
+    .board:has(input:checked) { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
+    .board input { position:absolute; opacity:0; }
+    .board strong { display:block; color:var(--text-strong); font-size:17px; }
+    .board span { display:block; margin-top:6px; color:var(--muted); font-size:13px; }
+    .tag { display:inline-block; margin-bottom:10px; padding:3px 9px; border-radius:99px;
+           background:var(--accent-soft); color:var(--accent); font-size:11px; font-weight:700; }
+    .panel { padding:20px; border:1px solid var(--line); border-radius:16px; background:var(--surface); }
+    .panel h2 { margin:0 0 8px; color:var(--text-strong); font-size:18px; }
+    .panel p { margin:0 0 16px; color:var(--muted); font-size:14px; }
+    esp-web-install-button { display:block; min-height:52px; }
+    esp-web-install-button::part(button) { width:100%; min-height:52px; border:0; border-radius:12px;
+      background:var(--accent); color:#fff; font-size:15px; font-weight:800; cursor:pointer; }
+    esp-web-install-button::part(button):disabled { opacity:.45; cursor:default; }
+    .note { margin-top:16px; padding:12px 14px; border-radius:10px; background:var(--accent-soft);
+            color:var(--text-2); font-size:13px; }
+    .warn { background:var(--chip); }
+    .steps { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:16px; }
+    .step { padding:14px; border-top:2px solid var(--line); color:var(--muted); font-size:13px; }
+    .step b { display:block; margin-bottom:4px; color:var(--text); }
+    .back { display:inline-block; margin-bottom:18px; color:var(--accent); text-decoration:none; font-size:14px; }
+    @media (max-width:640px){ .grid,.steps { grid-template-columns:1fr; } }
+  </style>
+  <script type="module" src="https://cdn.jsdelivr.net/npm/esp-web-tools@10.1.1/dist/web/install-button.js?module"></script>
+</head>
+<body>
+  <main>
+    <a class="back" href="/app">← Назад в приложение</a>
+    <div class="eyebrow">Leaf Control</div>
+    <h1>Прошивка по USB</h1>
+    <p class="lead">
+      Выберите плату, подключите её кабелем к компьютеру и нажмите кнопку.
+      Работает в Chrome и Edge, без установки программ.
+      Прошивка и файлы — с этого же сервера.
+    </p>
+
+    <section class="grid" aria-label="Выбор платы">
+      <label class="board">
+        <input type="radio" name="board" value="tcall" checked>
+        <span class="tag">TTGO · 4 МБ</span>
+        <strong>T-Call (SIM800 на плате)</strong>
+        <span>Классический ESP32 · обновление по воздуху станет доступно</span>
+      </label>
+      <label class="board">
+        <input type="radio" name="board" value="t2can">
+        <span class="tag">LilyGO · 16 МБ</span>
+        <strong>T-2CAN (SIM800 на проводе)</strong>
+        <span>ESP32-S3 · два слота прошивки уже настроены</span>
+      </label>
+    </section>
+
+    <section class="panel">
+      <h2 id="selected-board">T-Call</h2>
+      <p id="board-note">
+        Прошивка перепрошивает память целиком: два слота для обновлений по воздуху,
+        история поездок будет очищена. Список Wi-Fi и тариф сохранятся в карте настроек —
+        при необходимости впишите их заново в приложении.
+      </p>
+      <esp-web-install-button id="installer" manifest="/flash/manifests/tcall.json?v=173"></esp-web-install-button>
+      <div class="note warn" id="battery-note">
+        <strong>Отключите плату от автомобильного аккумулятора на время прошивки</strong> —
+        заряжаемый USB-порт «забивает» линию данных, и прошивка ломается на середине (ошибка MD5).
+        На столе от USB компьютера — нормально.
+      </div>
+    </section>
+
+    <section class="steps" aria-label="Инструкция">
+      <div class="step"><b>01 · Кабель</b>Подключите плату напрямую к компьютеру, без хаба, хорошим кабелем с данными.</div>
+      <div class="step"><b>02 · BOOT</b>Если плата не находится — зажмите BOOT, один раз нажмите RESET и отпустите BOOT.</div>
+      <div class="step"><b>03 · Готово</b>После прошивки плата перезагрузится и сама выйдет на связь. Версию видно в приложении.</div>
+    </section>
+
+    <section class="note">
+      Нужен USB-порт: браузер спросит разрешение на доступ к устройству.
+      На телефоне этот способ не работает — прошивайте с компьютера.
+    </section>
+  </main>
+
+  <script>
+    const boards = {
+      tcall: ['T-Call', '/flash/manifests/tcall.json?v=173'],
+      t2can: ['T-2CAN', '/flash/manifests/t2can.json?v=173']
+    };
+    const installer = document.querySelector('#installer');
+    const title = document.querySelector('#selected-board');
+    document.querySelectorAll('input[name="board"]').forEach((input) => {
+      input.addEventListener('change', () => {
+        const [name, manifest] = boards[input.value];
+        title.textContent = name;
+        installer.setAttribute('manifest', manifest);
+      });
+    });
+  </script>
+</body>
+</html>

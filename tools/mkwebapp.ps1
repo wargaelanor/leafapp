@@ -91,15 +91,26 @@ $sb = New-Object System.Text.StringBuilder
 [void]$sb.AppendLine('#define WEBAPP_HTML_H')
 [void]$sb.AppendLine('#include <Arduino.h>')
 [void]$sb.AppendLine()
-[void]$sb.AppendLine('static const char INDEX_HTML[] PROGMEM = R"rawliteral(')
-[void]$sb.Append($html)
-[void]$sb.AppendLine(')rawliteral";')
+# T-Call (4 MB) must fit two OTA slots: embed only the gzip copies, no raw HTML.
+if ($Board -eq 'tcall') {
+    [void]$sb.AppendLine('#define WEBAPP_GZ_ONLY 1')
+    [void]$sb.AppendLine('static const char INDEX_HTML[] PROGMEM = "";')
+}
+if ($Board -ne 'tcall') {
+    [void]$sb.AppendLine('static const char INDEX_HTML[] PROGMEM = R"rawliteral(')
+    [void]$sb.Append($html)
+    [void]$sb.AppendLine(')rawliteral";')
+}
 [void]$sb.AppendLine('static const unsigned char INDEX_HTML_GZ[] PROGMEM = {' + ($gzHex -join '') + '};')
 [void]$sb.AppendLine(('static const size_t INDEX_HTML_GZ_LEN = {0};' -f $gzBytes.Length))
 if ($liteHtml) {
-    [void]$sb.AppendLine('static const char LITE_HTML[] PROGMEM = R"rawliteral(')
-    [void]$sb.Append($liteHtml)
-    [void]$sb.AppendLine(')rawliteral";')
+    if ($Board -ne 'tcall') {
+        [void]$sb.AppendLine('static const char LITE_HTML[] PROGMEM = R"rawliteral(')
+        [void]$sb.Append($liteHtml)
+        [void]$sb.AppendLine(')rawliteral";')
+    } else {
+        [void]$sb.AppendLine('static const char LITE_HTML[] PROGMEM = "";')
+    }
     [void]$sb.AppendLine('static const unsigned char LITE_HTML_GZ[] PROGMEM = {' + ($liteGzHex -join '') + '};')
     [void]$sb.AppendLine(('static const size_t LITE_HTML_GZ_LEN = {0};' -f $liteGzBytes.Length))
 } else {
