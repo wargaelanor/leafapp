@@ -83,8 +83,16 @@ class MainActivity : ComponentActivity() {
         showLogin = Settings.serverUser.isBlank()
 
         setContent {
-            LeafTheme {
-                Surface(Modifier.fillMaxSize()) { MainScreen() }
+            var classic by remember {
+                mutableStateOf(getSharedPreferences("interface", MODE_PRIVATE).getBoolean("classic", false))
+            }
+            LeafTheme(classic = classic) {
+                Surface(Modifier.fillMaxSize()) {
+                    MainScreen(classic = classic, onDesignChange = { value ->
+                        getSharedPreferences("interface", MODE_PRIVATE).edit().putBoolean("classic", value).apply()
+                        classic = value
+                    })
+                }
                 if (showLogin) {
                     ServerLoginDialog(onDone = { showLogin = false })
                 }

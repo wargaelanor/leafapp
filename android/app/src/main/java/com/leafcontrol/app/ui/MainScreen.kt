@@ -157,7 +157,11 @@ private val tabs = listOf(
 )
 
 @Composable
-fun MainScreen(vm: LeafViewModel = viewModel()) {
+fun MainScreen(
+    vm: LeafViewModel = viewModel(),
+    classic: Boolean = false,
+    onDesignChange: (Boolean) -> Unit = {},
+) {
     val state by vm.state.collectAsStateWithLifecycle()
     val trips by vm.trips.collectAsStateWithLifecycle()
     val charges by vm.charges.collectAsStateWithLifecycle()
@@ -181,7 +185,7 @@ fun MainScreen(vm: LeafViewModel = viewModel()) {
                 .statusBarsPadding()
                 .navigationBarsPadding()
         ) {
-            LeafTopBar(state) { vm.refresh() }
+            LeafTopBar(state, classic) { vm.refresh() }
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 HorizontalPager(
                     state = pager,
@@ -220,14 +224,16 @@ fun MainScreen(vm: LeafViewModel = viewModel()) {
                         } else {
                             MoreScreen(
                                 state = state,
-                                                onSettings = { vm.openSettings() },
+                                onSettings = { vm.openSettings() },
                                 onCheckUpdate = { vm.checkUpdate() },
+                                classic = classic,
+                                onDesignChange = onDesignChange,
                             )
                         }
                     }
                 }
             }
-            LeafBottomBar(pager.currentPage) { index ->
+            LeafBottomBar(pager.currentPage, classic) { index ->
                 scope.launch { pager.animateScrollToPage(index) }
             }
         }
@@ -239,7 +245,7 @@ fun MainScreen(vm: LeafViewModel = viewModel()) {
 }
 
 @Composable
-private fun LeafTopBar(state: LeafState, onRefresh: () -> Unit) {
+private fun LeafTopBar(state: LeafState, classic: Boolean, onRefresh: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var devMenu by remember { mutableStateOf(false) }
@@ -249,8 +255,8 @@ private fun LeafTopBar(state: LeafState, onRefresh: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
-            .height(56.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .height(if (classic) 56.dp else 64.dp)
+            .background(if (classic) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface)
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -356,13 +362,13 @@ private fun LeafLogo(modifier: Modifier, color: Color) {
 }
 
 @Composable
-private fun LeafBottomBar(selected: Int, onSelect: (Int) -> Unit) {
+private fun LeafBottomBar(selected: Int, classic: Boolean, onSelect: (Int) -> Unit) {
     val outline = MaterialTheme.colorScheme.outline
     Row(
         Modifier
             .fillMaxWidth()
-            .height(56.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .height(if (classic) 56.dp else 64.dp)
+            .background(if (classic) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface)
             .drawBehind {
                 drawLine(
                     outline,
@@ -382,7 +388,7 @@ private fun LeafBottomBar(selected: Int, onSelect: (Int) -> Unit) {
                     .padding(horizontal = 3.dp, vertical = 4.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(
-                        if (active) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                        if (active && classic) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
                         else Color.Transparent
                     )
                     .pressable(interaction) { onSelect(index) },
@@ -1559,7 +1565,7 @@ private fun TripCard(t: Trip) {
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(Modifier.fillMaxWidth()) {
-                Text((if (t.reason == "climate") "❄ Климат · " else "🚗 Поездка · ") + dateFmt.format(Date(t.startMs)), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
+                Text((if (t.reason == "climate") "❄ Климат · " else "Поездка · ") + dateFmt.format(Date(t.startMs)), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
                 Spacer(Modifier.weight(1f))
                 Text(LeafRepo.fmtDuration(t.endMs - t.startMs), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -1667,6 +1673,8 @@ private fun MoreScreen(
     state: LeafState,
     onSettings: () -> Unit,
     onCheckUpdate: () -> Unit,
+    classic: Boolean,
+    onDesignChange: (Boolean) -> Unit,
 ) {
     var showAbout by remember { mutableStateOf(false) }
     val ctx = LocalContext.current
@@ -1677,6 +1685,12 @@ private fun MoreScreen(
     ) {
         item { SectionTitle("ПРИЛОЖЕНИЕ") }
         item { MoreRow(Icons.Outlined.Settings, "Настройки", "Уведомления, связь, фоновый режим") { onSettings() } }
+        item {
+            MoreRow(Icons.Outlined.Settings, "Дизайн интерфейса",
+                if (classic) "Классический · перейти к новому" else "Новый · перейти к классическому") {
+                onDesignChange(!classic)
+            }
+        }
         item { MoreRow(Icons.Outlined.SystemUpdate, "Проверить обновление", "Версия ${BuildConfig.VERSION_NAME}") { onCheckUpdate() } }
         item { MoreRow(Icons.Outlined.Info, "О приложении", "Возможности и версия") { showAbout = true } }
         item { SectionTitle("ПЛАТА") }

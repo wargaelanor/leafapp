@@ -1,9 +1,10 @@
 // LeafControl service worker: cache the app shell;
 // always fetch API responses from the network so telemetry stays current.
-const CACHE = 'leaf-v8';
+const CACHE = 'leaf-v9';
 const SHELL = [
   '/',
   '/index.html',
+  '/redesign.css',
   '/manifest.webmanifest',
   '/icon-192.png',
   '/icon-512.png',

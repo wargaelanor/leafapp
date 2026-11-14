@@ -44,6 +44,31 @@ class ApiContractTests(unittest.TestCase):
         conn.close()
         return status, json.loads(raw) if raw else {}, cookie
 
+    def test_design_routes(self):
+        conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port)
+        conn.request("GET", "/classic")
+        response = conn.getresponse()
+        self.assertEqual(response.status, 302)
+        self.assertEqual(response.getheader("Location"), "/login")
+        response.read()
+        conn.close()
+
+        t = app.now()
+        with app.db_lock, app.db() as c:
+            c.execute("INSERT INTO users(username,pass_hash,role,created_at) VALUES(?,?,?,?)",
+                      ("design-user", app.hash_password("test-password"), "owner", t))
+            uid = c.execute("SELECT id FROM users WHERE username='design-user'").fetchone()[0]
+            c.execute("INSERT INTO sessions(token,user_id,created_at,expires_at) VALUES(?,?,?,?)",
+                      ("design-cookie", uid, t, t + 600))
+        for path, marker in (("/", b"redesign.css"), ("/classic", b"class=\"tabbar\""),
+                             ("/classic.html", b"class=\"tabbar\"")):
+            conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port)
+            conn.request("GET", path, headers={"Cookie": "leaf_session=design-cookie"})
+            response = conn.getresponse()
+            self.assertEqual(response.status, 200)
+            self.assertIn(marker, response.read())
+            conn.close()
+
     def test_device_sync_hist_session_and_admin(self):
         status, enrolled, _ = self.request("POST", "/api/device/enroll", {
             "serial": "test-serial", "login": "test-board", "fw": "176"})

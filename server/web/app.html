@@ -464,6 +464,7 @@ body.demo .demo-banner{display:block}
   .modal .sheet{max-width:560px;margin:0 auto;border-radius:16px}
 }
 </style>
+<link rel="stylesheet" href="/redesign.css">
 </head>
 <body>
 <div class="app">
@@ -864,7 +865,7 @@ body.demo .demo-banner{display:block}
             <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
           </div>
           <!--DEMO-END-->
-          <div class="more-item" id="design-switch">
+          <div class="more-item" id="design-switch" role="link" tabindex="0" onclick="location.href='/classic'" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();location.href='/classic'}">
             <div class="mi gray"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></div>
             <div class="mg-txt"><div class="mg-t">Дизайн интерфейса</div><div class="mg-s">классический — прежнее оформление</div></div>
             <div class="mg-val">Новый</div>
@@ -2234,7 +2235,7 @@ async function refreshTripsScreen(){
     const cost=costText(t);
     const costCell=cost?'<span><span class="m-val">'+cost+'</span> стоимость</span>':'';
     return '<div class="trip-item">'+
-      '<div class="t-head"><span class="t-date">'+(t.kind === 'climate' ? '❄ Климат · ' : '🚗 Поездка · ')+dstr+'</span><span class="t-dur">'+fmtDur(dur)+'</span></div>'+
+       '<div class="t-head"><span class="t-date">'+(t.kind === 'climate' ? '❄ Климат · ' : 'Поездка · ')+dstr+'</span><span class="t-dur">'+fmtDur(dur)+'</span></div>'+
       '<div class="t-metrics"><span><span class="m-val">'+(t.distKm||0).toFixed(1)+'</span> км</span>'+
       spdCell+
       '<span><span class="m-val">'+kwh.toFixed(2)+'</span> кВт·ч</span>'+
