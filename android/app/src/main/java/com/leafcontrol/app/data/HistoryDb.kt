@@ -30,7 +30,7 @@ data class Charge(
     val reason: String,
 )
 
-private const val DB_VERSION = 3
+private const val DB_VERSION = 4
 
 // A phone-recorded session and the board's own record of the same session
 // start within a minute of each other; these windows are deliberately loose.
@@ -76,12 +76,19 @@ object HistoryDb {
             db.execSQL("CREATE INDEX IF NOT EXISTS idx_trips_source ON trips(source)")
             db.execSQL("CREATE INDEX IF NOT EXISTS idx_charges_source ON charges(source)")
             createSamples(db)
+            createSampleRanges(db)
         }
 
         private fun createSamples(db: SQLiteDatabase) {
             db.execSQL("""CREATE TABLE IF NOT EXISTS chart_samples(
                 device TEXT NOT NULL, ts INTEGER NOT NULL, kw REAL, soc REAL, batt REAL, spd REAL,
                 PRIMARY KEY(device, ts))""")
+        }
+
+        private fun createSampleRanges(db: SQLiteDatabase) {
+            db.execSQL("""CREATE TABLE IF NOT EXISTS chart_sample_ranges(
+                device TEXT NOT NULL, from_ts INTEGER NOT NULL, to_ts INTEGER NOT NULL,
+                PRIMARY KEY(device, from_ts, to_ts))""")
         }
 
         override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -91,6 +98,7 @@ object HistoryDb {
                 db.execSQL("CREATE INDEX IF NOT EXISTS idx_charges_source ON charges(source)")
             }
             if (oldVersion < 3) createSamples(db)
+            if (oldVersion < 4) createSampleRanges(db)
             // Future schema changes: ALTER TABLE ... ADD COLUMN here.
         }
 
@@ -99,7 +107,7 @@ object HistoryDb {
         }
     }
 
-    fun saveSamples(device: String, points: List<com.leafcontrol.app.net.ServerApi.SamplePoint>) {
+    fun saveSamples(device: String, from: Long, to: Long, points: List<com.leafcontrol.app.net.ServerApi.SamplePoint>) {
         val db = helper.writableDatabase
         db.beginTransaction()
         try {
@@ -110,8 +118,19 @@ object HistoryDb {
                 }
                 db.insertWithOnConflict("chart_samples", null, values, SQLiteDatabase.CONFLICT_REPLACE)
             }
+            val range = ContentValues().apply {
+                put("device", device); put("from_ts", from); put("to_ts", to)
+            }
+            db.insertWithOnConflict("chart_sample_ranges", null, range, SQLiteDatabase.CONFLICT_IGNORE)
             db.setTransactionSuccessful()
         } finally { db.endTransaction() }
+    }
+
+    fun hasSampleRange(device: String, from: Long, to: Long): Boolean {
+        helper.readableDatabase.rawQuery(
+            "SELECT 1 FROM chart_sample_ranges WHERE device=? AND from_ts<=? AND to_ts>=? LIMIT 1",
+            arrayOf(device, from.toString(), to.toString()),
+        ).use { return it.moveToFirst() }
     }
 
     fun samples(device: String, from: Long, to: Long): List<com.leafcontrol.app.net.ServerApi.SamplePoint> {

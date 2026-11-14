@@ -51,11 +51,24 @@ object LeafRepo {
 
     fun setLocal(s: LeafState) {
         val previous = state.value
+        // A server may answer while its board has not yet produced telemetry.
+        // Do not replace a newer snapshot with an empty/older offline record.
+        if (s.transport == "server" && !s.connected &&
+            previous.transport == "server" && previous.board == s.board &&
+            previous.lastUpdateMs > s.lastUpdateMs
+        ) {
+            val stale = previous.copy(connected = false)
+            state.value = stale
+            cache(stale)
+            return
+        }
+        val sameDevice = s.transport == previous.transport &&
+            (s.transport != "server" || s.board == previous.board)
         val merged = s.copy(
-            soc = s.soc.takeIf { it >= 0 } ?: previous.soc,
-            range = s.range.takeIf { it >= 0 } ?: previous.range,
-            odometer = s.odometer.takeIf { it > 0 } ?: previous.odometer,
-            soh = s.soh.takeIf { it >= 0 } ?: previous.soh,
+            soc = s.soc.takeIf { it >= 0 } ?: previous.soc.takeIf { sameDevice } ?: -1.0,
+            range = s.range.takeIf { it >= 0 } ?: previous.range.takeIf { sameDevice } ?: -1,
+            odometer = s.odometer.takeIf { it > 0 } ?: previous.odometer.takeIf { sameDevice } ?: 0,
+            soh = s.soh.takeIf { it >= 0 } ?: previous.soh.takeIf { sameDevice } ?: -1,
         )
         state.value = merged
         cache(merged)
@@ -67,7 +80,8 @@ object LeafRepo {
     }
 
     suspend fun refreshHistory(context: Context) {
-        val server = Settings.mode == "server"
+        val server = Settings.mode == "server" ||
+            (Settings.mode == "auto" && state.value.transport == "server")
         val local = if (server) ServerApi.status(context) else LocalApi.status(context)
         if (local != null) {
             setLocal(local)
@@ -91,12 +105,17 @@ object LeafRepo {
     }
 
     suspend fun chartSamples(context: Context, from: Long, to: Long): List<ServerApi.SamplePoint> {
+        if (to <= from) return emptyList()
         val device = "${Settings.serverUrl}|${Settings.serverDevice}"
         val cached = withContext(Dispatchers.IO) { HistoryDb.samples(device, from, to) }
-        if (cached.isNotEmpty() || Settings.mode != "server") return cached
+        if (Settings.mode == "local" ||
+            withContext(Dispatchers.IO) { HistoryDb.hasSampleRange(device, from, to) }) return cached
         val downloaded = ServerApi.samples(context, from, to)
-        if (downloaded.isNotEmpty()) withContext(Dispatchers.IO) { HistoryDb.saveSamples(device, downloaded) }
-        return downloaded
+        if (downloaded.isNotEmpty()) {
+            withContext(Dispatchers.IO) { HistoryDb.saveSamples(device, from, to, downloaded) }
+            return downloaded
+        }
+        return cached
     }
 
     suspend fun commandLocal(context: Context, path: String): Boolean =

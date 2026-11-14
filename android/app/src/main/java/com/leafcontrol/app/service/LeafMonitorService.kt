@@ -174,7 +174,7 @@ class LeafMonitorService : Service() {
                 updateForeground("Локально · ${s.soc.takeIf { it >= 0 }?.toInt() ?: "—"}%")
                 if (System.currentTimeMillis() - syncedAt > 300_000L) {
                     syncedAt = System.currentTimeMillis()
-                    syncHistory()
+                    syncHistory(server = false)
                 }
                 val pollMs = if (s.on == 1 || s.charging || s.hvac) 4_000L else 20_000L
                 delay(pollMs)
@@ -229,7 +229,7 @@ class LeafMonitorService : Service() {
                 updateForeground("Сервер · $soc%")
                 if (System.currentTimeMillis() - syncedAt > 300_000L) {
                     syncedAt = System.currentTimeMillis()
-                    syncHistory()
+                    syncHistory(server = true)
                 }
                 // 8 s while the car is active, 20 s when it is parked.
                 delay(if (s.on == 1 || s.charging || s.hvac) 8_000L else 20_000L)
@@ -253,7 +253,7 @@ class LeafMonitorService : Service() {
                 updateForeground("Локально · ${s.soc.takeIf { it >= 0 }?.toInt() ?: "—"}% · ${s.voltage.toInt()} В")
                 if (System.currentTimeMillis() - syncedAt > 300_000L) {
                     syncedAt = System.currentTimeMillis()
-                    syncHistory()
+                    syncHistory(server = false)
                 }
                 // 4 s while the car is active, 20 s when parked (see runAuto)
                 val pollMs = if (s.on == 1 || s.charging || s.hvac) 4_000L else 20_000L
@@ -316,9 +316,9 @@ class LeafMonitorService : Service() {
         }
     }
 
-    private suspend fun syncHistory() {
-        val t = if (Settings.mode == "server") ServerApi.trips(this) else LocalApi.trips(this)
-        val c = if (Settings.mode == "server") ServerApi.charges(this) else LocalApi.charges(this)
+    private suspend fun syncHistory(server: Boolean) {
+        val t = if (server) ServerApi.trips(this) else LocalApi.trips(this)
+        val c = if (server) ServerApi.charges(this) else LocalApi.charges(this)
         if (t.isNotEmpty() || c.isNotEmpty()) {
             t.forEach { HistoryDb.upsertTrip(it) }
             c.forEach { HistoryDb.upsertCharge(it) }

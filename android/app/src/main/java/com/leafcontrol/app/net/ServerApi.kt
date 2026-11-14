@@ -25,6 +25,15 @@ import java.util.concurrent.TimeUnit
  * header on every request.
  */
 object ServerApi {
+    internal fun sampleTimestampMs(epoch: Long, age: Long, nowMs: Long): Long = when {
+        epoch > 0L -> epoch * 1000L
+        age >= 0L -> (nowMs - age * 1000L).coerceAtLeast(0L)
+        else -> 0L
+    }
+
+    internal fun samplesPath(from: Long, to: Long, device: Int): String =
+        "/api/samples?from=$from&to=$to" + if (device > 0) "&device=$device" else ""
+
     private val client = OkHttpClient.Builder()
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
@@ -127,12 +136,17 @@ object ServerApi {
         try {
             val o = JSONObject(body)
             val online = o.optBoolean("online", true)
+            // epoch is the server's last actual telemetry timestamp, not the
+            // time the phone polled /api/status. Keep offline data visibly stale.
+            val epoch = o.optLong("epoch", 0L)
+            val age = o.optLong("age", -1L)
+            val sampleMs = sampleTimestampMs(epoch, age, System.currentTimeMillis())
             LeafState(
                 soc = o.optDouble("soc", -1.0),
                 range = o.optInt("irange", -1),
-                charging = o.optInt("charging", 0) == 1,
+                charging = o.optBoolean("charging", false) || o.optInt("charging", 0) == 1,
                 charger = o.optString("charger", ""),
-                hvac = o.optInt("hvac", 0) == 1,
+                hvac = o.optBoolean("hvac", false) || o.optInt("hvac", 0) == 1,
                 power = o.optDouble("power", 0.0),
                 voltage = o.optDouble("v", -1.0),
                 current = o.optDouble("i", 0.0),
@@ -153,19 +167,19 @@ object ServerApi {
                 vent = o.optInt("vent", -1),
                 hvacTimer = o.optInt("hvac_timer", 0),
                 seq = o.optInt("seq", 0) == 1,
-                locking = o.optInt("locking", 0) == 1,
-                packValid = o.optInt("pack", 0) == 1,
+                locking = o.optBoolean("locking", false) || o.optInt("locking", 0) == 1,
+                packValid = o.optBoolean("pack", false) || o.optInt("pack", 0) == 1,
                 vin = o.optString("vin", ""),
                 fw = o.optString("fw", ""),
                 fwDesc = o.optString("fw_desc", ""),
                 board = o.optString("device_name", o.optString("board", "")),
                 modem = o.optString("modem", ""),
-                epoch = o.optLong("epoch", 0L),
+                epoch = epoch,
                 tariffDay = o.optDouble("tariff_day", 0.0),
                 tariffNight = o.optDouble("tariff_night", 0.0),
                 nightFrom = o.optInt("night_from", 0),
                 nightTo = o.optInt("night_to", 7),
-                lastUpdateMs = o.optLong("epoch", 0L) * 1000L,
+                lastUpdateMs = sampleMs,
                 connected = online,
                 transport = "server",
             )
@@ -225,7 +239,7 @@ object ServerApi {
     suspend fun samples(context: Context, from: Long, to: Long): List<SamplePoint> =
         withContext(Dispatchers.IO) {
             if (to <= from) return@withContext emptyList()
-            val body = get(context, "/api/samples?from=$from&to=$to") ?: return@withContext emptyList()
+            val body = get(context, samplesPath(from, to, Settings.serverDevice)) ?: return@withContext emptyList()
             try {
                 val arr = JSONObject(body).optJSONArray("points") ?: JSONArray()
                 val out = ArrayList<SamplePoint>(arr.length())

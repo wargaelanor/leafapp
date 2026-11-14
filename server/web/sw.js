@@ -1,5 +1,5 @@
-// LeafControl service worker: РѕР±РѕР»РѕС‡РєР° РїСЂРёР»РѕР¶РµРЅРёСЏ РєСЌС€РёСЂСѓРµС‚СЃСЏ,
-// API РІСЃРµРіРґР° РёРґС‘С‚ РІ СЃРµС‚СЊ (РґР°РЅРЅС‹Рµ РЅРµ РґРѕР»Р¶РЅС‹ СѓСЃС‚Р°СЂРµРІР°С‚СЊ).
+// LeafControl service worker: cache the app shell;
+// always fetch API responses from the network so telemetry stays current.
 const CACHE = 'leaf-v8';
 const SHELL = [
   '/',
@@ -25,7 +25,7 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.pathname.startsWith('/api/')) {
-    return; // СЃРµС‚СЊ, Р±РµР· РєСЌС€Р°
+    return; // network only, no cache
   }
   e.respondWith(
     fetch(e.request)

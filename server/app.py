@@ -19,6 +19,7 @@ import shutil
 import sqlite3
 import threading
 import time
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
@@ -42,12 +43,12 @@ CAN_DIR = os.environ.get("LEAF_CAN_DIR", os.path.join(os.path.dirname(DB_PATH), 
 
 # Ссылка на Android-приложение (release-ассет проекта).
 APP_REV = os.environ.get("LEAF_REV", "sec-2c73f93")
-APP_VERSION = "1.57"  # версия APK, лежащего на этом сервере
-APP_NOTES = "Локальное хранение графиков, положительная мощность зарядки, значки поездок и климата, сохранение последних данных"
+APP_VERSION = "1.58"  # версия APK, лежащего на этом сервере
+APP_NOTES = "Исправлены синхронизация истории, графики выбранной платы и время последнего замера"
 
 APK_URL = os.environ.get(
     "LEAF_APK_URL",
-    "https://github.com/wargaelanor/leafapp/releases/download/android-v1.57/LeafControl-1.57-debug.apk",
+    "https://github.com/wargaelanor/leafapp/releases/download/android-v1.58/LeafControl-1.58-debug.apk",
 )
 
 # Команды, которые шлёт PWA (те же пути, что у платы).
@@ -207,9 +208,20 @@ def connect() -> sqlite3.Connection:
     return conn
 
 
+@contextmanager
+def db():
+    """Commit or roll back the transaction and always release the connection."""
+    conn = connect()
+    try:
+        with conn:
+            yield conn
+    finally:
+        conn.close()
+
+
 def init_db() -> None:
     os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
-    with db_lock, connect() as c:
+    with db_lock, db() as c:
         c.executescript(SCHEMA)
         cols = [r[1] for r in c.execute("PRAGMA table_info(devices)").fetchall()]
         if "config_json" not in cols:
@@ -336,7 +348,7 @@ def send_feedback_mail(username: str, text: str, created_at: int) -> None:
         import ssl
         from email.message import EmailMessage
 
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             cfg = mail_settings(c)
         if not cfg["user"] or not cfg["pass"]:
             print("feedback mail: SMTP не настроен", flush=True)
@@ -460,7 +472,7 @@ class Api(BaseHTTPRequestHandler):
         token = self.cookies().get("leaf_session")
         if not token:
             return None
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             r = c.execute(
                 "SELECT u.id,u.username,u.role,s.expires_at FROM sessions s "
                 "JOIN users u ON u.id=s.user_id WHERE s.token=?",
@@ -484,7 +496,7 @@ class Api(BaseHTTPRequestHandler):
             token = (q.get("token") or [""])[0].strip()
         if not token:
             return None
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             return c.execute("SELECT * FROM devices WHERE device_token=?", (token,)).fetchone()
 
     def require_user(self):
@@ -494,7 +506,7 @@ class Api(BaseHTTPRequestHandler):
         return u
 
     def owned_device(self, u, device_ref: str):
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             if device_ref.isdigit():
                 r = c.execute("SELECT * FROM devices WHERE id=?", (int(device_ref),)).fetchone()
             else:
@@ -556,6 +568,8 @@ class Api(BaseHTTPRequestHandler):
                 # Последняя прошивка для платы. Имена: FR-2can.N / FR-TCall.N,
                 # старые t2can-N / tcall-N тоже принимаем.
                 board = (q.get("board") or "CMD").upper()
+                if board not in ("TCALL", "T2CAN", "CMD"):
+                    return self.err(400, "unknown board")
                 patterns = (r"^fr-tcall\.(\d+)\.bin$", r"^tcall-(\d+)\.bin$") if board == "TCALL" \
                     else (r"^fr-2can\.(\d+)\.bin$", r"^t2can-(\d+)\.bin$")
                 label = "FR-TCall" if board == "TCALL" else "FR-2can"
@@ -627,7 +641,7 @@ class Api(BaseHTTPRequestHandler):
             u = self.require_user()
             if not u:
                 return
-            with db_lock, connect() as c:
+            with db_lock, db() as c:
                 rows = c.execute(
                     "SELECT id,text,created_at,read_at FROM notices WHERE user_id=?"
                     " ORDER BY id DESC LIMIT 20", (u["id"],)).fetchall()
@@ -639,7 +653,7 @@ class Api(BaseHTTPRequestHandler):
             if not u:
                 return
             nid = self.body().get("id")
-            with db_lock, connect() as c:
+            with db_lock, db() as c:
                 if nid:
                     c.execute("UPDATE notices SET read_at=? WHERE id=? AND user_id=? AND read_at IS NULL",
                               (now(), int(nid), u["id"]))
@@ -723,7 +737,7 @@ class Api(BaseHTTPRequestHandler):
                            or self.pwa_pick_device(u))
             pairs = {"tariff_day": b.get("day"), "tariff_night": b.get("night"),
                      "night_from": b.get("from"), "night_to": b.get("to")}
-            with db_lock, connect() as c:
+            with db_lock, db() as c:
                 if method == "POST":
                     for k, v in pairs.items():
                         if v is not None:
@@ -804,7 +818,7 @@ class Api(BaseHTTPRequestHandler):
     def serve_static(self, name: str):
         name = name.replace("\\", "/").lstrip("/")
         full = os.path.normpath(os.path.join(WEB_DIR, name))
-        if not full.startswith(os.path.normpath(WEB_DIR)) or not os.path.isfile(full):
+        if os.path.commonpath((os.path.abspath(WEB_DIR), os.path.abspath(full))) != os.path.abspath(WEB_DIR) or not os.path.isfile(full):
             return self.err(404, "not found")
         ctype = {
             ".html": "text/html; charset=utf-8",
@@ -832,7 +846,7 @@ class Api(BaseHTTPRequestHandler):
             return self.err(400, "логин: 3–32 символа, латиница, цифры, . _ -")
         if len(password) < 8:
             return self.err(400, "пароль короче 8 символов")
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             if c.execute("SELECT 1 FROM users WHERE username=?", (username,)).fetchone():
                 return self.err(409, "такой логин уже занят")
             cur = c.execute(
@@ -859,7 +873,7 @@ class Api(BaseHTTPRequestHandler):
         if len(text) > 2000:
             text = text[:2000]
         stamp = now()
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             c.execute("INSERT INTO feedback(user_id,text,created_at,status) VALUES(?,?,?,'new')",
                       (u["id"], text, stamp))
             log_event(c, None, "feedback_new", {"username": u["username"]})
@@ -875,7 +889,7 @@ class Api(BaseHTTPRequestHandler):
         code = normalize_code(self.body().get("code"))
         if len(code) < 16:
             return self.err(400, "код слишком короткий")
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             # Код с экрана платы — это ключ к машине. Он действует всегда, поэтому
             # плату можно перенести в другой аккаунт, даже если она уже привязана.
             rows = c.execute("SELECT * FROM devices WHERE claim_code IS NOT NULL").fetchall()
@@ -905,7 +919,7 @@ class Api(BaseHTTPRequestHandler):
         data = self.body()
         username = (data.get("username") or "").strip()
         password = data.get("password") or ""
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             r = c.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
             if not r or not verify_password(password, r["pass_hash"]):
                 log_event(c, None, "login_failed", {"username": username})
@@ -925,7 +939,7 @@ class Api(BaseHTTPRequestHandler):
     def logout(self):
         token = self.cookies().get("leaf_session")
         if token:
-            with db_lock, connect() as c:
+            with db_lock, db() as c:
                 c.execute("DELETE FROM sessions WHERE token=?", (token,))
         self.json(200, {"ok": True}, {"Set-Cookie": "leaf_session=; Path=/; Max-Age=0"})
 
@@ -938,7 +952,7 @@ class Api(BaseHTTPRequestHandler):
         new = data.get("new") or ""
         if len(new) < 8:
             return self.err(400, "пароль короче 8 символов")
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             r = c.execute("SELECT pass_hash FROM users WHERE id=?", (u["id"],)).fetchone()
             if not verify_password(old, r["pass_hash"]):
                 return self.err(403, "старый пароль неверен")
@@ -955,7 +969,7 @@ class Api(BaseHTTPRequestHandler):
         login = (data.get("login") or "").strip().lower()
         fw = data.get("fw") or ""
         name = data.get("name") or "Leaf"
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             row = None
             if serial:
                 row = c.execute("SELECT * FROM devices WHERE serial=?", (serial,)).fetchone()
@@ -1001,7 +1015,7 @@ class Api(BaseHTTPRequestHandler):
         if not dev:
             return self.err(401, "bad device token")
         data = self.body()
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             c.execute(
                 "UPDATE devices SET last_seen=?, last_link=?, last_rssi=?, bus_age_s=? WHERE id=?",
                 (now(), data.get("link"), data.get("rssi"), data.get("bus_age_s"), dev["id"]),
@@ -1015,7 +1029,7 @@ class Api(BaseHTTPRequestHandler):
             return self.err(401, "bad device token")
         d = self.body()
         fw = (d.get("fw") or "").strip()[:64]
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             c.execute(
                 "UPDATE devices SET last_seen=?, last_link=COALESCE(?, last_link),"
                 " last_rssi=COALESCE(?, last_rssi), fw=COALESCE(?, fw)"
@@ -1034,10 +1048,8 @@ class Api(BaseHTTPRequestHandler):
         if not isinstance(pts, list):
             return self.err(400, "points must be a list")
         added = 0
-        with db_lock, connect() as c:
-            row = c.execute("SELECT MAX(ts) AS m FROM samples WHERE device_id=?",
-                            (dev["id"],)).fetchone()
-            last_ts = row["m"] or 0
+        with db_lock, db() as c:
+            seen = set()
             for p in pts[:500]:
                 try:
                     ts = int(p[0])
@@ -1047,13 +1059,16 @@ class Api(BaseHTTPRequestHandler):
                     spd = float(p[4])
                 except (TypeError, ValueError, IndexError):
                     continue
-                if ts <= last_ts:
+                if ts in seen or not now() - 365 * 86400 <= ts <= now() + 300:
+                    continue
+                seen.add(ts)
+                if c.execute("SELECT 1 FROM samples WHERE device_id=? AND ts=? LIMIT 1",
+                             (dev["id"], ts)).fetchone():
                     continue
                 payload = json.dumps({"soc": soc, "pack_kw": kw, "batt": batt,
                                       "spd": spd, "hist": True}, ensure_ascii=False)
                 c.execute("INSERT INTO samples(device_id, ts, payload) VALUES(?,?,?)",
                           (dev["id"], ts, payload))
-                last_ts = ts
                 added += 1
         return self.json(200, {"ok": True, "added": added})
 
@@ -1106,7 +1121,7 @@ class Api(BaseHTTPRequestHandler):
         m = re.match(r"can_(\d+)\.bin$", name)
         if m:
             started = int(m.group(1))
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             c.execute(
                 "INSERT INTO can_logs(device_id,name,size,total,complete,started_at,uploaded_at)"
                 " VALUES(?,?,?,?,?,?,?)"
@@ -1125,15 +1140,22 @@ class Api(BaseHTTPRequestHandler):
         if not dev:
             return self.err(401, "bad device token")
         data = self.body()
-        ts = int(data.pop("ts", now()))
+        try:
+            ts = int(data.pop("ts", now()))
+        except (TypeError, ValueError):
+            return self.err(400, "bad timestamp")
+        if not now() - 365 * 86400 <= ts <= now() + 300:
+            return self.err(400, "bad timestamp")
         acks = data.pop("ack", []) or []
         nacks = data.pop("nack", []) or []
+        if not isinstance(acks, list) or not isinstance(nacks, list):
+            return self.err(400, "bad acknowledgements")
         link = data.pop("link", None)
         rssi = data.pop("rssi", None)
         bus_age = data.pop("bus_age_s", None)
         fw = data.pop("fw", None)
 
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             c.execute(
                 "UPDATE devices SET state_json=?, state_ts=?, last_seen=?, last_link=?, last_rssi=?,"
                 " bus_age_s=?, fw=COALESCE(?, fw) WHERE id=?",
@@ -1148,13 +1170,13 @@ class Api(BaseHTTPRequestHandler):
                           (dev["id"], ts, json.dumps(data, ensure_ascii=False)))
             for aid in acks[:8]:
                 try:
-                    c.execute("UPDATE commands SET status='done', acked_at=? WHERE id=? AND device_id=?",
+                    c.execute("UPDATE commands SET status='done', acked_at=? WHERE id=? AND device_id=? AND status IN ('queued','delivered')",
                               (now(), int(aid), dev["id"]))
                 except (TypeError, ValueError):
                     pass
             for aid in nacks[:8]:
                 try:
-                    c.execute("UPDATE commands SET status='failed', acked_at=? WHERE id=? AND device_id=?",
+                    c.execute("UPDATE commands SET status='failed', acked_at=? WHERE id=? AND device_id=? AND status IN ('queued','delivered')",
                               (now(), int(aid), dev["id"]))
                 except (TypeError, ValueError):
                     pass
@@ -1187,8 +1209,13 @@ class Api(BaseHTTPRequestHandler):
         if not dev:
             return self.err(401, "bad device token")
         data = self.body()
-        ts = int(data.pop("ts", now()))
-        with db_lock, connect() as c:
+        try:
+            ts = int(data.pop("ts", now()))
+        except (TypeError, ValueError):
+            return self.err(400, "bad timestamp")
+        if not now() - 365 * 86400 <= ts <= now() + 300:
+            return self.err(400, "bad timestamp")
+        with db_lock, db() as c:
             c.execute(
                 "UPDATE devices SET state_json=?, state_ts=?, last_seen=?, bus_age_s=? WHERE id=?",
                 (json.dumps(data, ensure_ascii=False), ts, now(), data.get("bus_age_s"), dev["id"]),
@@ -1207,19 +1234,25 @@ class Api(BaseHTTPRequestHandler):
         kind = d.get("kind")
         if kind not in ("trip", "charge", "climate"):
             return self.err(400, "kind must be trip|charge|climate")
-        with db_lock, connect() as c:
+        try:
+            started_at = int(d.get("started_at"))
+        except (ValueError, TypeError):
+            return self.err(400, "started_at required")
+        if not now() - 365 * 86400 <= started_at <= now() + 300:
+            return self.err(400, "bad started_at")
+        with db_lock, db() as c:
             # Повторная отправка после офлайна: та же запись не должна
             # задваиваться в истории.
             dup = c.execute(
                 "SELECT id FROM dev_sessions WHERE device_id=? AND kind=? AND started_at=? LIMIT 1",
-                (dev["id"], kind, d.get("started_at")),
+                (dev["id"], kind, started_at),
             ).fetchone()
             if dup:
                 return self.json(200, {"ok": True, "session_id": dup["id"], "duplicate": True})
             cur = c.execute(
                 "INSERT INTO dev_sessions(device_id,kind,started_at,ended_at,duration_s,distance_km,"
                 "energy_kwh,soc_start,soc_end,meta) VALUES(?,?,?,?,?,?,?,?,?,?)",
-                (dev["id"], kind, d.get("started_at"), d.get("ended_at"), d.get("duration_s"),
+                (dev["id"], kind, started_at, d.get("ended_at"), d.get("duration_s"),
                  d.get("distance_km"), d.get("energy_kwh"), d.get("soc_start"), d.get("soc_end"),
                  json.dumps(d, ensure_ascii=False)),
             )
@@ -1231,10 +1264,13 @@ class Api(BaseHTTPRequestHandler):
         dev = self.device()
         if not dev:
             return self.err(401, "bad device token")
-        wait = min(int(q.get("wait", "0") or 0), 25)
+        try:
+            wait = max(0, min(int(q.get("wait", "0") or 0), 25))
+        except ValueError:
+            return self.err(400, "bad wait")
         deadline = time.time() + wait
         while True:
-            with db_lock, connect() as c:
+            with db_lock, db() as c:
                 c.execute("UPDATE devices SET last_seen=? WHERE id=?", (now(), dev["id"]))
                 r = c.execute(
                     "SELECT * FROM commands WHERE device_id=? AND status='queued' ORDER BY id LIMIT 1",
@@ -1254,8 +1290,8 @@ class Api(BaseHTTPRequestHandler):
         if not dev:
             return self.err(401, "bad device token")
         d = self.body()
-        with db_lock, connect() as c:
-            c.execute("UPDATE commands SET status=?, acked_at=?, result=? WHERE id=? AND device_id=?",
+        with db_lock, db() as c:
+            c.execute("UPDATE commands SET status=?, acked_at=?, result=? WHERE id=? AND device_id=? AND status IN ('queued','delivered')",
                       ("done" if d.get("ok", True) else "failed", now(),
                        json.dumps(d.get("result"), ensure_ascii=False), d.get("id"), dev["id"]))
         self.json(200, {"ok": True})
@@ -1269,7 +1305,7 @@ class Api(BaseHTTPRequestHandler):
             d = self.owned_device(u, ref)
             if d:
                 return d
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             if u["role"] == "admin":
                 rows = c.execute("SELECT * FROM devices ORDER BY last_seen DESC").fetchall()
             else:
@@ -1361,7 +1397,7 @@ class Api(BaseHTTPRequestHandler):
         if not d:
             return self.json(200, [])
         kind = "trip" if path.endswith("trips") else "charge"
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             rows = c.execute(
                 "SELECT * FROM dev_sessions WHERE device_id=? AND (kind=? OR (?='trip' AND kind='climate')) "
                 "ORDER BY COALESCE(ended_at,started_at) DESC LIMIT 200",
@@ -1401,7 +1437,7 @@ class Api(BaseHTTPRequestHandler):
                 args["minutes"] = int(q.get("minutes", 20))
             except ValueError:
                 args["minutes"] = 20
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             cur = c.execute(
                 "INSERT INTO commands(device_id,user_id,name,args,status,created_at) VALUES(?,?,?,?,?,?)",
                 (d["id"], u["id"], name, json.dumps(args, ensure_ascii=False), "queued", now()),
@@ -1434,7 +1470,7 @@ class Api(BaseHTTPRequestHandler):
         u = self.require_user()
         if not u:
             return
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             self.json(200, self.settings_all(c))
 
     def post_settings(self):
@@ -1443,7 +1479,7 @@ class Api(BaseHTTPRequestHandler):
             return
         data = self.body()
         allowed = set(self.SETTING_DEFAULTS)
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             for k, v in data.items():
                 if k in allowed:
                     c.execute("INSERT OR REPLACE INTO app_settings(key,value) VALUES(?,?)",
@@ -1462,7 +1498,7 @@ class Api(BaseHTTPRequestHandler):
             return self.err(404, "device not found")
         days = int(q.get("days", "0"))
         since = now() - days * 86400 if days > 0 else 0
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             trips = c.execute(
                 "SELECT COUNT(*) n, COALESCE(SUM(distance_km),0) km, COALESCE(SUM(energy_kwh),0) kwh "
                 "FROM dev_sessions WHERE device_id=? AND kind='trip' AND COALESCE(ended_at,0)>=?",
@@ -1543,7 +1579,7 @@ class Api(BaseHTTPRequestHandler):
     # ---------- Excel
 
     def samples_between(self, device_id, start, end, limit=4000):
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             rows = c.execute(
                 "SELECT ts, payload FROM samples WHERE device_id=? AND ts BETWEEN ? AND ?"
                 " ORDER BY ts LIMIT ?", (device_id, start, end, limit)).fetchall()
@@ -1569,7 +1605,7 @@ class Api(BaseHTTPRequestHandler):
         except ValueError:
             days = 90
         since = now() - days * 86400
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             rows = c.execute(
                 "SELECT * FROM dev_sessions WHERE device_id=? AND"
                 " COALESCE(ended_at,started_at)>=? ORDER BY COALESCE(started_at,ended_at)",
@@ -1597,7 +1633,7 @@ class Api(BaseHTTPRequestHandler):
             return self.err(400, "bad range")
         if ts_to <= ts_from:
             return self.json(200, {"points": []})
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             rows = c.execute(
                 "SELECT ts, payload FROM samples WHERE device_id=? AND ts BETWEEN ? AND ? ORDER BY ts",
                 (d["id"], ts_from, ts_to),
@@ -1626,7 +1662,7 @@ class Api(BaseHTTPRequestHandler):
             d = self.pwa_pick_device(u)
         if not d:
             return self.err(404, "device not found")
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             rows = c.execute("SELECT * FROM maintenance WHERE device_id=? ORDER BY done_at, due_km",
                              (d["id"],)).fetchall()
         self.json(200, {"items": [dict(r) for r in rows]})
@@ -1644,7 +1680,7 @@ class Api(BaseHTTPRequestHandler):
         title = (body.get("title") or "").strip()
         if not title:
             return self.err(400, "title required")
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             cur = c.execute(
                 "INSERT INTO maintenance(device_id,title,due_km,due_date,note,done_at,created_at)"
                 " VALUES(?,?,?,?,?,NULL,?)",
@@ -1658,7 +1694,7 @@ class Api(BaseHTTPRequestHandler):
             return
         body = self.body()
         mid = int(body.get("id", 0))
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             row = c.execute("SELECT device_id FROM maintenance WHERE id=?", (mid,)).fetchone()
             if not row:
                 return self.err(404, "not found")
@@ -1686,7 +1722,7 @@ class Api(BaseHTTPRequestHandler):
         if not dev:
             return self.err(401, "bad device token")
         data = self.body()
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             c.execute("UPDATE devices SET config_json=?, config_ts=? WHERE id=?",
                       (json.dumps(data, ensure_ascii=False), now(), dev["id"]))
         self.json(200, {"ok": True})
@@ -1703,7 +1739,7 @@ class Api(BaseHTTPRequestHandler):
         if not key:
             return self.err(400, "key required")
         value = body.get("value")
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             cur = c.execute(
                 "INSERT INTO commands(device_id,user_id,name,args,status,created_at) VALUES(?,?,?,?,?,?)",
                 (d["id"], u["id"], "set_config",
@@ -1723,7 +1759,7 @@ class Api(BaseHTTPRequestHandler):
         new = (self.body().get("password") or "").strip()
         if len(new) < 8:
             return self.err(400, "пароль короче 8 символов")
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             row = c.execute("SELECT username FROM users WHERE id=?", (uid,)).fetchone()
             if not row:
                 return self.err(404, "user not found")
@@ -1735,7 +1771,7 @@ class Api(BaseHTTPRequestHandler):
         u = self.require_user()
         if not u:
             return
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             if u["role"] == "admin":
                 rows = c.execute("SELECT * FROM devices ORDER BY id").fetchall()
             else:
@@ -1766,7 +1802,7 @@ class Api(BaseHTTPRequestHandler):
             return self.err(400, "name required")
         if len(name) > 40:
             return self.err(400, "name too long")
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             row = c.execute("SELECT owner_id FROM devices WHERE id=?", (dev_id,)).fetchone()
             if not row:
                 return self.err(404, "device not found")
@@ -1790,7 +1826,7 @@ class Api(BaseHTTPRequestHandler):
         if not name:
             return self.err(400, "cmd required")
         args = d.get("args") or {}
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             cur = c.execute(
                 "INSERT INTO commands(device_id,user_id,name,args,status,created_at) VALUES(?,?,?,?,?,?)",
                 (dev["id"], u["id"], name, json.dumps(args, ensure_ascii=False), "queued", now()),
@@ -1810,7 +1846,7 @@ class Api(BaseHTTPRequestHandler):
         hours = min(int(q.get("hours", "24")), 24 * 30)
         since = now() - hours * 3600
         limit = min(int(q.get("limit", "2000")), 5000)
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             rows = c.execute(
                 "SELECT ts, payload FROM samples WHERE device_id=? AND ts>=? ORDER BY ts DESC LIMIT ?",
                 (dev["id"], since, limit),
@@ -1832,7 +1868,7 @@ class Api(BaseHTTPRequestHandler):
             return self.err(404, "device not found")
         days = min(int(q.get("days", "30")), 365)
         since = now() - days * 86400
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             rows = c.execute(
                 "SELECT * FROM dev_sessions WHERE device_id=? AND COALESCE(ended_at,started_at)>=?"
                 " ORDER BY COALESCE(ended_at,started_at) DESC LIMIT 500",
@@ -1844,7 +1880,7 @@ class Api(BaseHTTPRequestHandler):
         u = self.require_user()
         if not u:
             return
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             r = c.execute("SELECT * FROM dev_sessions WHERE id=?", (int(q.get("id", "0")),)).fetchone()
             if not r:
                 return self.err(404, "session not found")
@@ -1862,7 +1898,7 @@ class Api(BaseHTTPRequestHandler):
         dev = self.owned_device(u, q.get("device", "0"))
         if not dev:
             return self.err(404, "device not found")
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             rows = c.execute(
                 "SELECT * FROM schedules WHERE device_id=? ORDER BY at_ts DESC LIMIT 50", (dev["id"],)
             ).fetchall()
@@ -1880,7 +1916,7 @@ class Api(BaseHTTPRequestHandler):
         if at_ts < now():
             return self.err(400, "время в прошлом")
         minutes = int(d.get("minutes", 20))
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             cur = c.execute(
                 "INSERT INTO schedules(device_id,user_id,kind,at_ts,args,status,created_at)"
                 " VALUES(?,?,?,?,?,?,?)",
@@ -1895,7 +1931,7 @@ class Api(BaseHTTPRequestHandler):
         if not u:
             return
         d = self.body()
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             r = c.execute("SELECT * FROM schedules WHERE id=?", (int(d.get("id", 0)),)).fetchone()
             if not r:
                 return self.err(404, "not found")
@@ -1915,7 +1951,7 @@ class Api(BaseHTTPRequestHandler):
         token = (d.get("token") or "").strip()
         if not token:
             return self.err(400, "token required")
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             c.execute(
                 "INSERT OR REPLACE INTO fcm_tokens(token,user_id,platform,created_at) VALUES(?,?,?,?)",
                 (token, u["id"], d.get("platform") or "android", now()),
@@ -1927,7 +1963,7 @@ class Api(BaseHTTPRequestHandler):
     # ---------- CAN-сессии
 
     def can_log_row(self, cid):
-        with db_lock, connect() as c:
+        with db_lock, db() as c:
             return c.execute(
                 "SELECT l.*, d.login AS login FROM can_logs l"
                 " LEFT JOIN devices d ON d.id=l.device_id WHERE l.id=?", (cid,)
@@ -1988,7 +2024,7 @@ class Api(BaseHTTPRequestHandler):
 
     def admin(self, method: str, path: str, q: dict):
         if path == "/api/admin/mail" and method == "GET":
-            with db_lock, connect() as c:
+            with db_lock, db() as c:
                 cfg = mail_settings(c)
             return self.json(200, {"host": cfg["host"], "port": cfg["port"],
                                    "user": cfg["user"], "to": cfg["to"],
@@ -2007,14 +2043,14 @@ class Api(BaseHTTPRequestHandler):
                 if field == "pass" and not value:
                     continue
                 pairs.append((key, value))
-            with db_lock, connect() as c:
+            with db_lock, db() as c:
                 for key, value in pairs:
                     c.execute("INSERT OR REPLACE INTO app_settings(key,value) VALUES(?,?)",
                               (key, value))
             return self.json(200, {"ok": True, "updated": len(pairs)})
 
         if path == "/api/admin/canlog" and method == "GET":
-            with db_lock, connect() as c:
+            with db_lock, db() as c:
                 rows = c.execute(
                     "SELECT l.*, d.login AS login FROM can_logs l"
                     " LEFT JOIN devices d ON d.id=l.device_id"
@@ -2057,7 +2093,7 @@ class Api(BaseHTTPRequestHandler):
             row = self.can_log_row(cid)
             if not row:
                 return self.err(404, "not found")
-            with db_lock, connect() as c:
+            with db_lock, db() as c:
                 c.execute("DELETE FROM can_logs WHERE id=?", (cid,))
             folder = os.path.join(CAN_DIR, str(row["device_id"]))
             for name in (row["name"],
@@ -2071,7 +2107,7 @@ class Api(BaseHTTPRequestHandler):
 
         if path == "/api/admin/devices" and method == "GET":
             status = q.get("status", "pending")
-            with db_lock, connect() as c:
+            with db_lock, db() as c:
                 if status == "all":
                     rows = c.execute("SELECT * FROM devices ORDER BY id DESC").fetchall()
                 else:
@@ -2088,36 +2124,39 @@ class Api(BaseHTTPRequestHandler):
 
         if path.startswith("/api/admin/devices/") and method == "POST":
             parts = path.split("/")
-            dev_id = int(parts[4])
+            try:
+                dev_id = int(parts[4])
+            except (ValueError, IndexError):
+                return self.err(400, "bad id")
             action = parts[5] if len(parts) > 5 else ""
             if action == "unbind":
-                with db_lock, connect() as c:
-                    row = c.execute("SELECT login FROM devices WHERE id=?", (did,)).fetchone()
+                with db_lock, db() as c:
+                    row = c.execute("SELECT login FROM devices WHERE id=?", (dev_id,)).fetchone()
                     if not row:
                         return self.err(404, "device not found")
                     c.execute(
                         "UPDATE devices SET owner_id=NULL, status='unclaimed', claim_code=? WHERE id=?",
-                        (make_claim_code(), did),
+                        (make_claim_code(), dev_id),
                     )
-                    log_event(c, did, "admin_unbound_device", {"login": row["login"]})
+                    log_event(c, dev_id, "admin_unbound_device", {"login": row["login"]})
                 return self.json(200, {"ok": True})
 
             if action == "assign":
                 username = (self.body().get("username") or "").strip().lower()
-                with db_lock, connect() as c:
+                with db_lock, db() as c:
                     urow = c.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone()
                     if not urow:
                         return self.err(404, "user not found")
                     if not c.execute("SELECT 1 FROM devices WHERE id=?", (dev_id,)).fetchone():
                         return self.err(404, "device not found")
-                    c.execute("UPDATE devices SET owner_id=?, status='active', claim_code=NULL WHERE id=?",
+                    c.execute("UPDATE devices SET owner_id=?, status='active' WHERE id=?",
                               (urow["id"], dev_id))
                     log_event(c, dev_id, "admin_assigned_device", {"username": username})
                 return self.json(200, {"ok": True, "owner": username})
             if action not in ("approve", "reject"):
                 return self.err(400, "unknown action")
             new_status = "active" if action == "approve" else "rejected"
-            with db_lock, connect() as c:
+            with db_lock, db() as c:
                 c.execute("UPDATE devices SET status=? WHERE id=?", (new_status, dev_id))
                 log_event(c, dev_id, f"device_{action}", {})
                 r = c.execute("SELECT login FROM devices WHERE id=?", (dev_id,)).fetchone()
@@ -2134,7 +2173,7 @@ class Api(BaseHTTPRequestHandler):
                 return self.err(400, "логин: 3-32 символа, латиница, цифры, . _ -")
             if len(password) < 8:
                 return self.err(400, "пароль короче 8 символов")
-            with db_lock, connect() as c:
+            with db_lock, db() as c:
                 if c.execute("SELECT 1 FROM users WHERE username=?", (username,)).fetchone():
                     return self.err(409, "такой логин уже занят")
                 cur = c.execute(
@@ -2150,7 +2189,7 @@ class Api(BaseHTTPRequestHandler):
                 uid = int(path.rsplit("/", 1)[-1])
             except ValueError:
                 return self.err(400, "bad id")
-            with db_lock, connect() as c:
+            with db_lock, db() as c:
                 row = c.execute("SELECT username, role FROM users WHERE id=?", (uid,)).fetchone()
                 if not row:
                     return self.err(404, "user not found")
@@ -2175,7 +2214,7 @@ class Api(BaseHTTPRequestHandler):
                 did = int(path.rsplit("/", 1)[-1])
             except ValueError:
                 return self.err(400, "bad id")
-            with db_lock, connect() as c:
+            with db_lock, db() as c:
                 row = c.execute("SELECT login FROM devices WHERE id=?", (did,)).fetchone()
                 if not row:
                     return self.err(404, "device not found")
@@ -2186,26 +2225,6 @@ class Api(BaseHTTPRequestHandler):
                 log_event(c, None, "admin_deleted_device", {"login": row["login"]})
             shutil.rmtree(os.path.join(CAN_DIR, str(did)), ignore_errors=True)
             return self.json(200, {"ok": True})
-
-        if path.startswith("/api/admin/devices/") and method == "POST":
-            parts = path.split("/")
-            try:
-                did = int(parts[4])
-            except (ValueError, IndexError):
-                return self.err(400, "bad id")
-            action = parts[5] if len(parts) > 5 else ""
-            if action == "assign":
-                username = (self.body().get("username") or "").strip().lower()
-                with db_lock, connect() as c:
-                    urow = c.execute("SELECT id, role FROM users WHERE username=?", (username,)).fetchone()
-                    if not urow:
-                        return self.err(404, "user not found")
-                    if not c.execute("SELECT 1 FROM devices WHERE id=?", (did,)).fetchone():
-                        return self.err(404, "device not found")
-                    c.execute("UPDATE devices SET owner_id=?, status='active', claim_code=NULL WHERE id=?",
-                              (urow["id"], did))
-                    log_event(c, did, "admin_assigned_device", {"username": username})
-                return self.json(200, {"ok": True, "owner": username})
 
         if path == "/api/admin/firmware" and method == "GET":
             fw_dir = os.path.join(WEB_DIR, "fw")
@@ -2227,12 +2246,14 @@ class Api(BaseHTTPRequestHandler):
             dev = self.owned_device(u_ctx := self.require_user(), str(body.get("device", "0")))
             if not dev:
                 return self.err(404, "device not found")
-            name = os.path.basename((body.get("file") or "").strip())
+            name = (body.get("file") or "").strip()
+            if not re.fullmatch(r"(?:FR-2can|FR-TCall)\.\d+\.bin|(?:t2can|tcall)-\d+\.bin", name, re.I):
+                return self.err(400, "bad firmware file")
             full = os.path.join(WEB_DIR, "fw", name)
             if not name.lower().endswith(".bin") or not os.path.isfile(full):
                 return self.err(404, "firmware not found")
             url = SERVER_BASE + "/fw/" + name
-            with db_lock, connect() as c:
+            with db_lock, db() as c:
                 cur = c.execute(
                     "INSERT INTO commands(device_id,user_id,name,args,status,created_at) VALUES(?,?,?,?,?,?)",
                     (dev["id"], u_ctx["id"], "fw_update",
@@ -2244,7 +2265,7 @@ class Api(BaseHTTPRequestHandler):
             return self.json(200, {"ok": True, "id": cid, "url": url, "pushed": online})
 
         if path == "/api/admin/users" and method == "GET":
-            with db_lock, connect() as c:
+            with db_lock, db() as c:
                 rows = c.execute(
                     "SELECT u.id,u.username,u.role,u.created_at, "
                     "(SELECT COUNT(*) FROM devices d WHERE d.owner_id=u.id) AS devices, "
@@ -2271,7 +2292,7 @@ class Api(BaseHTTPRequestHandler):
             return self.json(200, {"users": out})
 
         if path == "/api/admin/feedback" and method == "GET":
-            with db_lock, connect() as c:
+            with db_lock, db() as c:
                 rows = c.execute(
                     "SELECT f.*, u.username FROM feedback f "
                     "LEFT JOIN users u ON u.id=f.user_id ORDER BY f.id DESC LIMIT 200"
@@ -2286,7 +2307,7 @@ class Api(BaseHTTPRequestHandler):
             data = self.body()
             st = data.get("status") or "done"
             notify = bool(data.get("notify"))
-            with db_lock, connect() as c:
+            with db_lock, db() as c:
                 row = c.execute("SELECT * FROM feedback WHERE id=?", (fid,)).fetchone()
                 if not row:
                     return self.err(404, "feedback not found")
@@ -2308,7 +2329,7 @@ class Api(BaseHTTPRequestHandler):
                 fid = int(path.rsplit("/", 1)[-1])
             except ValueError:
                 return self.err(400, "bad id")
-            with db_lock, connect() as c:
+            with db_lock, db() as c:
                 row = c.execute("SELECT user_id,text FROM feedback WHERE id=?", (fid,)).fetchone()
                 if not row:
                     return self.err(404, "feedback not found")
@@ -2318,12 +2339,12 @@ class Api(BaseHTTPRequestHandler):
             return self.json(200, {"ok": True})
 
         if path == "/api/admin/events" and method == "GET":
-            with db_lock, connect() as c:
+            with db_lock, db() as c:
                 rows = c.execute("SELECT * FROM events ORDER BY id DESC LIMIT 200").fetchall()
             return self.json(200, {"events": [dict(r) for r in rows]})
 
         if path == "/api/admin/commands" and method == "GET":
-            with db_lock, connect() as c:
+            with db_lock, db() as c:
                 rows = c.execute("SELECT * FROM commands ORDER BY id DESC LIMIT 100").fetchall()
             return self.json(200, {"commands": [dict(r) for r in rows]})
 
@@ -2350,7 +2371,7 @@ class PlainDeviceApi(Api):
 def scheduler_loop():
     while True:
         try:
-            with db_lock, connect() as c:
+            with db_lock, db() as c:
                 due = c.execute(
                     "SELECT * FROM schedules WHERE status='waiting' AND at_ts<=?", (now(),)
                 ).fetchall()
@@ -2372,7 +2393,7 @@ def scheduler_loop():
 def accounts_cleanup_loop():
     while True:
         try:
-            with db_lock, connect() as c:
+            with db_lock, db() as c:
                 n = cleanup_unused_accounts(c)
                 if n:
                     print("cleanup: removed %d unused accounts" % n, flush=True)
@@ -2387,7 +2408,7 @@ def can_logs_cleanup():
     while True:
         try:
             limit = now() - keep_days * 86400
-            with db_lock, connect() as c:
+            with db_lock, db() as c:
                 rows = c.execute("SELECT id, device_id, name FROM can_logs WHERE uploaded_at < ?",
                                  (limit,)).fetchall()
                 for r in rows:
@@ -2411,7 +2432,7 @@ def samples_cleanup():
     keep_days = int(os.environ.get("LEAF_KEEP_DAYS", "365"))
     while True:
         try:
-            with db_lock, connect() as c:
+            with db_lock, db() as c:
                 c.execute("DELETE FROM samples WHERE ts < ?", (now() - keep_days * 86400,))
         except Exception as exc:  # noqa: BLE001
             print("cleanup error", repr(exc), flush=True)

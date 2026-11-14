@@ -25,10 +25,10 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FR-TCall.176"
+#define LEAF_FIRMWARE_VERSION "FR-TCall.177"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: OTA-capable partitions (min_spiffs), gz-only UI, wifi from app, tariff sync"
 #else
-#define LEAF_FIRMWARE_VERSION "FR-2can.176"
+#define LEAF_FIRMWARE_VERSION "FR-2can.177"
 #define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: ota diagnostics in state, connect retry, trips by drive power"
 #endif
 

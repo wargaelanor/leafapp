@@ -7,12 +7,14 @@
 #include <esp_mac.h>
 
 #include "canLeafZE1.h"
+#include "evCanLeaf.h"
 #include "tripLog.h"
 #include "canLogger.h"
 #include "vehicleProfile.h"
 #include "modemManager.h"
 #include "modemHw.h"
 #include <Update.h>
+#include <esp_ota_ops.h>
 #include "configuration.h"
 #include "serverCa.h"
 
@@ -471,7 +473,7 @@ static String stateJson() {
            isHvacOn ? 1 : 0, (isChargingNow || tripLogIsCharging()) ? 1 : 0,
            (lockState == 1) ? 1 : 0,
            (doorFL || doorFR || doorRL || doorRR || doorTrunk) ? 1 : 0,
-           evData.soh, 0.0,
+            evData.soh, (double)evSpeedKph(),
            (unsigned long)busAgeSeconds(), leafProfileName(), leafProfileModeName());
 
   return String(body);
@@ -799,14 +801,39 @@ static bool flashFromUrl(const char* url) {
     cli->stop();
     return false;
   }
+  const esp_partition_t* running = esp_ota_get_running_partition();
+  const esp_partition_t* next = esp_ota_get_next_update_partition(nullptr);
+  Serial.printf("[srv] ota: image=%ld running=%s/%lu next=%s/%lu free=%u largest=%u\n",
+                contentLen, running ? running->label : "none",
+                running ? (unsigned long)running->size : 0UL,
+                next ? next->label : "none",
+                next ? (unsigned long)next->size : 0UL,
+                (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
+  if (!next || next == running) {
+    snprintf(otaStat, sizeof(otaStat), "no-slot,h=%u", (unsigned)ESP.getFreeHeap());
+    cli->stop();
+    return false;
+  }
+  if (contentLen > 0 && (size_t)contentLen > next->size) {
+    snprintf(otaStat, sizeof(otaStat), "oversize%ld/%lu", contentLen,
+             (unsigned long)next->size);
+    cli->stop();
+    return false;
+  }
   if (contentLen > 0) {
     if (!Update.begin((size_t)contentLen)) {
       stat("begin%ld", contentLen);
+      Serial.printf("[srv] ota: Update.begin error=%u (%s), largest=%u\n",
+                    (unsigned)Update.getError(), Update.errorString(),
+                    (unsigned)ESP.getMaxAllocHeap());
       cli->stop();
       return false;
     }
   } else if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
     stat("begin-1", 0);
+    Serial.printf("[srv] ota: Update.begin error=%u (%s), largest=%u\n",
+                  (unsigned)Update.getError(), Update.errorString(),
+                  (unsigned)ESP.getMaxAllocHeap());
     cli->stop();
     return false;
   }
@@ -833,7 +860,8 @@ static bool flashFromUrl(const char* url) {
   cli->stop();
 
   if (contentLen > 0 && total != (size_t)contentLen) {
-    stat("short%u/%ld", (int)total);
+    snprintf(otaStat, sizeof(otaStat), "short%u/%ld", (unsigned)total, contentLen);
+    Serial.printf("[srv] ota: %s\n", otaStat);
     Update.abort();
     return false;
   }
@@ -1395,6 +1423,3 @@ void serverApiTick() {
     Serial.println("[srv] ERROR: не удалось запустить сетевой поток");
   }
 }
-
-
-
