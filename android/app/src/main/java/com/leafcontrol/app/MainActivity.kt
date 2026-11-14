@@ -83,16 +83,8 @@ class MainActivity : ComponentActivity() {
         showLogin = Settings.serverUser.isBlank()
 
         setContent {
-            var classic by remember {
-                mutableStateOf(getSharedPreferences("interface", MODE_PRIVATE).getBoolean("classic", false))
-            }
-            LeafTheme(classic = classic) {
-                Surface(Modifier.fillMaxSize()) {
-                    MainScreen(classic = classic, onDesignChange = { value ->
-                        getSharedPreferences("interface", MODE_PRIVATE).edit().putBoolean("classic", value).apply()
-                        classic = value
-                    })
-                }
+            LeafTheme {
+                Surface(Modifier.fillMaxSize()) { MainScreen() }
                 if (showLogin) {
                     ServerLoginDialog(onDone = { showLogin = false })
                 }
@@ -125,7 +117,7 @@ class MainActivity : ComponentActivity() {
 
     private fun applySystemBars() {
         val dark = isNight()
-        val bg = if (dark) "#0A151B" else "#EEF3F6"
+        val bg = if (dark) "#0F1216" else "#F4F5F7"
         window.statusBarColor = Color.TRANSPARENT
         window.navigationBarColor = Color.TRANSPARENT
         window.setBackgroundDrawable(ColorDrawable(Color.parseColor(bg)))

@@ -44,7 +44,7 @@ class ApiContractTests(unittest.TestCase):
         conn.close()
         return status, json.loads(raw) if raw else {}, cookie
 
-    def test_design_routes(self):
+    def test_interface_without_design_switch(self):
         conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port)
         conn.request("GET", "/classic")
         response = conn.getresponse()
@@ -66,7 +66,9 @@ class ApiContractTests(unittest.TestCase):
             conn.request("GET", path, headers={"Cookie": "leaf_session=design-cookie"})
             response = conn.getresponse()
             self.assertEqual(response.status, 200)
-            self.assertIn(marker, response.read())
+            body = response.read()
+            self.assertIn(marker, body)
+            self.assertNotIn("Дизайн интерфейса".encode("utf-8"), body)
             conn.close()
 
     def test_device_sync_hist_session_and_admin(self):
