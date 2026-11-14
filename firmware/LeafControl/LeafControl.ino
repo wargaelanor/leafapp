@@ -25,11 +25,11 @@
 #include <Preferences.h>
 
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
-#define LEAF_FIRMWARE_VERSION "FR-TCall.174"
+#define LEAF_FIRMWARE_VERSION "FR-TCall.175"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: OTA-capable partitions (min_spiffs), gz-only UI, wifi from app, tariff sync"
 #else
-#define LEAF_FIRMWARE_VERSION "FR-2can.174"
-#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: ota no-wifi guard, trips by drive power, speed frame watch"
+#define LEAF_FIRMWARE_VERSION "FR-2can.175"
+#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: ota diagnostics in state, connect retry, trips by drive power"
 #endif
 
 // Доступ к версии из других модулей (serverApi.cpp).

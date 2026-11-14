@@ -1158,6 +1158,14 @@ class Api(BaseHTTPRequestHandler):
                               (now(), int(aid), dev["id"]))
                 except (TypeError, ValueError):
                     pass
+            # Команда, отданная плате больше 10 минут назад без подтверждения,
+            # скорее всего потеряна (плата перезагрузилась/уснула посреди OTA):
+            # возвращаем её в очередь, чтобы обновление дошло.
+            c.execute(
+                "UPDATE commands SET status='queued', delivered_at=NULL"
+                " WHERE device_id=? AND status='delivered' AND delivered_at < ?",
+                (dev["id"], now() - 600),
+            )
             row = c.execute(
                 "SELECT * FROM commands WHERE device_id=? AND status='queued' ORDER BY id LIMIT 1",
                 (dev["id"],),

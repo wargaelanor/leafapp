@@ -735,13 +735,24 @@ void serverApiCommandPump() {
 
 // ---------------------------------------------------------------- прошивка
 
+// Что делала последняя попытка OTA: уходит на сервер с sync-пакетом, чтобы
+// причину отказа было видно в панели без serial-лога ("connect,h=45000" и т.п.).
+static char otaStat[56] = "";
+
 // Скачивает .bin с сервера и прошивает плату, затем перезагружается.
 // Проверяет код ответа и длину: битый или неполный файл в flash не пишется.
 static bool flashFromUrl(const char* url) {
+  auto stat = [](const char* fmt, int v) {
+    char buf[56];
+    snprintf(buf, sizeof(buf), fmt, v);
+    snprintf(otaStat, sizeof(otaStat), "%s,h=%u", buf, (unsigned)ESP.getFreeHeap());
+    Serial.printf("[srv] ota: %s\n", otaStat);
+  };
   // OTA качает только по Wi-Fi: через модем образ не потянуть, а без Wi-Fi
   // WiFiClientSecure может висеть вечно (watchdog на loop-задачу не натянут)
   // и плата замолкает до цикла питания. Лучше честно отказаться и уйти в nack.
   if (WiFi.status() != WL_CONNECTED) {
+    snprintf(otaStat, sizeof(otaStat), "nowifi");
     Serial.println("[srv] ota: no wifi, refuse");
     return false;
   }
@@ -755,8 +766,18 @@ static bool flashFromUrl(const char* url) {
     secure.setCACert(SERVER_CA_PEM);
     secure.setHandshakeTimeout(8);   // как в request(): без этого connect висит
   }
-  if (!cli->connect(host.c_str(), port)) {
-    Serial.println("[srv] ota: connect failed");
+  bool connected = false;
+  for (int attempt = 0; attempt < 2 && !connected; attempt++) {
+    connected = (cli->connect(host.c_str(), port) == 1);
+    if (!connected) { cli->stop(); delay(400); }
+  }
+  if (!connected) {
+    char err[80] = {0};
+    if (tls) secure.lastError(err, sizeof(err));
+    snprintf(otaStat, sizeof(otaStat), "connect,err=%.20s,h=%u", err,
+             (unsigned)ESP.getFreeHeap());
+    Serial.printf("[srv] ota: connect failed heap=%u err=%s\n",
+                  (unsigned)ESP.getFreeHeap(), err);
     return false;
   }
   cli->setTimeout(15000);
@@ -774,18 +795,18 @@ static bool flashFromUrl(const char* url) {
     if (line.startsWith("Content-Length:")) contentLen = line.substring(15).toInt();
   }
   if (code != 200) {
-    Serial.printf("[srv] ota: http %d\n", code);
+    stat("http%d", code);
     cli->stop();
     return false;
   }
   if (contentLen > 0) {
     if (!Update.begin((size_t)contentLen)) {
-      Serial.printf("[srv] ota: begin failed (need %ld)\n", contentLen);
+      stat("begin%ld", contentLen);
       cli->stop();
       return false;
     }
   } else if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
-    Serial.println("[srv] ota: begin failed");
+    stat("begin-1", 0);
     cli->stop();
     return false;
   }
@@ -797,7 +818,7 @@ static bool flashFromUrl(const char* url) {
     size_t n = cli->readBytes(buf, sizeof(buf));
     if (n) {
       if (Update.write(buf, n) != n) {
-        Serial.println("[srv] ota: write failed");
+        stat("write%u", (int)total);
         Update.abort();
         cli->stop();
         return false;
@@ -812,15 +833,16 @@ static bool flashFromUrl(const char* url) {
   cli->stop();
 
   if (contentLen > 0 && total != (size_t)contentLen) {
-    Serial.printf("[srv] ota: short read %u of %ld\n", (unsigned)total, contentLen);
+    stat("short%u/%ld", (int)total);
     Update.abort();
     return false;
   }
   if (!Update.end(true)) {
-    Serial.printf("[srv] ota: end failed (%u bytes)\n", (unsigned)total);
+    stat("end%u", (int)total);
     return false;
   }
   Serial.printf("[srv] ota: flashed %u bytes, rebooting\n", (unsigned)total);
+  snprintf(otaStat, sizeof(otaStat), "ok%u", (unsigned)total);
   delay(800);
   ESP.restart();
   return true;
@@ -1043,6 +1065,11 @@ static bool syncRequest() {
   payload += ",\"fw\":\"";
   payload += leafFwVersion;
   payload += "\"";
+  if (otaStat[0]) {
+    payload += ",\"ota\":\"";
+    payload += otaStat;
+    payload += "\"";
+  }
 
   payload += ",\"ack\":[";
   portENTER_CRITICAL(&mboxMux);
