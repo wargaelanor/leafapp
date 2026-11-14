@@ -203,6 +203,7 @@ fun MainScreen(
                             onCommand = vm::command,
                             onOpenTab = { scope.launch { pager.animateScrollToPage(it) } },
                             onSettings = { vm.openSettings() },
+                            classic = classic,
                         )
                         1 -> DistanceScreen(state, vm::command)
                         2 -> StateScreen(state)
@@ -255,7 +256,7 @@ private fun LeafTopBar(state: LeafState, classic: Boolean, onRefresh: () -> Unit
     Row(
         Modifier
             .fillMaxWidth()
-            .height(if (classic) 56.dp else 64.dp)
+            .height(if (classic) 56.dp else 72.dp)
             .background(if (classic) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface)
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -265,7 +266,8 @@ private fun LeafTopBar(state: LeafState, classic: Boolean, onRefresh: () -> Unit
         Text(
             "Leaf Control",
             fontSize = 18.sp,
-            letterSpacing = 0.6.sp,
+            fontWeight = if (classic) FontWeight.Normal else FontWeight.Bold,
+            letterSpacing = if (classic) 0.6.sp else (-0.5).sp,
             color = MaterialTheme.colorScheme.onSurface,
         )
         Spacer(Modifier.width(8.dp))
@@ -367,7 +369,7 @@ private fun LeafBottomBar(selected: Int, classic: Boolean, onSelect: (Int) -> Un
     Row(
         Modifier
             .fillMaxWidth()
-            .height(if (classic) 56.dp else 64.dp)
+            .height(if (classic) 56.dp else 76.dp)
             .background(if (classic) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface)
             .drawBehind {
                 drawLine(
@@ -385,10 +387,10 @@ private fun LeafBottomBar(selected: Int, classic: Boolean, onSelect: (Int) -> Un
                 Modifier
                     .weight(1f)
                     .fillMaxHeight()
-                    .padding(horizontal = 3.dp, vertical = 4.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .padding(horizontal = 3.dp, vertical = if (classic) 4.dp else 9.dp)
+                    .clip(RoundedCornerShape(if (classic) 12.dp else 16.dp))
                     .background(
-                        if (active && classic) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                        if (active) MaterialTheme.colorScheme.primary.copy(alpha = if (classic) 0.14f else 0.11f)
                         else Color.Transparent
                     )
                     .pressable(interaction) { onSelect(index) },
@@ -418,38 +420,40 @@ private fun GarageScreen(
     onCommand: (String, Double, Int) -> Unit,
     onOpenTab: (Int) -> Unit,
     onSettings: () -> Unit,
+    classic: Boolean,
 ) {
     val list = rememberLazyListState()
     LazyColumn(
         state = list,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        contentPadding = PaddingValues(if (classic) 16.dp else 18.dp),
+        verticalArrangement = Arrangement.spacedBy(if (classic) 14.dp else 16.dp),
     ) {
         item {
             Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(if (classic) 14.dp else 26.dp),
+                color = if (classic) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.primaryContainer,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(Modifier.padding(if (classic) 12.dp else 18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     CarStage(state)
                     Text(
                         "NISSAN LEAF",
                         modifier = Modifier.padding(top = 8.dp),
-                        fontSize = 15.sp,
+                        fontSize = if (classic) 15.sp else 18.sp,
+                        fontWeight = if (classic) FontWeight.Normal else FontWeight.Bold,
                         letterSpacing = 1.sp,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                 }
             }
         }
-        item { SocCard(state, onCommand) }
+        item { SocCard(state, onCommand, classic) }
         item { QuickActions(state, onCommand) }
         item { SectionTitle("ФУНКЦИИ") }
         item {
             Surface(
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(if (classic) 12.dp else 22.dp),
                 color = MaterialTheme.colorScheme.surface,
                 modifier = Modifier.fillMaxWidth(),
             ) {
@@ -545,21 +549,21 @@ private fun CarStage(state: LeafState) {
 }
 
 @Composable
-private fun SocCard(state: LeafState, onCommand: (String, Double, Int) -> Unit) {
+private fun SocCard(state: LeafState, onCommand: (String, Double, Int) -> Unit, classic: Boolean) {
     Surface(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(if (classic) 14.dp else 26.dp),
         color = MaterialTheme.colorScheme.surface,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(Modifier.padding(16.dp)) {
-            Box(
-                Modifier
-                    .width(26.dp)
-                    .height(1.dp)
-                    .background(MaterialTheme.colorScheme.primary)
+        Column(Modifier.padding(if (classic) 16.dp else 22.dp)) {
+            if (classic) Box(
+                Modifier.width(26.dp).height(1.dp).background(MaterialTheme.colorScheme.primary)
             )
             Spacer(Modifier.height(8.dp))
-            Text("Уровень заряда", fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurface)
+            Text("Уровень заряда", fontSize = if (classic) 16.sp else 13.sp,
+                fontWeight = if (classic) FontWeight.Normal else FontWeight.Bold,
+                letterSpacing = if (classic) 0.sp else 1.sp,
+                color = if (classic) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(12.dp))
             Row(verticalAlignment = Alignment.Bottom) {
                 if (state.displayRange != null) {
@@ -567,8 +571,8 @@ private fun SocCard(state: LeafState, onCommand: (String, Double, Int) -> Unit) 
                 }
                 Text(
                     state.displayRange?.toString() ?: "—",
-                    fontSize = 54.sp,
-                    fontWeight = FontWeight.Light,
+                    fontSize = if (classic) 54.sp else 68.sp,
+                    fontWeight = if (classic) FontWeight.Light else FontWeight.Bold,
                     letterSpacing = (-1).sp,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
@@ -604,7 +608,7 @@ private fun SocCard(state: LeafState, onCommand: (String, Double, Int) -> Unit) 
                 ring = false,
             ) { progress, pressed ->
                 Surface(
-                    shape = RoundedCornerShape(8.dp),
+                    shape = RoundedCornerShape(if (classic) 8.dp else 16.dp),
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.fillMaxSize(),
                 ) {
@@ -636,7 +640,7 @@ private fun ChargeBar(soc: Double) {
     Box(
         Modifier
             .fillMaxWidth()
-            .height(10.dp)
+            .height(14.dp)
             .clip(RoundedCornerShape(5.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
     ) {
