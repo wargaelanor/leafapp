@@ -50,8 +50,15 @@ object LeafRepo {
     }
 
     fun setLocal(s: LeafState) {
-        state.value = s
-        cache(s)
+        val previous = state.value
+        val merged = s.copy(
+            soc = s.soc.takeIf { it >= 0 } ?: previous.soc,
+            range = s.range.takeIf { it >= 0 } ?: previous.range,
+            odometer = s.odometer.takeIf { it > 0 } ?: previous.odometer,
+            soh = s.soh.takeIf { it >= 0 } ?: previous.soh,
+        )
+        state.value = merged
+        cache(merged)
     }
 
     fun setDisconnected(transport: String) {
@@ -81,6 +88,15 @@ object LeafRepo {
         val c = withContext(Dispatchers.IO) { HistoryDb.charges() }
         trips.value = t
         charges.value = c
+    }
+
+    suspend fun chartSamples(context: Context, from: Long, to: Long): List<ServerApi.SamplePoint> {
+        val device = "${Settings.serverUrl}|${Settings.serverDevice}"
+        val cached = withContext(Dispatchers.IO) { HistoryDb.samples(device, from, to) }
+        if (cached.isNotEmpty() || Settings.mode != "server") return cached
+        val downloaded = ServerApi.samples(context, from, to)
+        if (downloaded.isNotEmpty()) withContext(Dispatchers.IO) { HistoryDb.saveSamples(device, downloaded) }
+        return downloaded
     }
 
     suspend fun commandLocal(context: Context, path: String): Boolean =

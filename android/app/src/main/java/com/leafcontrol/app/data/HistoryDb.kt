@@ -30,7 +30,7 @@ data class Charge(
     val reason: String,
 )
 
-private const val DB_VERSION = 2
+private const val DB_VERSION = 3
 
 // A phone-recorded session and the board's own record of the same session
 // start within a minute of each other; these windows are deliberately loose.
@@ -75,6 +75,13 @@ object HistoryDb {
             )
             db.execSQL("CREATE INDEX IF NOT EXISTS idx_trips_source ON trips(source)")
             db.execSQL("CREATE INDEX IF NOT EXISTS idx_charges_source ON charges(source)")
+            createSamples(db)
+        }
+
+        private fun createSamples(db: SQLiteDatabase) {
+            db.execSQL("""CREATE TABLE IF NOT EXISTS chart_samples(
+                device TEXT NOT NULL, ts INTEGER NOT NULL, kw REAL, soc REAL, batt REAL, spd REAL,
+                PRIMARY KEY(device, ts))""")
         }
 
         override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -83,12 +90,42 @@ object HistoryDb {
                 db.execSQL("CREATE INDEX IF NOT EXISTS idx_trips_source ON trips(source)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS idx_charges_source ON charges(source)")
             }
+            if (oldVersion < 3) createSamples(db)
             // Future schema changes: ALTER TABLE ... ADD COLUMN here.
         }
 
         override fun onDowngrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
             // Never drop history when an older build meets a newer database.
         }
+    }
+
+    fun saveSamples(device: String, points: List<com.leafcontrol.app.net.ServerApi.SamplePoint>) {
+        val db = helper.writableDatabase
+        db.beginTransaction()
+        try {
+            points.forEach { p ->
+                val values = ContentValues().apply {
+                    put("device", device); put("ts", p.ts)
+                    put("kw", p.kw); put("soc", p.soc); put("batt", p.batt); put("spd", p.spd)
+                }
+                db.insertWithOnConflict("chart_samples", null, values, SQLiteDatabase.CONFLICT_REPLACE)
+            }
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+    }
+
+    fun samples(device: String, from: Long, to: Long): List<com.leafcontrol.app.net.ServerApi.SamplePoint> {
+        val out = mutableListOf<com.leafcontrol.app.net.ServerApi.SamplePoint>()
+        helper.readableDatabase.rawQuery(
+            "SELECT ts,kw,soc,batt,spd FROM chart_samples WHERE device=? AND ts BETWEEN ? AND ? ORDER BY ts",
+            arrayOf(device, from.toString(), to.toString())
+        ).use { c ->
+            while (c.moveToNext()) {
+                fun value(i: Int): Double? = if (c.isNull(i)) null else c.getDouble(i)
+                out.add(com.leafcontrol.app.net.ServerApi.SamplePoint(c.getLong(0), value(1), value(2), value(3), value(4)))
+            }
+        }
+        return out
     }
 
     fun upsertTrip(t: Trip) {

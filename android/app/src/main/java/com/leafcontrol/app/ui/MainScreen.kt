@@ -1167,7 +1167,7 @@ private fun StateScreen(state: LeafState) {
             ) {
                 Column(Modifier.padding(14.dp)) {
                     Text(
-                        if (state.connected) "Обновлено ${ago(state.lastUpdateMs)} назад" else "Нет связи · последние сохранённые данные",
+                        if (state.lastUpdateMs > 0) "Данные от ${dateFmt.format(Date(state.lastUpdateMs))}" + if (!state.connected) " · нет связи" else "" else "Данных пока нет",
                         fontSize = 13.sp,
                         color = if (state.connected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error,
                     )
@@ -1329,6 +1329,7 @@ private fun HistoryChart(
     to: Long,
     points: List<com.leafcontrol.app.net.ServerApi.SamplePoint>,
     defaults: Set<String>,
+    charge: Boolean = false,
 ) {
     val defs = listOf(
         ChartSeriesDef("kw", "Мощность, кВт", Color(0xFF2E86DE)),
@@ -1340,7 +1341,7 @@ private fun HistoryChart(
     var probeFrac by remember { mutableStateOf<Float?>(null) }
 
     fun vals(key: String): List<Pair<Long, Double>> = when (key) {
-        "kw" -> points.mapNotNull { p -> p.kw?.let { p.ts to it } }
+        "kw" -> points.mapNotNull { p -> p.kw?.let { p.ts to if (charge) kotlin.math.abs(it) else it } }
         "spd" -> points.mapNotNull { p -> p.spd?.let { p.ts to it } }
         "soc" -> points.mapNotNull { p -> p.soc?.let { p.ts to it } }
         else -> points.mapNotNull { p -> p.batt?.takeIf { v -> v > -50 }?.let { p.ts to it } }
@@ -1550,7 +1551,7 @@ private fun TripCard(t: Trip) {
             if (open && points.isEmpty() && !loading) {
                 loading = true
                 scope.launch {
-                    points = com.leafcontrol.app.net.ServerApi.samples(ctx, t.startMs / 1000, t.endMs / 1000)
+                    points = LeafRepo.chartSamples(ctx, t.startMs / 1000, t.endMs / 1000)
                     loading = false
                 }
             }
@@ -1558,7 +1559,7 @@ private fun TripCard(t: Trip) {
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(Modifier.fillMaxWidth()) {
-                Text(dateFmt.format(Date(t.startMs)), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
+                Text((if (t.reason == "climate") "❄ Климат · " else "🚗 Поездка · ") + dateFmt.format(Date(t.startMs)), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
                 Spacer(Modifier.weight(1f))
                 Text(LeafRepo.fmtDuration(t.endMs - t.startMs), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -1609,7 +1610,7 @@ private fun ChargeCard(c: Charge) {
             if (open && points.isEmpty() && !loading) {
                 loading = true
                 scope.launch {
-                    points = com.leafcontrol.app.net.ServerApi.samples(ctx, c.startMs / 1000, c.endMs / 1000)
+                    points = LeafRepo.chartSamples(ctx, c.startMs / 1000, c.endMs / 1000)
                     loading = false
                 }
             }
@@ -1645,7 +1646,7 @@ private fun ChargeCard(c: Charge) {
                 if (loading) {
                     Text("Загружаю точки…", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
-                    HistoryChart(c.startMs / 1000, c.endMs / 1000, points, setOf("kw", "batt", "soc"))
+                    HistoryChart(c.startMs / 1000, c.endMs / 1000, points, setOf("kw", "batt", "soc"), charge = true)
                 }
             }
         }

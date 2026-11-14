@@ -165,7 +165,7 @@ object ServerApi {
                 tariffNight = o.optDouble("tariff_night", 0.0),
                 nightFrom = o.optInt("night_from", 0),
                 nightTo = o.optInt("night_to", 7),
-                lastUpdateMs = System.currentTimeMillis(),
+                lastUpdateMs = o.optLong("epoch", 0L) * 1000L,
                 connected = online,
                 transport = "server",
             )
@@ -282,7 +282,7 @@ object ServerApi {
                     startSoc = o.optInt("s0", -1).takeIf { it >= 0 },
                     endSoc = o.optInt("s1", -1).takeIf { it >= 0 },
                     source = "server",
-                    reason = o.optString("r", ""),
+                    reason = if (o.optString("kind") == "climate") "climate" else o.optString("r", ""),
                 )
             }
             out

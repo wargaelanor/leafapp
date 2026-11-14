@@ -1916,6 +1916,7 @@ async function boardTrips(){
     startSoc: (x.s0 >= 0 ? +x.s0 : null),
     endSoc: (x.s1 >= 0 ? +x.s1 : null),
     endReason: x.r || '',
+    kind: x.kind || 'trip',
     points: []
   })).filter(t => t.startMs > 0 && t.endMs >= t.startMs);
 }
@@ -2233,7 +2234,7 @@ async function refreshTripsScreen(){
     const cost=costText(t);
     const costCell=cost?'<span><span class="m-val">'+cost+'</span> стоимость</span>':'';
     return '<div class="trip-item">'+
-      '<div class="t-head"><span class="t-date">'+dstr+'</span><span class="t-dur">'+fmtDur(dur)+'</span></div>'+
+      '<div class="t-head"><span class="t-date">'+(t.kind === 'climate' ? '❄ Климат · ' : '🚗 Поездка · ')+dstr+'</span><span class="t-dur">'+fmtDur(dur)+'</span></div>'+
       '<div class="t-metrics"><span><span class="m-val">'+(t.distKm||0).toFixed(1)+'</span> км</span>'+
       spdCell+
       '<span><span class="m-val">'+kwh.toFixed(2)+'</span> кВт·ч</span>'+

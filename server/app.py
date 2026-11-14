@@ -1363,9 +1363,9 @@ class Api(BaseHTTPRequestHandler):
         kind = "trip" if path.endswith("trips") else "charge"
         with db_lock, connect() as c:
             rows = c.execute(
-                "SELECT * FROM dev_sessions WHERE device_id=? AND kind=? "
+                "SELECT * FROM dev_sessions WHERE device_id=? AND (kind=? OR (?='trip' AND kind='climate')) "
                 "ORDER BY COALESCE(ended_at,started_at) DESC LIMIT 200",
-                (d["id"], kind),
+                (d["id"], kind, kind),
             ).fetchall()
         out = []
         for r in rows:
@@ -1381,6 +1381,7 @@ class Api(BaseHTTPRequestHandler):
                 "s0": r["soc_start"] if r["soc_start"] is not None else -1,
                 "s1": r["soc_end"] if r["soc_end"] is not None else -1,
                 "r": "server",
+                "kind": r["kind"],
             })
         self.json(200, out)
 
