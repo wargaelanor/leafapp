@@ -738,13 +738,23 @@ void serverApiCommandPump() {
 // Скачивает .bin с сервера и прошивает плату, затем перезагружается.
 // Проверяет код ответа и длину: битый или неполный файл в flash не пишется.
 static bool flashFromUrl(const char* url) {
+  // OTA качает только по Wi-Fi: через модем образ не потянуть, а без Wi-Fi
+  // WiFiClientSecure может висеть вечно (watchdog на loop-задачу не натянут)
+  // и плата замолкает до цикла питания. Лучше честно отказаться и уйти в nack.
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("[srv] ota: no wifi, refuse");
+    return false;
+  }
   String host, path;
   uint16_t port = 443;
   bool tls = splitUrl(url, host, port, path);
   WiFiClientSecure secure;
   WiFiClient plain;
   Client* cli = tls ? (Client*)&secure : (Client*)&plain;
-  if (tls) secure.setCACert(SERVER_CA_PEM);
+  if (tls) {
+    secure.setCACert(SERVER_CA_PEM);
+    secure.setHandshakeTimeout(8);   // как в request(): без этого connect висит
+  }
   if (!cli->connect(host.c_str(), port)) {
     Serial.println("[srv] ota: connect failed");
     return false;

@@ -448,15 +448,25 @@ void tripLogTick() {
   // раньше поездку рвало через 3 минуты стоянки, отсюда «1 км + 16 км».
   bool ready = (evData.vehicleOn == 1);
   float powerW = (dataOk && v > 0) ? fabsf(v * i) : 0.0f;
+  // Тяга со знаком: зарядка идёт с минусом, поездка — с плюсом.
+  float powerKw = (dataOk && v > 0) ? (v * i) / 1000.0f : 0.0f;
 
   float speedKph = evSpeedKph();
   bool speeding = speedKph >= 5.0f;   // поехали (5 км/ч), даже если не набежал километр
 
+  // На некоторых машинах (ZE1 через IT-CAN) кадр скорости 0x284 не приходит,
+  // а одометр за поездку не набегает — и вся езда пропадала мимо поездок.
+  // Тяга больше 8 кВт три тика подряд — верный признак езды: у климата меньше,
+  // у зарядки знак другой, на парковке ток нулевой.
+  static int driveTicks = 0;
+  if (powerKw >= 8.0f && !charging) driveTicks++; else driveTicks = 0;
+  bool powering = driveTicks >= 3;
+
   if (!tripActive) {
-    // Старт — по скорости выше 5 км/ч или по первому новому километру
+    // Старт — по скорости выше 5 км/ч, по тяге или по первому новому километру
     // одометра (если кадр скорости не пришёл). Раньше требовался второй
     // километр в пределах двух минут: короткие и городские поездки терялись.
-    if (((speeding && epoch) || (moved && epoch && lastOdo > 0))) {
+    if (((speeding && epoch) || (moved && epoch && lastOdo > 0) || (powering && epoch))) {
       tripActive = true;
       tripPending = false;
       tripStartEpoch = epoch;
@@ -480,7 +490,7 @@ void tripLogTick() {
     if (dtMs > 0 && dtMs < 30000UL && speedKph > 0.5f) {
       tripKmSpeed += speedKph * ((float)dtMs / 3600000.0f);
     }
-    if (moved || speeding) {
+    if (moved || speeding || powering) {
       tripMoveMs = now;
       tripOffSinceMs = 0;
       rtcTripOdoLast = lastOdo;
@@ -548,9 +558,11 @@ void tripLogTick() {
   }
 
   // Признак активной сессии для авто-записи CAN: машина отвечает по шине и
-  // происходит что-то осмысленное (READY, поездка, климат, зарядка).
+  // происходит что-то осмысленное (READY, поездка, климат, зарядка) либо течёт
+  // заметная тяга — иначе езда без кадра скорости не попадает в лог вовсе.
   sessionActive = (evCanLastFrameAgeSec() < 300UL) &&
-                  (ready || tripActive || climActive || chgActive);
+                  (ready || tripActive || climActive || chgActive ||
+                   powerKw >= 2.0f || powerKw <= -2.0f);
   if (sessionActive) noteVehicleAwake();
 
   // Точка для графиков (копится на плате, уходит пачкой при связи).

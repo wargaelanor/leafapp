@@ -567,6 +567,9 @@ static DbgFrame dbgFrames[] = {
     {0x5BC, 0, false, {0}},
     {0x7BB, 0, false, {0}},
     {0x79A, 0, false, {0}},
+    {0x284, 0, false, {0}},   // скорость: есть ли кадр вообще на этой машине?
+    {0x5C5, 0, false, {0}},   // одометр: двигается ли во время езды
+    {0x55B, 0, false, {0}},   // SOC-кадр
 };
 
 uint8_t dbgLastFrame(uint32_t id, uint8_t* out) {

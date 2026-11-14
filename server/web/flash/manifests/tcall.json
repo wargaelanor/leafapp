@@ -1,6 +1,6 @@
-{
+﻿{
   "name": "Leaf Control (TTGO T-Call)",
-  "version": "173",
+  "version": "174",
   "new_install_prompt_erase": false,
   "builds": [
     {
@@ -9,7 +9,7 @@
         { "path": "/fw/tcall-bootloader.bin", "offset": 4096 },
         { "path": "/fw/tcall-partitions.bin", "offset": 32768 },
         { "path": "/fw/boot_app0.bin", "offset": 57344 },
-        { "path": "/fw/FR-TCall.173.bin", "offset": 65536 }
+        { "path": "/fw/FR-TCall.174.bin", "offset": 65536 }
       ]
     }
   ]

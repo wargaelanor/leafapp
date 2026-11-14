@@ -1,6 +1,6 @@
-{
+﻿{
   "name": "Leaf Control (LilyGO T-2CAN)",
-  "version": "173",
+  "version": "174",
   "new_install_prompt_erase": false,
   "builds": [
     {
@@ -9,7 +9,7 @@
         { "path": "/fw/t2can-bootloader.bin", "offset": 0 },
         { "path": "/fw/t2can-partitions.bin", "offset": 32768 },
         { "path": "/fw/boot_app0.bin", "offset": 57344 },
-        { "path": "/fw/FR-2can.173.bin", "offset": 65536 }
+        { "path": "/fw/FR-2can.174.bin", "offset": 65536 }
       ]
     }
   ]
