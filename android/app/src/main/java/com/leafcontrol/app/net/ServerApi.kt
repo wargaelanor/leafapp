@@ -129,6 +129,27 @@ object ServerApi {
         }
     }
 
+    suspend fun statistics(context: Context): JSONObject? = withContext(Dispatchers.IO) {
+        if (!configured()) return@withContext null
+        if (Settings.serverCookie.isEmpty() && !login(context)) return@withContext null
+        val path = "/api/stats?days=90" +
+            if (Settings.serverDevice > 0) "&device=${Settings.serverDevice}" else ""
+        get(context, path)?.let { runCatching { JSONObject(it) }.getOrNull() }
+    }
+
+    suspend fun scheduleClimate(context: Context, atSeconds: Long, minutes: Int): Boolean =
+        withContext(Dispatchers.IO) {
+            if (!configured() || minutes !in 5..60) return@withContext false
+            if (Settings.serverCookie.isEmpty() && !login(context)) return@withContext false
+            val body = JSONObject().put("at", atSeconds).put("minutes", minutes)
+            if (Settings.serverDevice > 0) body.put("device", Settings.serverDevice)
+            runCatching {
+                client.newCall(request("/api/sched", "POST", body.toString())).execute().use {
+                    it.isSuccessful
+                }
+            }.getOrDefault(false)
+        }
+
     suspend fun status(context: Context): LeafState? = withContext(Dispatchers.IO) {
         if (!configured()) return@withContext null
         if (Settings.serverCookie.isEmpty() && !login(context)) return@withContext null

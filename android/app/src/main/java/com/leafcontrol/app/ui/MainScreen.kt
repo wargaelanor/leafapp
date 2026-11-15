@@ -140,6 +140,11 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.time.Instant
+import java.time.ZoneId
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+import org.json.JSONObject
 import kotlinx.coroutines.delay
 
 private val dateFmt = SimpleDateFormat("dd MMM, HH:mm", Locale("ru"))
@@ -220,6 +225,8 @@ fun MainScreen(vm: LeafViewModel = viewModel()) {
                         } else {
                             MoreScreen(
                                 state = state,
+                                trips = trips,
+                                charges = charges,
                                 onSettings = { vm.openSettings() },
                                 onCheckUpdate = { vm.checkUpdate() },
                             )
@@ -1665,17 +1672,31 @@ private fun HistoryValue(value: String, label: String) {
 @Composable
 private fun MoreScreen(
     state: LeafState,
+    trips: List<Trip>,
+    charges: List<Charge>,
     onSettings: () -> Unit,
     onCheckUpdate: () -> Unit,
 ) {
     var showAbout by remember { mutableStateOf(false) }
+    var showStatistics by remember { mutableStateOf(false) }
+    var showClimatePlan by remember { mutableStateOf(false) }
+    var climateTime by remember { mutableStateOf("08:00") }
+    var climateMinutes by remember { mutableIntStateOf(15) }
+    var climateResult by remember { mutableStateOf("") }
+    var serverStats by remember { mutableStateOf<JSONObject?>(null) }
     val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(showStatistics) {
+        if (showStatistics && Settings.mode != "local") serverStats = ServerApi.statistics(ctx)
+    }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item { SectionTitle("ПРИЛОЖЕНИЕ") }
+        item { MoreRow(Icons.Outlined.Speed, "Статистика", "Расход, пробег и разряд после зарядки") { showStatistics = true } }
+        item { MoreRow(Icons.Outlined.AcUnit, "Прогреть к времени", "Расписание через сервер") { showClimatePlan = true } }
         item { MoreRow(Icons.Outlined.Settings, "Настройки", "Уведомления, связь, фоновый режим") { onSettings() } }
         item { MoreRow(Icons.Outlined.SystemUpdate, "Проверить обновление", "Версия ${BuildConfig.VERSION_NAME}") { onCheckUpdate() } }
         item { MoreRow(Icons.Outlined.Info, "О приложении", "Возможности и версия") { showAbout = true } }
@@ -1741,6 +1762,120 @@ private fun MoreScreen(
             }
         }
         item { Spacer(Modifier.height(4.dp)) }
+    }
+    if (showStatistics) {
+        AlertDialog(
+            onDismissRequest = { showStatistics = false },
+            title = { Text("Статистика поездок") },
+            text = {
+                val zone = ZoneId.systemDefault()
+                val byDay = trips.groupBy { Instant.ofEpochMilli(it.endMs).atZone(zone).toLocalDate() }
+                    .toSortedMap(reverseOrder()).entries.take(14)
+                val ordered = (trips.map { Triple(it.endMs, it, null as Charge?) } +
+                    charges.map { Triple(it.endMs, null as Trip?, it) }).sortedBy { it.first }
+                val cycles = mutableListOf<String>()
+                var startSoc: Int? = null
+                var km = 0.0
+                var hasTrip = false
+                for ((_, trip, charge) in ordered) {
+                    if (charge != null) {
+                        val before = charge.startSoc
+                        if (startSoc != null && before != null && before in 0..100 &&
+                            before < startSoc && hasTrip) {
+                            cycles += "$startSoc → $before % · ${fmt(km, 1)} км"
+                        }
+                        startSoc = charge.endSoc?.takeIf { it in 0..100 }
+                        km = 0.0
+                        hasTrip = false
+                    } else if (trip != null && startSoc != null && trip.distKm in 0.01..999.99) {
+                        km += trip.distKm
+                        hasTrip = true
+                    }
+                }
+                Column(Modifier.heightIn(max = 430.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val totalKm = trips.sumOf { it.distKm }
+                    val totalKwh = trips.sumOf { it.energyWh } / 1000.0
+                    Text("${trips.size} поездок · ${fmt(totalKm, 1)} км · ${fmt(totalKwh, 2)} кВт·ч")
+                    if (totalKwh > 0) Text("Средний расход: ${fmt(totalKm / totalKwh, 2)} км/кВт·ч")
+                    Text("Пробег и расход по дням", fontWeight = FontWeight.SemiBold)
+                    if (byDay.isEmpty()) Text("Нет поездок", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    byDay.forEach { (day, records) ->
+                        val dailyKm = records.sumOf { it.distKm }
+                        val dailyKwh = records.sumOf { it.energyWh } / 1000.0
+                        Text("$day · ${fmt(dailyKm, 1)} км" +
+                            if (dailyKwh > 0) " · ${fmt(dailyKm / dailyKwh, 2)} км/кВт·ч" else "")
+                    }
+                    Text("Разряд после зарядки", fontWeight = FontWeight.SemiBold)
+                    if (cycles.isEmpty()) Text("Нет полного цикла с показаниями SOC",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    cycles.takeLast(10).asReversed().forEach { Text(it) }
+                    val ambientDays = serverStats?.optJSONArray("per_day")
+                    if (ambientDays != null && ambientDays.length() > 0) {
+                        Text("Расход и средняя температура за день", fontWeight = FontWeight.SemiBold)
+                        for (i in 0 until ambientDays.length()) {
+                            val day = ambientDays.optJSONObject(i) ?: continue
+                            if (day.isNull("amb") || day.optDouble("kwh", 0.0) <= 0.0) continue
+                            Text("${day.optString("date")} · ${fmt(day.optDouble("amb"), 1)} °C · " +
+                                "${fmt(day.optDouble("km") / day.optDouble("kwh"), 2)} км/кВт·ч")
+                        }
+                    }
+                    if (Settings.mode == "local") Text("Температурная статистика доступна в режиме сервера.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                    Text("Трафик SIM и ёмкость батареи: плата пока не передаёт необходимые данные.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                }
+            },
+            confirmButton = { TextButton(onClick = { showStatistics = false }) { Text("Закрыть") } },
+        )
+    }
+    if (showClimatePlan) {
+        AlertDialog(
+            onDismissRequest = { showClimatePlan = false },
+            title = { Text("Прогреть машину к") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Время в формате ЧЧ:ММ (местное время телефона)", fontSize = 12.sp)
+                    androidx.compose.material3.OutlinedTextField(
+                        value = climateTime, onValueChange = { climateTime = it },
+                        label = { Text("К какому времени") }, singleLine = true,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(5, 10, 15, 20, 30).forEach { m ->
+                            FilterChip(selected = climateMinutes == m,
+                                onClick = { climateMinutes = m }, label = { Text("$m") })
+                        }
+                    }
+                    Text("Климат включится за $climateMinutes мин до выбранного времени. " +
+                        "Нужна связь платы с сервером в момент запуска.", fontSize = 12.sp)
+                    if (climateResult.isNotEmpty()) Text(climateResult, fontSize = 12.sp)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val parsed = runCatching { java.time.LocalTime.parse(climateTime,
+                        DateTimeFormatter.ofPattern("HH:mm")) }.getOrNull()
+                    if (parsed == null) {
+                        climateResult = "Укажите время в формате 08:00"
+                    } else if (Settings.mode == "local" || !ServerApi.configured()) {
+                        climateResult = "Расписание доступно только при настроенном сервере"
+                    } else {
+                        val current = LocalDateTime.now()
+                        var target = current.toLocalDate().atTime(parsed)
+                        if (!target.isAfter(current)) target = target.plusDays(1)
+                        var start = target.minusMinutes(climateMinutes.toLong())
+                        if (!start.isAfter(current)) start = start.plusDays(1)
+                        val epoch = start.atZone(ZoneId.systemDefault()).toEpochSecond()
+                        scope.launch {
+                            climateResult = if (ServerApi.scheduleClimate(ctx, epoch, climateMinutes))
+                                "Запланировано: старт ${start.toLocalTime()}"
+                            else "Не удалось запланировать: проверьте сервер и связь"
+                        }
+                    }
+                }) { Text("Запланировать") }
+            },
+            dismissButton = { TextButton(onClick = { showClimatePlan = false }) { Text("Закрыть") } },
+        )
     }
     if (showAbout) {
         AboutDialog(state, onDismiss = { showAbout = false })
