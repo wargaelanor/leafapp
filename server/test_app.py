@@ -44,6 +44,70 @@ class ApiContractTests(unittest.TestCase):
         conn.close()
         return status, json.loads(raw) if raw else {}, cookie
 
+    def test_climate_schedule_duration_and_ownership(self):
+        t = app.now()
+        with app.db_lock, app.db() as c:
+            c.execute("INSERT INTO users(username,pass_hash,role,created_at) VALUES(?,?,?,?)",
+                      ("schedule-owner", app.hash_password("test-password"), "owner", t))
+            uid = c.execute("SELECT id FROM users WHERE username='schedule-owner'").fetchone()[0]
+            c.execute("INSERT INTO sessions(token,user_id,created_at,expires_at) VALUES(?,?,?,?)",
+                      ("schedule-cookie", uid, t, t + 600))
+            dev = c.execute("INSERT INTO devices(serial,login,device_token,owner_id,status,created_at) VALUES(?,?,?,?,?,?)",
+                            ("schedule-board", "schedule-board", "schedule-token", uid, "active", t)).lastrowid
+        auth = {"Cookie": "leaf_session=schedule-cookie"}
+        for minutes in (0, 4, 61):
+            status, _, _ = self.request("POST", "/api/sched", {
+                "device": dev, "at": t + 3600, "minutes": minutes}, auth)
+            self.assertEqual(status, 400)
+        status, result, _ = self.request("POST", "/api/sched", {
+            "device": dev, "at": t + 3600, "minutes": 15}, auth)
+        self.assertEqual(status, 200)
+        status, sched, _ = self.request("GET", "/api/sched", headers=auth)
+        self.assertEqual(status, 200)
+        self.assertTrue(any(x["id"] == result["id"] for x in sched["schedules"]))
+        status, implicit, _ = self.request("POST", "/api/sched", {
+            "at": t + 7200, "minutes": 20}, auth)
+        self.assertEqual(status, 200)
+        self.assertNotEqual(implicit["id"], result["id"])
+        with app.db_lock, app.db() as c:
+            scheduled = c.execute("SELECT at_ts,args FROM schedules WHERE id=?", (result["id"],)).fetchone()
+        self.assertEqual(scheduled["at_ts"], t + 3600)
+        self.assertEqual(json.loads(scheduled["args"])["minutes"], 15)
+
+        with app.db_lock, app.db() as c:
+            for kind, stamp, km, soc0, soc1 in (
+                ("charge", t - 9000, 0, 40, 90),
+                ("trip", t - 7000, 12, 90, 72),
+                ("trip", t - 5000, 8, 72, 60),
+                ("charge", t - 3000, 0, 60, 95),
+                ("trip", t - 1000, 4, 95, 89),
+            ):
+                c.execute("INSERT INTO dev_sessions(device_id,kind,started_at,ended_at,"
+                          "distance_km,energy_kwh,soc_start,soc_end) VALUES(?,?,?,?,?,?,?,?)",
+                          (dev, kind, stamp - 100, stamp, km, km / 5 if km else 0, soc0, soc1))
+            c.execute("INSERT INTO samples(device_id,ts,payload) VALUES(?,?,?)",
+                      (dev, t - 5000, json.dumps({"amb": 12.5})))
+        status, stats, _ = self.request("GET", "/api/stats?device=" + str(dev), headers=auth)
+        self.assertEqual(status, 200)
+        self.assertTrue(any(day["amb"] == 12.5 for day in stats["per_day"]))
+        self.assertEqual(len(stats["discharge_cycles"]), 1)
+        self.assertEqual(stats["discharge_cycles"][0]["km"], 20)
+        self.assertEqual(stats["discharge_cycles"][0]["soc_start"], 90)
+        self.assertEqual(stats["discharge_cycles"][0]["soc_end"], 60)
+
+        with app.db_lock, app.db() as c:
+            c.execute("INSERT INTO commands(device_id,name,args,status,created_at) VALUES(?,?,?,?,?)",
+                      (dev, "clim_on", json.dumps({"minutes": 15,
+                       "_schedule_expires_at": t - 60}), "queued", t - 120))
+        status, sync, _ = self.request("POST", "/api/device/sync", {"ts": app.now()},
+                                       {"Authorization": "Bearer schedule-token"})
+        self.assertEqual(status, 200)
+        self.assertIsNone(sync["cmd"])
+        with app.db_lock, app.db() as c:
+            expired = c.execute("SELECT status FROM commands WHERE device_id=? AND name='clim_on'",
+                                (dev,)).fetchone()
+        self.assertEqual(expired["status"], "expired")
+
     def test_interface_without_design_switch(self):
         conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port)
         conn.request("GET", "/classic")

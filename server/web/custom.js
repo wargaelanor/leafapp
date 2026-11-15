@@ -101,6 +101,22 @@
         <div id="st-days"></div>
       </div>
       <div class="card">
+        <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">Расход по дням, км/кВт·ч</div></div>
+        <div id="st-efficiency"></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">Расход и средняя температура за день</div></div>
+        <div id="st-temperature"></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">Разряд после зарядки</div></div>
+        <div id="st-discharge"></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">Данные батареи и SIM</div></div>
+        <div style="font-size:12px;color:var(--muted)">SOH — ниже по данным платы. Расчёт ёмкости по напряжению на стоянке и счётчик трафика SIM пока недоступны: плата не передаёт необходимые измерения. Значения не оцениваются по догадке.</div>
+      </div>
+      <div class="card">
         <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">Обслуживание</div></div>
         <div id="st-maint"></div>
         <div id="st-maint-form" style="margin-top:10px"></div>
@@ -530,6 +546,22 @@
     } else {
       $('#st-days').innerHTML = '<div style="font-size:12px;color:var(--muted)">Нет поездок за период.</div>';
     }
+    const efficiency = days.filter(x => Number(x.km) > 0 && Number(x.kwh) > 0)
+      .slice(-14).map(x => [new Date(x.date + 'T12:00:00').getTime() / 1000, x.km / x.kwh]);
+    chart($('#st-efficiency'), [{ points: efficiency, color: 'var(--accent)' }],
+      { label: 'км/кВт·ч', height: 180 });
+    const tempDays = days.filter(x => Number(x.km) > 0 && Number(x.kwh) > 0 &&
+      x.amb !== null && x.amb !== undefined).slice(-14);
+    $('#st-temperature').innerHTML = tempDays.length
+      ? tempDays.map(x => `<div style="padding:6px 0;border-bottom:1px solid var(--line);font-size:12px">` +
+          `${x.date} · ${fmt(x.amb, 1)} °C · ${fmt(x.km / x.kwh, 2)} км/кВт·ч</div>`).join('')
+      : '<div style="font-size:12px;color:var(--muted)">Нет дней с поездкой и замером температуры снаружи.</div>';
+    const cycles = d.discharge_cycles || [];
+    $('#st-discharge').innerHTML = cycles.length
+      ? cycles.slice().reverse().map(x => `<div style="padding:8px 0;border-bottom:1px solid var(--line);font-size:13px">` +
+          `${new Date(x.ts * 1000).toLocaleDateString()} · ${fmt(x.soc_start, 0)} → ` +
+          `${fmt(x.soc_end, 0)} % · ${fmt(x.km, 1)} км</div>`).join('')
+      : '<div style="font-size:12px;color:var(--muted)">Пока нет полного цикла: зарядка → поездки → следующая зарядка с показаниями SOC.</div>';
 
     // обслуживание
     const items = d.maintenance || [];
@@ -837,9 +869,11 @@
       if (!pend.length) { hint.textContent = ''; return; }
       const x = pend[0];
       const t = new Date(x.at_ts * 1000);
-      const hh = String(t.getHours()).padStart(2, '0');
-      const mm = String(t.getMinutes()).padStart(2, '0');
-      hint.innerHTML = 'Запланировано на ' + hh + ':' + mm +
+      let minutes = 0;
+      try { minutes = Number(JSON.parse(x.args || '{}').minutes) || 0; } catch {}
+      const target = new Date(t.getTime() + minutes * 60000);
+      const clock = d => String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+      hint.innerHTML = 'Старт ' + clock(t) + (minutes ? ', прогрев к ' + clock(target) : '') +
         ' <button id="clim-cancel" style="border:0;background:none;color:var(--danger);font-size:12px;text-decoration:underline;cursor:pointer">отменить</button>';
       const c = document.getElementById('clim-cancel');
       if (c) c.onclick = async () => {
@@ -864,9 +898,19 @@
                           parseInt(parts[0], 10) || 0, parseInt(parts[1], 10) || 0);
       if (at <= now) at.setDate(at.getDate() + 1);
       const minutes = Number((document.getElementById('hvac-minutes') || {}).value || 15);
+      if (!Number.isInteger(minutes) || minutes < 5 || minutes > 60) {
+        toast('Длительность климата: от 5 до 60 минут'); return;
+      }
+      // Ввод означает «машина прогрета К этому времени», а не время старта.
+      let start = new Date(at.getTime() - minutes * 60000);
+      if (start <= now) {
+        at.setDate(at.getDate() + 1);
+        start = new Date(at.getTime() - minutes * 60000);
+      }
       try {
-        await api('/api/sched', { at: Math.floor(at.getTime() / 1000), minutes });
-        toast('Климат включится в ' + time + ' на ' + minutes + ' мин');
+        await api('/api/sched', { at: Math.floor(start.getTime() / 1000), minutes });
+        toast('Старт климата в ' + start.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) +
+          ', прогрев к ' + time);
         refreshClimPlan();
       } catch (e) { alert(e.message); }
     };

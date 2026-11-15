@@ -1192,6 +1192,18 @@ class Api(BaseHTTPRequestHandler):
                 " WHERE device_id=? AND status='delivered' AND delivered_at < ?",
                 (dev["id"], now() - 600),
             )
+            # A scheduled climate command must never execute hours after its
+            # intended start if the board goes offline before fetching it.
+            for stale in c.execute(
+                "SELECT id,args FROM commands WHERE device_id=? AND status IN ('queued','delivered') "
+                "AND name='clim_on' AND args LIKE '%_schedule_expires_at%'", (dev["id"],)
+            ).fetchall():
+                try:
+                    expired = int(json.loads(stale["args"])["_schedule_expires_at"]) < now()
+                except (ValueError, TypeError, KeyError):
+                    expired = True
+                if expired:
+                    c.execute("UPDATE commands SET status='expired' WHERE id=?", (stale["id"],))
             row = c.execute(
                 "SELECT * FROM commands WHERE device_id=? AND status='queued' ORDER BY id LIMIT 1",
                 (dev["id"],),
@@ -1526,6 +1538,22 @@ class Api(BaseHTTPRequestHandler):
                 "GROUP BY d ORDER BY d",
                 (d["id"], since),
             ).fetchall()
+            # Device sync stores outdoor temperature in samples. Aggregate on
+            # the server instead of sending thousands of raw readings to UI.
+            ambient_days = c.execute(
+                "SELECT date(ts,'unixepoch','localtime') d, AVG(json_extract(payload,'$.amb')) amb "
+                "FROM samples WHERE device_id=? AND ts>=? "
+                "AND json_type(payload,'$.amb') IN ('integer','real') "
+                "AND json_extract(payload,'$.amb') BETWEEN -50 AND 60 "
+                "GROUP BY d ORDER BY d",
+                (d["id"], max(since, now() - 90 * 86400)),
+            ).fetchall()
+            cycle_rows = c.execute(
+                "SELECT kind, COALESCE(ended_at,started_at) ts, distance_km, soc_start, soc_end "
+                "FROM dev_sessions WHERE device_id=? AND kind IN ('trip','charge') "
+                "AND COALESCE(ended_at,started_at) IS NOT NULL "
+                "ORDER BY COALESCE(ended_at,started_at) DESC LIMIT 500", (d["id"],)
+            ).fetchall()
             soh_rows = c.execute(
                 "SELECT ts, payload FROM samples WHERE device_id=? AND ts>=? "
                 "AND payload LIKE '%\"soh\"%' ORDER BY ts",
@@ -1548,6 +1576,7 @@ class Api(BaseHTTPRequestHandler):
         electric_cost = kwh * day_price
         petrol_cost = (km / 100.0) * petrol_l100 * petrol_price
         consumption = (km / kwh) if kwh > 0 else 0
+        ambient_by_day = {r["d"]: round(float(r["amb"]), 1) for r in ambient_days}
 
         soh = []
         for r in soh_rows:
@@ -1559,6 +1588,30 @@ class Api(BaseHTTPRequestHandler):
             if isinstance(v, (int, float)) and v > 0:
                 soh.append({"ts": r["ts"], "soh": round(float(v), 2)})
 
+        # Complete charge -> subsequent trips -> next charge. No extrapolation
+        # across missing SOC measurements or the unfinished latest cycle.
+        discharge_cycles = []
+        start = None
+        distance = 0.0
+        saw_trip = False
+        for r in reversed(cycle_rows):
+            if r["kind"] == "charge":
+                before = r["soc_start"]
+                valid_before = isinstance(before, (int, float)) and 0 <= before <= 100
+                if start and saw_trip and valid_before and float(before) < start["soc"]:
+                    discharge_cycles.append({"ts": start["ts"], "soc_start": start["soc"],
+                                             "soc_end": float(before), "km": round(distance, 2)})
+                after = r["soc_end"]
+                valid_after = isinstance(after, (int, float)) and 0 <= after <= 100
+                start = {"ts": r["ts"], "soc": float(after)} if valid_after else None
+                distance = 0.0
+                saw_trip = False
+            elif start:
+                km_trip = r["distance_km"]
+                if isinstance(km_trip, (int, float)) and 0 < km_trip < 1000:
+                    distance += km_trip
+                    saw_trip = True
+
         self.json(200, {
             "device": d["id"],
             "days": days,
@@ -1567,7 +1620,8 @@ class Api(BaseHTTPRequestHandler):
             "climate": {"count": climate["n"], "kwh": round(float(climate["kwh"] or 0), 2),
                         "hours": round(float(climate["secs"] or 0) / 3600.0, 2)},
             "per_day": [{"date": r["d"], "km": round(float(r["km"] or 0), 2),
-                         "kwh": round(float(r["kwh"] or 0), 2)} for r in per_day],
+                         "kwh": round(float(r["kwh"] or 0), 2),
+                         "amb": ambient_by_day.get(r["d"])} for r in per_day],
             "consumption_km_per_kwh": round(consumption, 2),
             "cost": {
                 "electric": round(electric_cost, 2),
@@ -1576,6 +1630,7 @@ class Api(BaseHTTPRequestHandler):
                 "currency": cfg.get("currency", "₽"),
             },
             "soh": soh,
+            "discharge_cycles": discharge_cycles[-30:],
             "maintenance": [dict(r) for r in maint],
             "settings": cfg,
         })
@@ -1899,7 +1954,8 @@ class Api(BaseHTTPRequestHandler):
         u = self.require_user()
         if not u:
             return
-        dev = self.owned_device(u, q.get("device", "0"))
+        ref = str(q.get("device") or "")
+        dev = self.owned_device(u, ref) if ref else self.pwa_pick_device(u)
         if not dev:
             return self.err(404, "device not found")
         with db_lock, db() as c:
@@ -1913,13 +1969,18 @@ class Api(BaseHTTPRequestHandler):
         if not u:
             return
         d = self.body()
-        dev = self.owned_device(u, str(d.get("device", "0")))
+        ref = str(d.get("device") or "")
+        dev = self.owned_device(u, ref) if ref else self.pwa_pick_device(u)
         if not dev:
             return self.err(404, "device not found")
+        if dev["status"] != "active":
+            return self.err(403, "device not approved")
         at_ts = int(d.get("at", 0))
-        if at_ts < now():
-            return self.err(400, "время в прошлом")
+        if at_ts <= now() or at_ts > now() + 7 * 86400:
+            return self.err(400, "время должно быть в пределах следующих 7 дней")
         minutes = int(d.get("minutes", 20))
+        if minutes < 5 or minutes > 60:
+            return self.err(400, "длительность климата должна быть от 5 до 60 минут")
         with db_lock, db() as c:
             cur = c.execute(
                 "INSERT INTO schedules(device_id,user_id,kind,at_ts,args,status,created_at)"
@@ -1942,6 +2003,8 @@ class Api(BaseHTTPRequestHandler):
             dev = c.execute("SELECT owner_id FROM devices WHERE id=?", (r["device_id"],)).fetchone()
             if u["role"] != "admin" and (not dev or dev["owner_id"] != u["id"]):
                 return self.err(403, "forbidden")
+            if r["status"] != "waiting":
+                return self.err(409, "расписание уже выполнено или отменено")
             c.execute("UPDATE schedules SET status='cancelled' WHERE id=?", (r["id"],))
         self.json(200, {"ok": True})
 
@@ -2380,7 +2443,16 @@ def scheduler_loop():
                     "SELECT * FROM schedules WHERE status='waiting' AND at_ts<=?", (now(),)
                 ).fetchall()
                 for s in due:
+                    device = c.execute("SELECT status,last_seen FROM devices WHERE id=?",
+                                       (s["device_id"],)).fetchone()
+                    if (not device or device["status"] != "active"
+                            or now() - (device["last_seen"] or 0) > ONLINE_WINDOW_S
+                            or now() - s["at_ts"] > 60):
+                        c.execute("UPDATE schedules SET status='missed' WHERE id=?", (s["id"],))
+                        log_event(c, s["device_id"], "sched_missed", {"id": s["id"]})
+                        continue
                     args = json.loads(s["args"]) if s["args"] else {}
+                    args["_schedule_expires_at"] = s["at_ts"] + 60
                     c.execute(
                         "INSERT INTO commands(device_id,user_id,name,args,status,created_at)"
                         " VALUES(?,?,?,?,?,?)",
