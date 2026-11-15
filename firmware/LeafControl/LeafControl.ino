@@ -28,8 +28,8 @@
 #define LEAF_FIRMWARE_VERSION "FR-TCall.177"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: OTA-capable partitions (min_spiffs), gz-only UI, wifi from app, tariff sync"
 #else
-#define LEAF_FIRMWARE_VERSION "FR-2can.177"
-#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: ota diagnostics in state, connect retry, trips by drive power"
+#define LEAF_FIRMWARE_VERSION "FR-2can.178"
+#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: bounded server responses, transient heap recovery"
 #endif
 
 // Доступ к версии из других модулей (serverApi.cpp).
@@ -1167,20 +1167,28 @@ static void loopSupervisorTask(void*) {
       delay(100);
       ESP.restart();
     }
-    // Heap floor: a normal run keeps ~140 KB free, so a drop under 25 KB means
-    // fragmentation or a leak that will start failing allocations. Rebooting
-    // here is cheaper than a board that silently stops answering.
+    // TLS briefly consumes tens of KB. On the live T-2CAN the heap fell to
+    // 16 KB and recovered to 60 KB in under 12 seconds. Three 5-second
+    // samples can therefore reboot the board in the middle of a trip even
+    // though there is no persistent leak. Reboot only after a full minute of
+    // continuously low heap; retain recovery for a genuine leak/stuck TLS.
     uint32_t freeHeap = ESP.getFreeHeap();
-    static uint8_t lowHeapSamples = 0;
+    static uint32_t lowHeapSinceMs = 0;
     if (freeHeap < 25000UL) {
-      if (++lowHeapSamples >= 3) {
-        Serial.printf("### Supervisor: free heap %u, rebooting ###\n", (unsigned)freeHeap);
+      if (lowHeapSinceMs == 0) lowHeapSinceMs = millis();
+      if (millis() - lowHeapSinceMs >= 60000UL) {
+        Serial.printf("### Supervisor: heap below 25 KB for 60 s (free=%u, max_alloc=%u), rebooting ###\n",
+                      (unsigned)freeHeap, (unsigned)ESP.getMaxAllocHeap());
         recordSoftwareRestart(5);
         delay(100);
         ESP.restart();
       }
     } else {
-      lowHeapSamples = 0;
+      if (lowHeapSinceMs != 0) {
+        Serial.printf("[heap] recovered to %u bytes after %lu s\n", (unsigned)freeHeap,
+                      (unsigned long)((millis() - lowHeapSinceMs) / 1000UL));
+      }
+      lowHeapSinceMs = 0;
     }
   }
 }

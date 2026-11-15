@@ -227,16 +227,31 @@ static int request(const char* method, const String& pathAndQuery, const char* b
   cli->flush();
 
   response = "";
+  // A proxy error page can be much larger than the JSON reply we expect.
+  // The old inner-loop break still let the outer loop append for six seconds,
+  // exhausting the ESP32 heap on a long/chunked response.
+  response.reserve(1024);
+  static const size_t MAX_RESPONSE_BYTES = 8192;
+  bool truncated = false;
   unsigned long deadline = millis() + 6000;
   while (millis() < deadline) {
     while (cli->available()) {
-      response += (char)cli->read();
-      if (response.length() > 8192) break;
+      int ch = cli->read();
+      if (response.length() < MAX_RESPONSE_BYTES) response += (char)ch;
+      else { truncated = true; break; }
     }
+    if (truncated) break;
     if (!cli->connected() && !cli->available()) break;
     delay(1);
   }
   cli->stop();
+
+  if (truncated) {
+    Serial.printf("[srv] response exceeds %u bytes; discarded (heap=%u)\n",
+                  (unsigned)MAX_RESPONSE_BYTES, (unsigned)ESP.getFreeHeap());
+    response = "";
+    return -4;
+  }
 
   int code = -3;
   int sp = response.indexOf(' ');
