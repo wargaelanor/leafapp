@@ -747,14 +747,29 @@ static const SequenceDef sequence_map[] = {
     { CanSequence::RHL_OFF, seq_rhl_off, sizeof(seq_rhl_off)/sizeof(seq_rhl_off[0]) }
 };
 
-bool startSequence(CanSequence seq, unsigned long currentTimeMs) {
+static const char* sequenceSource = "none";
+static CanSequence sequenceType = CanSequence::NONE;
+static unsigned long sequenceStartedMs = 0;
+
+const char* lastSequenceSource() { return sequenceSource; }
+CanSequence lastSequenceType() { return sequenceType; }
+unsigned long lastSequenceStartedMs() { return sequenceStartedMs; }
+
+bool startSequence(CanSequence seq, unsigned long currentTimeMs, const char* source) {
 #if LEAF_CAN_RX_ONLY
     (void)seq;
     (void)currentTimeMs;
+    (void)source;
     return false;
 #else
     if (seq == CanSequence::NONE) return false;
     if (activeSequence != CanSequence::NONE) return false; // busy: reject, report to caller
+    // Source is a static literal from the call site, never a remote/user string.
+    sequenceSource = source;
+    sequenceType = seq;
+    sequenceStartedMs = currentTimeMs;
+    Serial.printf("[CAN command] seq=%d source=%s uptime_ms=%lu\n",
+                  (int)seq, source, currentTimeMs);
     resetCanLogTimestamps();
     
     activeSequence = seq;

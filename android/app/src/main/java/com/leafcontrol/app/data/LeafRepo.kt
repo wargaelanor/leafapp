@@ -83,15 +83,13 @@ object LeafRepo {
         val server = Settings.mode == "server" ||
             (Settings.mode == "auto" && state.value.transport == "server")
         val local = if (server) ServerApi.status(context) else LocalApi.status(context)
-        if (local != null) {
-            setLocal(local)
-            val t = if (server) ServerApi.trips(context) else LocalApi.trips(context)
-            val c = if (server) ServerApi.charges(context) else LocalApi.charges(context)
-            if (t.isNotEmpty() || c.isNotEmpty()) {
-                withContext(Dispatchers.IO) {
-                    t.forEach { HistoryDb.upsertTrip(it) }
-                    c.forEach { HistoryDb.upsertCharge(it) }
-                }
+        if (local != null) setLocal(local)
+        val t = if (server) ServerApi.trips(context) else LocalApi.trips(context)
+        val c = if (server) ServerApi.charges(context) else LocalApi.charges(context)
+        if (t.isNotEmpty() || c.isNotEmpty()) {
+            withContext(Dispatchers.IO) {
+                t.forEach { HistoryDb.upsertTrip(it) }
+                c.forEach { HistoryDb.upsertCharge(it) }
             }
         }
         loadHistory()

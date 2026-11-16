@@ -172,7 +172,7 @@ class LeafMonitorService : Service() {
             if (s != null) {
                 onState(s)
                 updateForeground("Локально · ${s.soc.takeIf { it >= 0 }?.toInt() ?: "—"}%")
-                if (System.currentTimeMillis() - syncedAt > 300_000L) {
+                if (System.currentTimeMillis() - syncedAt >= 20_000L) {
                     syncedAt = System.currentTimeMillis()
                     syncHistory(server = false)
                 }
@@ -227,7 +227,7 @@ class LeafMonitorService : Service() {
                 LeafRepo.monitorText.value = if (s.connected) "Сервер" else "Сервер · плата не на связи"
                 val soc = s.soc.takeIf { it >= 0 }?.toInt()?.toString() ?: "—"
                 updateForeground("Сервер · $soc%")
-                if (System.currentTimeMillis() - syncedAt > 300_000L) {
+                if (System.currentTimeMillis() - syncedAt >= 20_000L) {
                     syncedAt = System.currentTimeMillis()
                     syncHistory(server = true)
                 }
@@ -251,7 +251,7 @@ class LeafMonitorService : Service() {
             if (s != null) {
                 onState(s)
                 updateForeground("Локально · ${s.soc.takeIf { it >= 0 }?.toInt() ?: "—"}% · ${s.voltage.toInt()} В")
-                if (System.currentTimeMillis() - syncedAt > 300_000L) {
+                if (System.currentTimeMillis() - syncedAt >= 20_000L) {
                     syncedAt = System.currentTimeMillis()
                     syncHistory(server = false)
                 }

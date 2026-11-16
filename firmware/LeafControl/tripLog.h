@@ -7,6 +7,9 @@
 // not depend on the phone being open. One JSON line per finished record.
 void tripLogInit();
 void tripLogTick();
+// Replay persisted records incrementally. Server deduplicates by device/kind/start.
+bool tripLogNextReplay(char* kind, size_t kindSize, char* line, size_t lineSize);
+void tripLogReplayConfirmed();
 
 // Закрыть открытую поездку (перед сном/перезагрузкой).
 void tripLogFinishOpen(const char* reason);

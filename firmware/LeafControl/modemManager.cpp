@@ -361,7 +361,7 @@ void modemTick() {
     bool turnOn = requested > 0;
     if (!turnOn) cancelHvacTimer();
     Serial.printf("### HVAC %s! (authorized call) ###\n", turnOn ? "ON" : "OFF");
-    if (!startSequence(turnOn ? CanSequence::HVAC_ON : CanSequence::HVAC_OFF, millis())) {
+    if (!startSequence(turnOn ? CanSequence::HVAC_ON : CanSequence::HVAC_OFF, millis(), "authorized_call")) {
       Serial.println("[call] climate command rejected: CAN sequence busy");
     }
   }

@@ -53,7 +53,9 @@ class ApiContractTests(unittest.TestCase):
             c.execute("INSERT INTO sessions(token,user_id,created_at,expires_at) VALUES(?,?,?,?)",
                       ("schedule-cookie", uid, t, t + 600))
             dev = c.execute("INSERT INTO devices(serial,login,device_token,owner_id,status,created_at) VALUES(?,?,?,?,?,?)",
-                            ("schedule-board", "schedule-board", "schedule-token", uid, "active", t)).lastrowid
+                             ("schedule-board", "schedule-board", "schedule-token", uid, "active", t)).lastrowid
+            other_dev = c.execute("INSERT INTO devices(serial,login,device_token,owner_id,status,created_at) VALUES(?,?,?,?,?,?)",
+                                  ("schedule-board-2", "schedule-board-2", "schedule-token-2", uid, "active", t)).lastrowid
         auth = {"Cookie": "leaf_session=schedule-cookie"}
         for minutes in (0, 4, 61):
             status, _, _ = self.request("POST", "/api/sched", {
@@ -69,8 +71,26 @@ class ApiContractTests(unittest.TestCase):
             "at": t + 7200, "minutes": 20}, auth)
         self.assertEqual(status, 200)
         self.assertNotEqual(implicit["id"], result["id"])
+        status, _, _ = self.request("POST", "/api/sched/cancel", {
+            "device": other_dev, "id": result["id"]}, auth)
+        self.assertEqual(status, 404)
+        status, cancelled, _ = self.request("POST", "/api/sched/cancel", {
+            "device": dev, "id": result["id"]}, auth)
+        self.assertEqual(status, 200)
+        self.assertTrue(cancelled["ok"])
+        status, _, _ = self.request("POST", "/api/sched/cancel", {"id": result["id"]}, auth)
+        self.assertEqual(status, 200)
+        status, sched, _ = self.request("GET", "/api/sched", headers=auth)
+        self.assertEqual(next(x for x in sched["schedules"] if x["id"] == result["id"])["status"], "cancelled")
+        status, other_sched, _ = self.request("GET", f"/api/sched?device={other_dev}", headers=auth)
+        self.assertEqual(status, 200)
+        self.assertFalse(any(x["id"] == result["id"] for x in other_sched["schedules"]))
         with app.db_lock, app.db() as c:
             scheduled = c.execute("SELECT at_ts,args FROM schedules WHERE id=?", (result["id"],)).fetchone()
+            due = c.execute("SELECT id FROM schedules WHERE status='waiting' AND at_ts<=?", (t + 3600,)).fetchall()
+            events = c.execute("SELECT COUNT(*) FROM events WHERE device_id=? AND kind='sched_cancelled'", (dev,)).fetchone()[0]
+        self.assertNotIn(result["id"], [x["id"] for x in due])
+        self.assertEqual(events, 1)
         self.assertEqual(scheduled["at_ts"], t + 3600)
         self.assertEqual(json.loads(scheduled["args"])["minutes"], 15)
 

@@ -12,8 +12,8 @@ android {
         applicationId = "com.leafcontrol.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 63
-        versionName = "1.62"
+        versionCode = 65
+        versionName = "1.64"
     }
 
     buildTypes {

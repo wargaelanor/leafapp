@@ -1683,11 +1683,21 @@ private fun MoreScreen(
     var climateTime by remember { mutableStateOf("08:00") }
     var climateMinutes by remember { mutableIntStateOf(15) }
     var climateResult by remember { mutableStateOf("") }
+    var climateSchedules by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var climateLoading by remember { mutableStateOf(false) }
     var serverStats by remember { mutableStateOf<JSONObject?>(null) }
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     LaunchedEffect(showStatistics) {
         if (showStatistics && Settings.mode != "local") serverStats = ServerApi.statistics(ctx)
+    }
+    LaunchedEffect(showClimatePlan) {
+        if (showClimatePlan && Settings.mode != "local") {
+            val schedules = ServerApi.climateSchedules(ctx)
+            if (schedules == null) climateResult = "Не удалось загрузить расписание"
+            else climateSchedules = (0 until schedules.length()).mapNotNull { schedules.optJSONObject(it) }
+                .filter { it.optString("status") == "waiting" }
+        }
     }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -1849,6 +1859,21 @@ private fun MoreScreen(
                     Text("Климат включится за $climateMinutes мин до выбранного времени. " +
                         "Нужна связь платы с сервером в момент запуска.", fontSize = 12.sp)
                     if (climateResult.isNotEmpty()) Text(climateResult, fontSize = 12.sp)
+                    climateSchedules.forEach { planned ->
+                        val id = planned.optLong("id")
+                        val time = runCatching { Instant.ofEpochSecond(planned.optLong("at_ts"))
+                            .atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("dd.MM HH:mm")) }
+                            .getOrDefault("№$id")
+                        TextButton(enabled = !climateLoading, onClick = {
+                            scope.launch {
+                                climateLoading = true
+                                val cancelled = ServerApi.cancelClimateSchedule(ctx, id)
+                                climateResult = if (cancelled) "Расписание отменено" else "Не удалось отменить расписание"
+                                if (cancelled) climateSchedules = climateSchedules.filterNot { it.optLong("id") == id }
+                                climateLoading = false
+                            }
+                        }) { Text("Отключить климат: $time") }
+                    }
                 }
             },
             confirmButton = {
@@ -1867,9 +1892,13 @@ private fun MoreScreen(
                         if (!start.isAfter(current)) start = start.plusDays(1)
                         val epoch = start.atZone(ZoneId.systemDefault()).toEpochSecond()
                         scope.launch {
-                            climateResult = if (ServerApi.scheduleClimate(ctx, epoch, climateMinutes))
-                                "Запланировано: старт ${start.toLocalTime()}"
-                            else "Не удалось запланировать: проверьте сервер и связь"
+                            if (ServerApi.scheduleClimate(ctx, epoch, climateMinutes)) {
+                                climateResult = "Запланировано: старт ${start.toLocalTime()}"
+                                val schedules = ServerApi.climateSchedules(ctx)
+                                if (schedules != null) climateSchedules =
+                                    (0 until schedules.length()).mapNotNull { schedules.optJSONObject(it) }
+                                        .filter { it.optString("status") == "waiting" }
+                            } else climateResult = "Не удалось запланировать: проверьте сервер и связь"
                         }
                     }
                 }) { Text("Запланировать") }

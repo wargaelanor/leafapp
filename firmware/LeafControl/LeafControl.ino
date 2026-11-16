@@ -28,8 +28,8 @@
 #define LEAF_FIRMWARE_VERSION "FR-TCall.177"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: OTA-capable partitions (min_spiffs), gz-only UI, wifi from app, tariff sync"
 #else
-#define LEAF_FIRMWARE_VERSION "FR-2can.178"
-#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: bounded server responses, transient heap recovery"
+#define LEAF_FIRMWARE_VERSION "FR-2can.180"
+#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: CAN source and reliable trip delivery"
 #endif
 
 // Доступ к версии из других модулей (serverApi.cpp).
@@ -702,7 +702,7 @@ void handleApiStatus() {
   float gLat = 0, gLon = 0, gAlt = 0, gSpd = 0;
   uint32_t gAge = 0;
   bool gpsValid = modemGpsFix(&gLat, &gLon, &gAlt, &gSpd, &gAge);
-  char json[2600];
+  char json[2800];
   char h1db[26], h5bc[26], h7bb[26], h79a[26], h5c0[26], h1dba[26];
   jsonHexPayload(0x1DB, h1db, sizeof(h1db));
   jsonHexPayload(0x5BC, h5bc, sizeof(h5bc));
@@ -711,13 +711,13 @@ void handleApiStatus() {
   uint8_t evTemp[8], evPack[8];
   hexFromBuf(evTemp, evCanRawTemp(evTemp), h5c0, sizeof(h5c0));
   hexFromBuf(evPack, evCanRawPack(evPack), h1dba, sizeof(h1dba));
-  snprintf(json, sizeof(json),
+  int jsonLength = snprintf(json, sizeof(json),
     "{\"fw\":\"%s\",\"fw_desc\":\"%s\",\"board\":\"%s\",\"soc\":%.1f,\"cabin\":%.1f,\"charging\":%d,\"charger\":\"%s\",\"hvac\":%d,"
     "\"lock\":%d,\"setpoint\":%.1f,\"fan\":%.0f,\"heat\":%d,\"cool\":%d,\"vent\":%d,"
     "\"soh\":%d,\"gids\":%d,\"v\":%.1f,\"i\":%.1f,\"power\":%.1f,\"pack\":%d,\"vvalid\":%d,\"amb\":%.1f,"
     "\"isoc\":%.1f,\"irange\":%d,\"btemp\":%.1f,\"cdelta\":%d,"
     "\"odo\":%lu,\"vin\":\"%s\",\"hvac_timer\":%u,"
-    "\"on\":%d,\"seq\":%d,\"locking\":%d,\"lights\":%d,"
+    "\"on\":%d,\"seq\":%d,\"last_seq\":%d,\"last_seq_source\":\"%s\",\"last_seq_ms\":%lu,\"locking\":%d,\"lights\":%d,"
     "\"evcan\":%d,\"rxonly\":%d,\"fa\":%lu,\"fb\":%lu,"
     "\"evclk\":\"%s\",\"evkbps\":\"%s\",\"evscan\":%d,\"evlock\":%d,"
     "\"evchip\":%d,\"evcfg\":%d,\"evrec\":%u,\"evtec\":%u,\"eveflg\":%u,\"evbest\":%u,\"evrst\":%lu,"
@@ -751,7 +751,8 @@ void handleApiStatus() {
     evData.instrumentSOC, evData.instrumentRange, evData.batteryTemp, evData.cellDeltaMv,
     (unsigned long)evData.odometerKm, evData.vin, hvacTimerRemainingMinutes(),
     (int)evData.vehicleOn,
-    sequenceActive ? 1 : 0, getLockingEnabled() ? 1 : 0, headlightsState ? 1 : 0,
+    sequenceActive ? 1 : 0, (int)lastSequenceType(), lastSequenceSource(), lastSequenceStartedMs(),
+    getLockingEnabled() ? 1 : 0, headlightsState ? 1 : 0,
     evCanIsUp() ? 1 : 0, LEAF_CAN_RX_ONLY, (unsigned long)canFramesA, (unsigned long)canFramesB,
     evCanClockName(), evCanBitrateName(), evCanScanActive() ? 1 : 0, evCanIsLocked() ? 1 : 0,
     evCanChipCheckOk() ? 1 : 0, evCanConfigWritesOk() ? 1 : 0,
@@ -801,6 +802,11 @@ void handleApiStatus() {
     (unsigned long)udsData.reqCount, (unsigned long)udsData.respCount,
     gpsValid ? gLat : 0.0, gpsValid ? gLon : 0.0,
     (unsigned long)(gpsValid ? gAge / 1000UL : 0UL));
+  if (jsonLength < 0 || (size_t)jsonLength >= sizeof(json)) {
+    Serial.printf("[status] JSON overflow: required=%d capacity=%u\n", jsonLength, (unsigned)sizeof(json));
+    server.send(500, "application/json", "{\"error\":\"status_too_large\"}");
+    return;
+  }
   server.sendHeader("Cache-Control", "no-store");
   server.send(200, "application/json", json);
   maxLoopGapMs = 0;   // report the worst stall since the previous read
@@ -1901,7 +1907,7 @@ void logSequenceStart() {
 // Busy helpers: a second command during an active sequence is rejected
 // explicitly instead of being silently dropped.
 static bool startSeqOrBusy(CanSequence seq) {
-  if (startSequence(seq, millis())) {
+  if (startSequence(seq, millis(), "local_http")) {
     noteUserActivity();
     logSequenceStart();
     return true;
@@ -1944,7 +1950,7 @@ void handleRefresh() {
 void requestVehicleWake() {
   if (otaInProgress) return;
   if (activeSequence == CanSequence::NONE) {
-    startSequence(CanSequence::REFRESH, millis());
+    startSequence(CanSequence::REFRESH, millis(), "trip_log");
   }
 }
 
@@ -2278,25 +2284,25 @@ static void handleServerCommand(const char* name, const char* argsJson) {
     if (p) minutes = atoi(p + 10);
     if (minutes < 1 || minutes > 60) minutes = 20;
     armHvacTimer((uint16_t)minutes);
-    startSequence(CanSequence::HVAC_ON, millis());
+    startSequence(CanSequence::HVAC_ON, millis(), "server");
     Serial.printf("[srv] РєР»РёРјР°С‚ ON РЅР° %d РјРёРЅ\n", minutes);
   } else if (!strcmp(name, "clim_off")) {
     cancelHvacTimer();
-    startSequence(CanSequence::HVAC_OFF, millis());
+    startSequence(CanSequence::HVAC_OFF, millis(), "server");
   } else if (!strcmp(name, "lock")) {
-    startSequence(CanSequence::LOCK_DOORS, millis());
+    startSequence(CanSequence::LOCK_DOORS, millis(), "server");
   } else if (!strcmp(name, "unlock")) {
-    startSequence(CanSequence::UNLOCK_DOORS, millis());
+    startSequence(CanSequence::UNLOCK_DOORS, millis(), "server");
   } else if (!strcmp(name, "lights")) {
-    startSequence(CanSequence::LIGHTS, millis());
+    startSequence(CanSequence::LIGHTS, millis(), "server");
   } else if (!strcmp(name, "horn")) {
-    startSequence(CanSequence::HORN_LIGHTS, millis());
+    startSequence(CanSequence::HORN_LIGHTS, millis(), "server");
   } else if (!strcmp(name, "refresh")) {
-    startSequence(CanSequence::REFRESH, millis());
+    startSequence(CanSequence::REFRESH, millis(), "server");
   } else if (!strcmp(name, "charge_start")) {
-    startSequence(CanSequence::CHARGE_ON, millis());
+    startSequence(CanSequence::CHARGE_ON, millis(), "server");
   } else if (!strcmp(name, "charge_stop")) {
-    startSequence(CanSequence::CHARGE_OFF, millis());
+    startSequence(CanSequence::CHARGE_OFF, millis(), "server");
   } else {
     Serial.printf("[srv] РЅРµРёР·РІРµСЃС‚РЅР°СЏ РєРѕРјР°РЅРґР°: %s\n", name);
   }
@@ -2448,7 +2454,7 @@ void setup() {
 
   if (wokeFromTimer) {
     timerRefreshActive = true;
-    if (startSequence(CanSequence::REFRESH, millis())) {
+    if (startSequence(CanSequence::REFRESH, millis(), "timer_wake")) {
       Serial.println("### Timer wake: automatic vehicle refresh started ###");
       logSequenceStart();
     } else {
@@ -2645,7 +2651,7 @@ void loop() {
       lastPublishedHvacMinutes = remainingMinutes;
     }
     if (hvacTimerStopPending && activeSequence == CanSequence::NONE &&
-        startSequence(CanSequence::HVAC_OFF, millis())) {
+        startSequence(CanSequence::HVAC_OFF, millis(), "hvac_timer")) {
       hvacTimerStopPending = false;
       Serial.println("### HVAC timer expired: OFF command started ###");
     }

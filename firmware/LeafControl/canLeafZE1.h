@@ -125,7 +125,10 @@ typedef void (*SequencePayloadModifier)(uint8_t* data, uint8_t len);
 void setHVACTargetTemperature(float setpoint);
 
 // Returns false if another sequence is still active (caller should report "busy")
-bool startSequence(CanSequence seq, unsigned long currentTimeMs);
+bool startSequence(CanSequence seq, unsigned long currentTimeMs, const char* source);
+const char* lastSequenceSource();
+CanSequence lastSequenceType();
+unsigned long lastSequenceStartedMs();
 CanSeqResult manageCANSequence(unsigned long currentTimeMs);
 void manageVinQuery(unsigned long currentTimeMs);
 void manageBmsDiagnostics(unsigned long currentTimeMs);

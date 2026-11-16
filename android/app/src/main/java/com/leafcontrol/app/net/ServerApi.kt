@@ -150,6 +150,23 @@ object ServerApi {
             }.getOrDefault(false)
         }
 
+    suspend fun climateSchedules(context: Context): JSONArray? = withContext(Dispatchers.IO) {
+        if (!configured()) return@withContext null
+        if (Settings.serverCookie.isEmpty() && !login(context)) return@withContext null
+        get(context, "/api/sched" + if (Settings.serverDevice > 0) "?device=${Settings.serverDevice}" else "")
+            ?.let { runCatching { JSONObject(it).optJSONArray("schedules") }.getOrNull() }
+    }
+
+    suspend fun cancelClimateSchedule(context: Context, id: Long): Boolean = withContext(Dispatchers.IO) {
+        if (!configured() || id <= 0) return@withContext false
+        if (Settings.serverCookie.isEmpty() && !login(context)) return@withContext false
+        val body = JSONObject().put("id", id)
+        if (Settings.serverDevice > 0) body.put("device", Settings.serverDevice)
+        runCatching {
+            client.newCall(request("/api/sched/cancel", "POST", body.toString())).execute().use { it.isSuccessful }
+        }.getOrDefault(false)
+    }
+
     suspend fun status(context: Context): LeafState? = withContext(Dispatchers.IO) {
         if (!configured()) return@withContext null
         if (Settings.serverCookie.isEmpty() && !login(context)) return@withContext null

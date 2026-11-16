@@ -1274,11 +1274,12 @@ void serverApiOnRecord(const char* kind, const char* line) {
 // РџР»Р°С‚Р° С…СЂР°РЅРёС‚ СЃРІРѕРё Р·Р°РїРёСЃРё РєР°Рє {"s":start,"e":end,"d":СЃРµРє,"k":РєРј,"w":Wh,"s0":..,"s1":..}
 // РЎРµСЂРІРµСЂ Р¶РґС‘С‚ {kind,started_at,ended_at,duration_s,distance_km,energy_kwh,soc_start,soc_end}
 static bool sendOneRecord() {
-  if (recCount == 0) return false;
-  const char* line = recQueue[recHead];
-  const char* kind = recKind[recHead];
-  recHead = (recHead + 1) % REC_QUEUE;
-  recCount--;
+  char diskLine[220], diskKind[8];
+  bool disk = tripLogNextReplay(diskKind, sizeof(diskKind), diskLine, sizeof(diskLine));
+  bool queued = !disk && recCount > 0;
+  if (!disk && !queued) return false;
+  const char* line = queued ? recQueue[recHead] : diskLine;
+  const char* kind = queued ? recKind[recHead] : diskKind;
 
   auto field = [&](const char* key, double def) -> double {
     int p = strstr(line, key) ? (int)(strstr(line, key) - line) : -1;
@@ -1306,11 +1307,13 @@ static bool sendOneRecord() {
   if (postJson("/api/device/session", body, resp)) {
     Serial.printf("[srv] Р·Р°РїРёСЃСЊ %s РѕС‚РїСЂР°РІР»РµРЅР°\n", kind);
     tripLogNoteRecordSent((uint32_t)e);
+    if (queued) {
+      recHead = (recHead + 1) % REC_QUEUE;
+      recCount--;
+    } else tripLogReplayConfirmed();
     return true;
   }
-  // РІРµСЂРЅСѓС‚СЊ РІ РѕС‡РµСЂРµРґСЊ РїСЂРё РЅРµСѓРґР°С‡Рµ
-  recHead = (recHead + REC_QUEUE - 1) % REC_QUEUE;
-  recCount++;
+  // Leave the queue head / replay cursor untouched until acknowledged.
   return false;
 }
 
@@ -1352,7 +1355,9 @@ static void serverNetOnce() {
 
   static uint8_t failCount = 0;
   static unsigned long retryAt = 0;
-  if (failCount >= 3 && (long)(now - retryAt) < 0) return;
+  // Full telemetry may be in backoff; persisted trip delivery has its own
+  // retry path below and must not be held behind that backoff.
+  bool syncBackoff = failCount >= 3 && (long)(now - retryAt) < 0;
 
   static bool registeredOnce = false;
   if (!registered || cfgToken[0] == '\0') {
@@ -1371,14 +1376,13 @@ static void serverNetOnce() {
   unsigned long interval = wifiUp ? ((WiFi.RSSI() < -80) ? 15000UL : 8000UL) : 60000UL;
   static bool linkOk = false;
   bool syncOk = false;
-  if (now - lastSyncMs >= interval) {
+  if (!syncBackoff && now - lastSyncMs >= interval) {
     lastSyncMs = now;
     syncOk = syncRequest();
     linkOk = syncOk;
     if (syncOk) {
       lastOkMs = millis();
       failCount = 0;
-      if (recCount > 0) sendOneRecord();
       // накопленные точки телеметрии — пачкой, не чаще раза в минуту
       static unsigned long lastHistMs = 0;
       if (histCount > 0 && now - lastHistMs > 60000UL) {
@@ -1390,6 +1394,14 @@ static void serverNetOnce() {
     } else if (failCount < 255 && ++failCount >= 3) {
       retryAt = now + 30000UL;
     }
+  }
+
+  // Delivery must not wait for a successful full telemetry sync: a finished
+  // trip is sent as soon as the network task can retry it.
+  static unsigned long lastRecordAttemptMs = 0;
+  if (registered && cfgToken[0] && now - lastRecordAttemptMs >= 5000UL) {
+    lastRecordAttemptMs = now;
+    sendOneRecord();
   }
 
   // Раз в минуту (и сразу после неудачной синхронизации) отправляем короткий

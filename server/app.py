@@ -2000,12 +2000,17 @@ class Api(BaseHTTPRequestHandler):
             r = c.execute("SELECT * FROM schedules WHERE id=?", (int(d.get("id", 0)),)).fetchone()
             if not r:
                 return self.err(404, "not found")
+            if d.get("device") and str(r["device_id"]) != str(d["device"]):
+                return self.err(404, "not found")
             dev = c.execute("SELECT owner_id FROM devices WHERE id=?", (r["device_id"],)).fetchone()
             if u["role"] != "admin" and (not dev or dev["owner_id"] != u["id"]):
                 return self.err(403, "forbidden")
+            if r["status"] == "cancelled":
+                return self.json(200, {"ok": True})
             if r["status"] != "waiting":
                 return self.err(409, "расписание уже выполнено или отменено")
-            c.execute("UPDATE schedules SET status='cancelled' WHERE id=?", (r["id"],))
+            c.execute("UPDATE schedules SET status='cancelled' WHERE id=? AND status='waiting'", (r["id"],))
+            log_event(c, r["device_id"], "sched_cancelled", {"id": r["id"]})
         self.json(200, {"ok": True})
 
     # ---------- notifications
