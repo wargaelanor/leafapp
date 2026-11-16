@@ -42,13 +42,13 @@ SERVER_BASE = os.environ.get("LEAF_SERVER_BASE", "https://leaf.wargaelanor.keene
 CAN_DIR = os.environ.get("LEAF_CAN_DIR", os.path.join(os.path.dirname(DB_PATH), "can"))
 
 # Ссылка на Android-приложение (release-ассет проекта).
-APP_REV = os.environ.get("LEAF_REV", "sec-2c73f93")
-APP_VERSION = "1.61"  # версия APK, лежащего на этом сервере
-APP_NOTES = "Возвращён зафиксированный интерфейс 1.59; экспериментальный дизайн и переключатель удалены"
+APP_REV = os.environ.get("LEAF_REV", "sync-5b5f99e")
+APP_VERSION = "1.64"  # версия APK, доступная для скачивания
+APP_NOTES = "Отмена климата по расписанию и обновление истории при работающем мониторинге"
 
 APK_URL = os.environ.get(
     "LEAF_APK_URL",
-    "https://github.com/wargaelanor/leafapp/releases/download/android-v1.61/LeafControl-1.61-debug.apk",
+    "https://github.com/wargaelanor/leafapp/releases/download/android-v1.64/LeafControl-1.64-debug.apk",
 )
 
 # Команды, которые шлёт PWA (те же пути, что у платы).
