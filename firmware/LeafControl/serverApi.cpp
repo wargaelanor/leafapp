@@ -84,7 +84,7 @@ static void noteCanActivity() {
 }
 
 // РѕС‡РµСЂРµРґСЊ Р·Р°РїРёСЃРµР№ РїРѕРµР·РґРѕРє/Р·Р°СЂСЏРґРѕРє
-static const int REC_QUEUE = 16;
+static const int REC_QUEUE = 48;
 static char recQueue[REC_QUEUE][220];
 static char recKind[REC_QUEUE][8];
 static int recHead = 0, recTail = 0, recCount = 0;
@@ -324,6 +324,10 @@ static bool postJson(const String& path, const char* body, String& resp) {
   }
   code = request("POST", path, body, resp);
   if (code >= 200 && code < 300) return true;
+  // WiFi associated but server unresponsive: try modem as fallback.
+  if (code < 0 && modemHttpReady()) {
+    if (modemHttp(1, path, body, resp, code)) return true;
+  }
   // Токен отвергнут сервером — забываем его и регистрируемся заново.
   if (code == 401 || code == 403) {
     saveToken("");
@@ -637,6 +641,7 @@ static void applyConfig(const char* argsJson) {
   else if (!strcmp(key, "uds")) setUdsEnabled(bval);
   else if (!strcmp(key, "uds_tpms")) setUdsTpmsEnabled(bval);
   else if (!strcmp(key, "vehicle_profile")) setVehicleProfile(ival);
+  else if (!strcmp(key, "tz_offset")) setTzOffset(ival);
   else if (!strcmp(key, "modem")) setModemEnable(bval);
   else if (!strcmp(key, "tariff_day") || !strcmp(key, "tariff_night") ||
            !strcmp(key, "night_from") || !strcmp(key, "night_to")) {
@@ -1257,6 +1262,16 @@ static bool pollCommands() {
     handleCommandResponse(resp);
     return true;
   }
+  // WiFi associated but server unreachable: modem is already attached in
+  // this state (server-based wifiHasNet), so poll over cellular too.
+  if (code < 0 && modemHttpReady()) {
+    String mresp;
+    int mcode = 0;
+    if (modemHttp(0, "/api/device/cmd?wait=0", nullptr, mresp, mcode)) {
+      handleCommandResponse(mresp);
+      return true;
+    }
+  }
   Serial.printf("[srv] poll -> %d %s\n", code, resp.substring(0, 120).c_str());
   return false;
 }
@@ -1264,7 +1279,12 @@ static bool pollCommands() {
 // ---------------------------------------------------------------- Р·Р°РїРёСЃРё
 
 void serverApiOnRecord(const char* kind, const char* line) {
-  if (!cfgEnabled || recCount >= REC_QUEUE) return;
+  if (!cfgEnabled) return;
+  // Drain oldest entries when queue is full - never drop a finished session.
+  while (recCount >= REC_QUEUE) {
+    recHead = (recHead + 1) % REC_QUEUE;
+    recCount--;
+  }
   snprintf(recQueue[recTail], sizeof(recQueue[recTail]), "%s", line);
   snprintf(recKind[recTail], sizeof(recKind[recTail]), "%s", kind);
   recTail = (recTail + 1) % REC_QUEUE;
@@ -1401,7 +1421,9 @@ static void serverNetOnce() {
   static unsigned long lastRecordAttemptMs = 0;
   if (registered && cfgToken[0] && now - lastRecordAttemptMs >= 5000UL) {
     lastRecordAttemptMs = now;
-    sendOneRecord();
+    // Drain a few records per tick instead of one (bounded so a large
+    // backlog cannot starve telemetry for minutes on the slow modem link).
+    for (int n = 0; n < 4 && sendOneRecord(); n++) {}
   }
 
   // Раз в минуту (и сразу после неудачной синхронизации) отправляем короткий

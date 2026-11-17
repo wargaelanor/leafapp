@@ -31,7 +31,7 @@ bool awaitText(const char* expected, uint32_t timeoutMs, String* response = null
     int guard = 256;
     while (simSerial.available() && guard-- > 0) {
       data += (char)simSerial.read();
-      if (data.length() > 1024) data.remove(0, 512);
+      if (data.length() > 2048) data.remove(0, 1024);
       if (data.indexOf(expected) >= 0) {
         if (response) *response = data;
         return true;
@@ -438,6 +438,12 @@ bool hwSelectNetwork(const char* apn, const char* user) {
   userValue.toLowerCase();
   if (apnValue.indexOf("beeline") >= 0 || userValue == "beeline") {
     Serial.println("[modem] selecting Beeline (25099)");
+    // Only force Beeline if not already registered on a 250-xxx MCC.
+    String cops;
+    if (commandOk("AT+COPS?", 3000, &cops) &&
+        cops.indexOf("+COPS:") >= 0 && cops.indexOf("\"250") >= 0) {
+      return true; // already on a Russian operator - skip forced attach
+    }
     return commandOk("AT+COPS=1,2,\"25099\"", 180000);
   }
   commandOk("AT+COPS=0", 10000);
@@ -517,9 +523,9 @@ bool hwGprsConnect(const char* apn, const char* user, const char* pass) {
 
 bool hwGprsDisconnect() {
   tcpClient.stop();
-  savedApn = "";
-  savedUser = "";
-  savedPass = "";
+  // Do NOT clear savedApn/user/pass: they are needed for a fast reattach
+  // after Wi-Fi drops. Clearing forces a full CSTT+SAPBR+CIICR (~45 s)
+  // every time the modem switches between Wi-Fi and cellular.
   return true;
 }
 

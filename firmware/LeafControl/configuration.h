@@ -76,6 +76,8 @@ int getWakeFastMinutes();
 ConfigStatus setWakeFastMinutes(int value);
 int getWakeSlowMinutes();
 ConfigStatus setWakeSlowMinutes(int value);
+int getTzOffset();
+ConfigStatus setTzOffset(int value);
 
 bool getUdsEnabled();
 ConfigStatus setUdsEnabled(bool value);

@@ -142,6 +142,7 @@ static ConfigInt        conf_wake_slow_min("wake_slow_min", 15);
 static ConfigBool       conf_modem_enable("modem_enable", false);
 static ConfigInt        conf_modem_type("modem_type", 0); // 0=SIM800, 1=A7670
 static ConfigInt        conf_modem_pwrkey("modem_pwrkey", 0); // GPIO, 0=not managed
+static ConfigInt        conf_tz_offset("tz_offset", 3 * 3600); // UTC offset sec, default +3h Moscow
 static ConfigString<64> conf_modem800_apn("modem800_apn", "");
 static ConfigString<64> conf_modem800_user("modem800_user", "");
 static ConfigString<64> conf_modem800_pass("modem800_pass", "");
@@ -194,6 +195,7 @@ void initConfiguration() {
     conf_wake_fast_min.load();
     conf_wake_slow_min.load();
     conf_modem_enable.load();
+    conf_tz_offset.load();
     conf_modem_type.load();
     conf_modem_pwrkey.load();
     conf_modem800_apn.load();
@@ -408,4 +410,13 @@ const char* getModemCallNumber(uint8_t index) {
 ConfigStatus setModemCallNumber(uint8_t index, const char* value) {
     ConfigString<24>* conf = callNumberConfig(index);
     return conf ? conf->set(value) : ConfigStatus::ERROR_UNKNOWN;
+}
+
+int getTzOffset() {
+    int v = conf_tz_offset.get();
+    return (v < -43200 || v > 50400) ? 3 * 3600 : v;
+}
+ConfigStatus setTzOffset(int value) {
+    if (value < -43200 || value > 50400) return ConfigStatus::ERROR_PORT_RANGE;
+    return conf_tz_offset.set(value);
 }

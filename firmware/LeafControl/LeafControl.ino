@@ -28,8 +28,8 @@
 #define LEAF_FIRMWARE_VERSION "FR-TCall.177"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: OTA-capable partitions (min_spiffs), gz-only UI, wifi from app, tariff sync"
 #else
-#define LEAF_FIRMWARE_VERSION "FR-2can.180"
-#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: CAN source and reliable trip delivery"
+#define LEAF_FIRMWARE_VERSION "FR-2can.181"
+#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: reliability - cellular fallback, bigger session queue, trip thresholds, tz config"
 #endif
 
 // Доступ к версии из других модулей (serverApi.cpp).
@@ -1543,6 +1543,7 @@ void handleApiConfigGet() {
   out += ",\"sleep_after_h\":"; out += String(getSleepAfterHours());
   out += ",\"wake_fast_min\":"; out += String(getWakeFastMinutes());
   out += ",\"wake_slow_min\":"; out += String(getWakeSlowMinutes());
+  out += ",\"tz_offset\":"; out += String(getTzOffset());
   out += ",\"charge_limit_pct\":"; out += String(getChargeLimitPct());
   out += ",\"tariff_day\":"; out += String(tripLogTariffDay(), 2);
   out += ",\"tariff_night\":"; out += String(tripLogTariffNight(), 2);
@@ -1624,6 +1625,7 @@ void handleApiConfigSave() {
   if (jsonInt(body, "sleep_after_h", n) && n >= 1 && n <= 168) setSleepAfterHours((int)n);
   if (jsonInt(body, "wake_fast_min", n) && n >= 1 && n <= 1440) setWakeFastMinutes((int)n);
   if (jsonInt(body, "wake_slow_min", n) && n >= 1 && n <= 1440) setWakeSlowMinutes((int)n);
+  if (jsonInt(body, "tz_offset", n)) setTzOffset((int)n);
   if (jsonInt(body, "charge_limit_pct", n)) {
     if (n != 0 && (n < 70 || n > 95)) {
       Serial.printf("Config: charge_limit_pct %ld rejected (0 or 70..95)\n", n);
@@ -2180,7 +2182,7 @@ void manageWiFi() {
       // A phone on the board's AP is expected during configuration. Pause STA
       // retries only while that page is actually being used; otherwise a
       // forgotten client would keep the board off the house Wi-Fi forever.
-      if (lastUserActivityMs != 0 && millis() - lastUserActivityMs < 120000UL) {
+      if (lastUserActivityMs != 0 && millis() - lastUserActivityMs < 300000UL) {
         staDownSinceMs = currentTime;
         wifiStaDownSinceMs = 0;
         return;
@@ -2247,7 +2249,7 @@ void manageWiFi() {
     if (!timeSyncStarted) {
       // No RTC on the board. NTP gives the real UTC epoch and the +3 h offset
       // makes localtime_r() (used for the night tariff) Moscow time.
-      configTime(3 * 3600, 0, "pool.ntp.org", "time.cloudflare.com");
+      configTime(getTzOffset(), 0, "pool.ntp.org", "time.cloudflare.com");
       timeSyncStarted = true;
       Serial.println("NTP: time sync started");
     }

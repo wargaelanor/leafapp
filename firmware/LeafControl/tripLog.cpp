@@ -297,7 +297,7 @@ static void finishTrip(const char* reason) {
   tripKmSpeed = 0;
   // Ignore noise: ни одной полной минуты и меньше 500 м — мусор
   // (бывает при кратких пробуждениях платы без реальной поездки).
-  if (durMs < 60000UL && km < 0.5f) return;
+  if (durMs < 30000UL && km < 0.1f) return;
 
   char line[200];
   // "w"/"wd"/"wn" are watt-hours (Wh), not kWh. The PWA stores Wh directly.
