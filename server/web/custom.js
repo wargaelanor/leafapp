@@ -1224,7 +1224,8 @@
     install: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M12 8v6m0 0l-2.5-2.5M12 14l2.5-2.5"/></svg>',
     shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></svg>',
     out: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>',
-    bell: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M18 8a6 6 0 10-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg>'
+    bell: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M18 8a6 6 0 10-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg>',
+    eye: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"/><circle cx="12" cy="12" r="2.6"/></svg>'
   };
 
   function moreRow(title, sub, icon, onClick, opts) {
@@ -1306,6 +1307,14 @@
       r.setAttribute('data-lc-settings', '1');
       const t = r.querySelector('.mg-t');
       if (t) t.id = 'more-settings-label';
+      car.appendChild(r);
+    }
+    if (!car.querySelector('[data-lc-newdesign]')) {
+      const r = moreRow('Новый интерфейс', 'дашборд v2 — машина, быстрые действия', MORE_ICONS.eye || MORE_ICONS.gear, function () {
+        try { localStorage.setItem('leafdesign', 'new'); } catch (e) {}
+        location.href = '/new';
+      });
+      r.setAttribute('data-lc-newdesign', '1');
       car.appendChild(r);
     }
 

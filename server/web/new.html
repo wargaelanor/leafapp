@@ -402,7 +402,6 @@ input[type=range]::-moz-range-thumb{width:24px;height:24px;border-radius:50%;bac
       </button>
       <div class="spacer"></div>
       <button class="icon-btn" onclick="sendCmd('refresh')" title="Обновить"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.5 9a9 9 0 0114.9-3.4L23 10M1 14l4.6 4.3A9 9 0 0020.5 15"/></svg></button>
-      <button class="icon-btn" onclick="switchDesign()" title="Классический вид"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"/><circle cx="12" cy="12" r="2.6"/></svg></button>
       <span class="conn warn" id="conn"><i></i><span id="conn-t">…</span></span>
     </header>
 
@@ -554,10 +553,29 @@ input[type=range]::-moz-range-thumb{width:24px;height:24px;border-radius:50%;bac
             <button class="on" data-h="trips">Поездки</button>
             <button data-h="charges">Зарядки</button>
             <button data-h="stats">Статистика</button>
+            <button data-h="charts" id="seg-charts">Графики</button>
           </div>
           <div id="h-trips"><div class="empty">Загрузка…</div></div>
           <div id="h-charges" style="display:none"><div class="empty">Загрузка…</div></div>
           <div id="h-stats" style="display:none"><div class="empty">Загрузка…</div></div>
+          <div id="h-charts" style="display:none">
+            <div class="seg" id="chart-range" style="margin-bottom:12px">
+              <button data-r="24" class="on">24 часа</button>
+              <button data-r="168">7 дней</button>
+              <button data-r="720">30 дней</button>
+            </div>
+            <div class="card" style="padding:16px">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
+                <b style="font-size:14px">Мощность и заряд</b>
+                <span style="font-size:11px;color:var(--muted)" id="chart-cap"></span>
+              </div>
+              <div id="chart-power"></div>
+              <div style="height:14px"></div>
+              <b style="font-size:14px">Уровень заряда (SOC)</b>
+              <div id="chart-soc" style="margin-top:10px"></div>
+              <div class="empty" id="chart-empty" style="display:none">Нет точек за этот период</div>
+            </div>
+          </div>
         </section>
 
         <!-- MORE -->
@@ -565,7 +583,25 @@ input[type=range]::-moz-range-thumb{width:24px;height:24px;border-radius:50%;bac
           <div class="gtitle">Машина</div>
           <div class="group">
             <div class="gi" onclick="openSheet('sheet-dev')"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 11l1.7-4.5A2 2 0 018.6 5h6.8a2 2 0 011.9 1.5L19 11M5 11h14a2 2 0 012 2v4a1 1 0 01-1 1h-1a2 2 0 11-4 0H9a2 2 0 11-4 0H4a1 1 0 01-1-1v-4a2 2 0 012-2z"/></svg></div><div class="tx"><b id="more-car">…</b><small id="more-car-sub">…</small></div><span class="val" id="more-fw"></span><span class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6l-1.4 1.4L13.2 12l-4.6 4.6L10 18l6-6z"/></svg></span></div>
-            <div class="gi" onclick="switchDesign()"><div class="ic gray"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"/><circle cx="12" cy="12" r="2.6"/></svg></div><div class="tx"><b>Классический интерфейс</b><small>полный: настройки платы, диагностика, тарифы</small></div><span class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6l-1.4 1.4L13.2 12l-4.6 4.6L10 18l6-6z"/></svg></span></div>
+            <div class="gi" onclick="switchDesign()"><div class="ic gray"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"/><circle cx="12" cy="12" r="2.6"/></svg></div><div class="tx"><b>Классический интерфейс</b><small id="classic-sub">полный: графики, диагностика, Wi-Fi, все настройки</small></div><span class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6l-1.4 1.4L13.2 12l-4.6 4.6L10 18l6-6z"/></svg></span></div>
+          </div>
+
+          <div class="gtitle">Настройки платы</div>
+          <div class="group" id="settings-group">
+            <div class="gi" onclick="toggleSettings()"><div class="ic gray"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 00-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 00-2-1.2L14 3h-4l-.4 2.6a7 7 0 00-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 005 12"/></svg></div><div class="tx"><b>Настройки платы</b><small id="settings-sum">лимит заряда, сон, блокировки, UDS, тариф</small></div><span class="chev" id="settings-chev" style="transform:rotate(-90deg)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6l-1.4 1.4L13.2 12l-4.6 4.6L10 18l6-6z"/></svg></span></div>
+            <div id="settings-body" style="display:none;padding:4px 16px 14px"></div>
+          </div>
+
+          <div class="gtitle">Прошивка и загрузки</div>
+          <div class="group">
+            <div class="gi" onclick="toggleFw()" id="fw-row"><div class="ic gray"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></div><div class="tx"><b>Обновление прошивки платы</b><small id="fw-sub">…</small></div><span class="chev" id="fw-chev" style="transform:rotate(-90deg)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6l-1.4 1.4L13.2 12l-4.6 4.6L10 18l6-6z"/></svg></span></div>
+            <div id="fw-body" style="display:none;padding:4px 16px 14px"></div>
+            <div class="gi" onclick="location.href='/app.apk'"><div class="ic gray"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg></div><div class="tx"><b>Скачать приложение (Android)</b><small>последняя версия APK с этого сервера</small></div><span class="val">APK</span></div>
+          </div>
+
+          <div class="gtitle" id="admin-title" style="display:none">Администрирование</div>
+          <div class="group" id="admin-group" style="display:none">
+            <div class="gi" onclick="location.href='/admin'"><div class="ic gray"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg></div><div class="tx"><b>Админ-панель</b><small>устройства, пользователи, журнал, CAN-логи</small></div><span class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6l-1.4 1.4L13.2 12l-4.6 4.6L10 18l6-6z"/></svg></span></div>
           </div>
           <div class="gtitle" id="sched-title" style="display:none">Расписания климата</div>
           <div class="group" id="sched-group" style="display:none"></div>
@@ -626,7 +662,7 @@ function ago(sec){ sec=Math.max(0,Math.round(sec)); if(sec<60)return sec+' с н
 function fetchTimeout(ms){ var c=new AbortController(); setTimeout(function(){c.abort();},ms); return c.signal; }
 function setRing(id,vid,pct){ var c=$(id),v=$(vid); if(!c||!v)return; if(pct==null||!isFinite(pct)){v.textContent='—';c.style.strokeDashoffset=2*Math.PI*48;return;} var len=2*Math.PI*48; c.style.strokeDasharray=len; c.style.strokeDashoffset=len*(1-Math.max(0,Math.min(100,pct))/100); v.textContent=Math.round(pct); }
 function toggleTheme(){ var h=document.documentElement; var cur=h.getAttribute('data-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'); var n=cur==='dark'?'light':'dark'; h.setAttribute('data-theme',n); $('theme-fab').textContent = n==='dark'?'☀️':'🌙'; }
-function go(el){ var v=el.dataset.view; document.querySelectorAll('.view').forEach(function(s){s.classList.toggle('active', s.id==='view-'+v);}); document.querySelectorAll('.tabbar .tab, .snav button').forEach(function(x){x.classList.toggle('on', x.dataset.view===v);}); window.scrollTo({top:0}); if(v==='history') loadHistory(); if(v==='more') loadMore(); }
+function go(el){ var v=el.dataset.view; document.querySelectorAll('.view').forEach(function(s){s.classList.toggle('active', s.id==='view-'+v);}); document.querySelectorAll('.tabbar .tab, .snav button').forEach(function(x){x.classList.toggle('on', x.dataset.view===v);}); window.scrollTo({top:0}); if(v==='history') loadHistory(); if(v==='more') loadMore(); if(v==='history'&&deviceKind==='charts') loadCharts(); }
 function goMore(){ go(document.querySelector('[data-view="more"]')); }
 function openSheet(id){ $('bd').classList.add('show'); $(id).classList.add('show'); if(id==='sheet-dev') loadDevices(); }
 function closeSheets(){ $('bd').classList.remove('show'); document.querySelectorAll('.sheet').forEach(function(s){s.classList.remove('show');}); }
@@ -800,7 +836,7 @@ function pollLoop(){
     })
     .finally(function(){ pollBusy=false; });
 }
-function detectMode(j){ MODE = j.board ? 'board' : 'server'; if(MODE==='server'){ try{localStorage.setItem('leafdesign','new');}catch(e){} } }
+function detectMode(j){ MODE = j.board ? 'board' : 'server'; if(MODE==='server'){ try{localStorage.setItem('leafdesign','new');}catch(e){} loadRole(); } }
 
 /* ---------- команды ---------- */
 function sendCmd(base){
@@ -915,12 +951,13 @@ document.querySelectorAll('#hist-seg button').forEach(function(b){
   b.onclick=function(){
     document.querySelectorAll('#hist-seg button').forEach(function(x){x.classList.remove('on');});
     b.classList.add('on'); deviceKind=b.dataset.h;
-    ['trips','charges','stats'].forEach(function(k){ $('h-'+k).style.display = k===deviceKind?'':'none'; });
-    loadHistory();
+    ['trips','charges','stats','charts'].forEach(function(k){ $('h-'+k).style.display = k===deviceKind?'':'none'; });
+    if(deviceKind==='charts') loadCharts(); else loadHistory();
   };
 });
 function loadHistory(){
   if(DEMO){ renderDemoHistory(); return; }
+  if(deviceKind==='charts' && MODE==='server'){ loadCharts(); return; }
   ['trips','charges'].forEach(function(k){
     fetch('/api/'+k,{cache:'no-store',credentials:'same-origin',signal:fetchTimeout(10000)})
       .then(function(r){ if(r.status===401){location.href='/login';throw new Error('401');} return r.ok?r.json():null; })
@@ -1111,8 +1148,238 @@ function renderDemoHistory(){
     '<div class="tile"><div class="t">Циклы</div><div class="v">212</div><div class="s">полных разрядов</div></div></div>';
 }
 
-/* ---------- старт ---------- */
-setTemp(22);
+/* ---------- графики (только сервер) ---------- */
+var chartRangeH = 24;
+function drawChart(container, points, key, color, fill, unit, digits, scaleMax){
+  var W = Math.max(280, (container.clientWidth||360));
+  var H = 150, padL = 34, padB = 16, padT = 8;
+  var vals = points.map(function(p){ return p[key]; }).filter(function(v){ return v!=null && isFinite(v); });
+  if (!vals.length){ return false; }
+  var max = scaleMax || Math.max.apply(null, vals.concat([0.1]));
+  var min = Math.min.apply(null, vals.concat([0]));
+  if (min > 0) min = 0;
+  var span = (max - min) || 1;
+  var t0 = points[0].ts, t1 = points[points.length-1].ts || (t0+1);
+  var X = function(ts){ return padL + (ts - t0) / (t1 - t0) * (W - padL - 6); };
+  var Y = function(v){ return padT + (1 - (v - min) / span) * (H - padT - padB); };
+  var svg = '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block">';
+  svg += '<line x1="'+padL+'" y1="'+(H-padB)+'" x2="'+(W-6)+'" y2="'+(H-padB)+'" stroke="var(--line)"/>';
+  svg += '<text x="2" y="'+(Y(max)+4)+'" font-size="9" fill="var(--muted)">'+max.toFixed(digits).replace('.',',')+'</text>';
+  svg += '<text x="2" y="'+(H-padB)+'" font-size="9" fill="var(--muted)">0</text>';
+  var path = '', area = '', started = false, firstX = 0, lastX = 0;
+  points.forEach(function(p){
+    if (p[key]==null || !isFinite(p[key])) return;
+    var x = X(p.ts).toFixed(1), y = Y(p[key]).toFixed(1);
+    if (!started){ path = 'M'+x+' '+y; area = 'M'+x+' '+(H-padB)+' L'+x+' '+y; started=true; firstX=+x; }
+    else { path += ' L'+x+' '+y; area += ' L'+x+' '+y; }
+    lastX = +x;
+  });
+  if (!started){ return false; }
+  area += ' L'+lastX+' '+(H-padB)+' Z';
+  if (fill) svg += '<path d="'+area+'" fill="'+color+'" opacity="0.14"/>';
+  svg += '<path d="'+path+'" fill="none" stroke="'+color+'" stroke-width="1.8" stroke-linejoin="round"/>';
+  svg += '<text x="'+padL+'" y="'+(H-3)+'" font-size="9" fill="var(--muted)">'+new Date(t0*1000).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})+'</text>';
+  svg += '<text x="'+(W-6)+'" y="'+(H-3)+'" font-size="9" fill="var(--muted)" text-anchor="end">'+new Date(t1*1000).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})+'</text>';
+  svg += '</svg>';
+  container.innerHTML = svg;
+  return true;
+}
+function loadCharts(){
+  if (MODE!=='server'){ return; }
+  var dev=(LAST&&LAST.device_id)?LAST.device_id:'';
+  var to = Math.floor(Date.now()/1000), from = to - chartRangeH*3600;
+  var pw=$('chart-power'), sc=$('chart-soc'), em=$('chart-empty');
+  pw.innerHTML='<div class="empty">Загрузка…</div>'; sc.innerHTML='';
+  fetch('/api/samples?device='+dev+'&from='+from+'&to='+to,{credentials:'same-origin',signal:fetchTimeout(15000)})
+    .then(function(r){ return r.ok?r.json():null; })
+    .then(function(j){
+      var pts=(j&&j.points)||[];
+      $('chart-cap').textContent = pts.length+' точек';
+      var okP = drawChart(pw, pts, 'kw', '#0a84c1', true, 'кВт', 1);
+      var okS = drawChart(sc, pts, 'soc', '#19b8a6', false, '%', 0);
+      em.style.display = (okP||okS)?'none':'';
+      if(!okP) pw.innerHTML='';
+      if(!okS) sc.innerHTML='';
+    })
+    .catch(function(){ pw.innerHTML='<div class="empty">Не удалось загрузить</div>'; });
+}
+document.querySelectorAll('#chart-range button').forEach(function(b){
+  b.onclick=function(){
+    document.querySelectorAll('#chart-range button').forEach(function(x){x.classList.remove('on');});
+    b.classList.add('on'); chartRangeH=parseInt(b.dataset.r,10)||24; loadCharts();
+  };
+});
+
+/* ---------- настройки платы ---------- */
+var boardCfg = null, settingsOpen = false;
+function cfgRow(label, key, type, opts){
+  var v = boardCfg ? boardCfg[key] : '';
+  var ctl;
+  if (type==='bool'){
+    ctl = '<button type="button" class="pill'+(v?' on':'')+'" data-cfgb="'+key+'">'+(v?'Вкл':'Выкл')+'</button>';
+  } else if (type==='num'){
+    ctl = '<input type="number" data-cfg="'+key+'" value="'+esc(v)+'" style="width:96px;padding:9px 11px;border-radius:10px;border:1px solid var(--line);background:var(--surface-2);font-size:14px">';
+  } else if (type==='numf'){
+    ctl = '<input type="number" step="0.1" data-cfg="'+key+'" value="'+esc(v)+'" style="width:96px;padding:9px 11px;border-radius:10px;border:1px solid var(--line);background:var(--surface-2);font-size:14px">';
+  } else {
+    ctl = '<input type="text" data-cfg="'+key+'" value="'+esc(v)+'" style="flex:1;min-width:120px;padding:9px 11px;border-radius:10px;border:1px solid var(--line);background:var(--surface-2);font-size:14px">';
+  }
+  return '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--line)">'+
+    '<span style="font-size:13px;color:var(--text-2)">'+esc(label)+'</span>'+ctl+'</div>';
+}
+function renderSettings(){
+  var b=$('settings-body');
+  if (!boardCfg){ b.innerHTML='<div class="empty">Не удалось прочитать конфигурацию платы</div>'; return; }
+  b.innerHTML =
+    cfgRow('Лимит зарядки, % (0 = нет)','charge_limit_pct','num') +
+    cfgRow('Сон включён','sleep_enable','bool') +
+    cfgRow('Сон после простоя, ч','sleep_after_h','num') +
+    cfgRow('Пробуждение (частое), мин','wake_fast_min','num') +
+    cfgRow('Пробуждение (редкое), мин','wake_slow_min','num') +
+    cfgRow('Команды замков','locking_enabled','bool') +
+    cfgRow('UDS-опрос','uds_enable','bool') +
+    cfgRow('UDS: TPMS','uds_tpms','bool') +
+    cfgRow('Тариф день, ₽/кВт·ч','tariff_day','numf') +
+    cfgRow('Тариф ночь, ₽/кВт·ч','tariff_night','numf') +
+    cfgRow('Начало ночного окна, ч','night_from','num') +
+    cfgRow('Конец ночного окна, ч','night_to','num') +
+    cfgRow('Имя платы в сети','host_name','text') +
+    '<div style="display:flex;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap">'+
+    '<button class="pill on" onclick="saveSettings()">Сохранить</button>'+
+    '<span style="font-size:11.5px;color:var(--muted)">Wi-Fi и точку доступа меняйте в классическом виде — там есть скан сетей</span></div>';
+  b.querySelectorAll('[data-cfgb]').forEach(function(btn){
+    btn.onclick=function(){
+      var k=btn.dataset.cfgb;
+      var cur=boardCfg[k]?true:false;
+      boardCfg[k]=!cur;
+      btn.classList.toggle('on',!cur); btn.textContent=!cur?'Вкл':'Выкл';
+    };
+  });
+}
+function toggleSettings(){
+  settingsOpen=!settingsOpen;
+  $('settings-body').style.display=settingsOpen?'':'none';
+  var ch=$('settings-chev'); if(ch) ch.style.transform=settingsOpen?'':'rotate(-90deg)';
+  if(settingsOpen) loadBoardConfig();
+}
+function loadBoardConfig(){
+  $('settings-body').innerHTML='<div class="empty">Загрузка…</div>';
+  fetch('/api/config',{credentials:'same-origin',signal:fetchTimeout(10000)})
+    .then(function(r){return r.ok?r.json():null;})
+    .then(function(j){ boardCfg=j||{}; renderSettings(); })
+    .catch(function(){ boardCfg=null; renderSettings(); });
+}
+function saveSettings(){
+  var b=$('settings-body');
+  var updates={};
+  b.querySelectorAll('[data-cfg]').forEach(function(inp){
+    var k=inp.dataset.cfg, v=inp.value.trim();
+    var numKeys={'charge_limit_pct':1,'sleep_after_h':1,'wake_fast_min':1,'wake_slow_min':1,'night_from':1,'night_to':1};
+    var numfKeys={'tariff_day':1,'tariff_night':1};
+    if(numKeys[k]) v=parseInt(v,10)||0;
+    else if(numfKeys[k]) v=parseFloat(v.replace(',','.'))||0;
+    updates[k]=v;
+  });
+  b.querySelectorAll('[data-cfgb]').forEach(function(btn){
+    var k=btn.dataset.cfgb;
+    updates[k]=boardCfg[k]?1:0;
+  });
+  updates.no_reboot=true;
+  var body=JSON.stringify(updates);
+  var p = MODE==='board'
+    ? fetch('/api/config',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:body})
+    : Object.keys(updates).filter(function(k){return k!=='no_reboot';}).reduce(function(chain,k){
+        return chain.then(function(){
+          return fetch('/api/config',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({key:k,value:updates[k]})});
+        });
+      }, Promise.resolve());
+  Promise.resolve(p).then(function(){ toast('Настройки отправлены плате'); })
+    .catch(function(){ toast('Ошибка сохранения'); });
+}
+
+/* ---------- прошивка и загрузки ---------- */
+var fwOpen=false, fwLoaded=false;
+function toggleFw(){
+  fwOpen=!fwOpen;
+  $('fw-body').style.display=fwOpen?'':'none';
+  var ch=$('fw-chev'); if(ch) ch.style.transform=fwOpen?'':'rotate(-90deg)';
+  if(fwOpen) loadFwList();
+}
+function loadFwList(){
+  var b=$('fw-body');
+  b.innerHTML='<div class="empty">Загрузка…</div>';
+  var isBoard=MODE==='board';
+  var listP = fetch('/api/fw/latest?board='+(LAST&&LAST.board?LAST.board:(/TCall/i.test(LAST&&LAST.fw||'')?'tcall':'t2can')),{credentials:'same-origin'})
+    .then(function(r){return r.ok?r.json():null;});
+  var adminP = fetch('/api/admin/firmware',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;}).catch(function(){return null;});
+  Promise.all([listP, adminP]).then(function(res){
+    var latest=res[0], admin=res[1];
+    var html='';
+    if (latest && latest.ok){
+      html+='<div style="font-size:13px;color:var(--text-2);padding:4px 0">Доступна версия <b>'+esc(latest.name)+'</b> · установленная: '+esc((LAST&&LAST.fw)||'—')+'</div>';
+      if (isBoard){
+        html+='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px 0">'+
+          '<a class="pill on" href="'+esc(latest.url)+'" download>Скачать '+esc(latest.name)+'</a>'+
+          '<label class="pill" style="cursor:pointer">Выбрать файл и прошить<input type="file" accept=".bin" id="fw-file" style="display:none"></label>'+
+          '<span id="fw-progress" style="font-size:12px;color:var(--muted)"></span></div>';
+      } else if (userRole==='admin'){
+        html+='<button class="pill on" onclick="installFwRemote(\''+esc(latest.file)+'\')">Установить на плату по воздуху</button>'+
+          '<span style="font-size:11.5px;color:var(--muted)"> плата скачает файл с сервера при следующем выходе на связь</span>';
+      } else {
+        html+='<div style="font-size:11.5px;color:var(--muted)">Установка по воздуху доступна администратору; скачать файл можно по ссылке выше</div>';
+      }
+    } else {
+      html+='<div class="empty">Сервер не отдал список прошивок</div>';
+    }
+    if (admin && admin.items && admin.items.length){
+      html+='<div style="font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);margin:12px 0 4px">Все файлы на сервере</div>';
+      html+=admin.items.map(function(it){
+        return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0">'+
+          '<a href="'+esc(it.url)+'" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-size:13px">'+esc(it.name)+'</a>'+
+          '<span style="font-size:11px;color:var(--muted)">'+(it.size/1048576).toFixed(2)+' МБ</span></div>';
+      }).join('');
+    }
+    html+='<div style="font-size:11.5px;color:var(--muted);margin-top:10px">Приложение: <a href="/app.apk" style="color:var(--accent)">app.apk</a> · страница прошивки платы: <a href="/ota" style="color:var(--accent)">'+(MODE==='board'?'/ota':'доступна с сети платы')+'</a></div>';
+    b.innerHTML=html;
+    var fi=b.querySelector('#fw-file');
+    if(fi) fi.onchange=function(){ uploadFw(fi.files[0]); };
+  }).catch(function(){ b.innerHTML='<div class="empty">Не удалось загрузить</div>'; });
+}
+function installFwRemote(file){
+  if(!confirm('Прошить плату файлом '+file+'? Плата скачает его с сервера и перезагрузится.')) return;
+  var dev=(LAST&&LAST.device_id)?LAST.device_id:'';
+  fetch('/api/admin/firmware/update',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({device:dev,file:file})})
+    .then(function(r){return r.json().catch(function(){return {};});})
+    .then(function(j){ toast(j&&j.ok?'Команда прошивки отправлена':'Не удалось отправить'); })
+    .catch(function(){ toast('Ошибка сети'); });
+}
+function uploadFw(file){
+  if(!file){ return; }
+  if(!confirm('Прошить плату файлом '+file.name+' ('+Math.round(file.size/1024)+' КБ)?')) return;
+  var fd=new FormData(); fd.append('firmware',file,file.name);
+  var xhr=new XMLHttpRequest();
+  xhr.open('POST','/ota_update');
+  xhr.upload.onprogress=function(e){ if(e.lengthComputable) $('fw-progress').textContent='Загрузка: '+Math.round(e.loaded*100/e.total)+'% — не отключайте плату'; };
+  xhr.onload=function(){ $('fw-progress').textContent = (xhr.status>=200&&xhr.status<300)?'Готово — плата перезагружается…':'Ошибка HTTP '+xhr.status; };
+  xhr.onerror=function(){ $('fw-progress').textContent='Ошибка сети'; };
+  xhr.send(fd);
+}
+
+/* ---------- роль пользователя ---------- */
+var userRole='';
+function loadRole(){
+  if(MODE!=='server') return Promise.resolve();
+  return fetch('/api/devices',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;}).then(function(j){
+    if(j&&j.role){ userRole=j.role;
+      var show=(userRole==='admin');
+      $('admin-title').style.display=show?'':'none';
+      $('admin-group').style.display=show?'':'none';
+      var av=$('side-ava'); if(av) av.textContent=(userRole==='admin')?'A':'U';
+    }
+  }).catch(function(){});
+}
 if(DEMO){
   MODE='server'; lastOkMs=Date.now();
   $('dev-name').textContent='Nissan Leaf (демо)'; $('dev-dot').className='dot on';

@@ -1945,6 +1945,15 @@ private fun MoreScreen(
                 openBoard(ctx, "/")
             }
         }
+        item { SectionTitle("ПРИЛОЖЕНИЕ · ДИЗАЙН") }
+        item {
+            MoreRow(Icons.Outlined.Home, "Классический дизайн", "Вернуть прежний интерфейс приложения") {
+                if (Settings.uiDesign != "classic") {
+                    Settings.uiDesign = "classic"
+                    (ctx as? android.app.Activity)?.recreate()
+                }
+            }
+        }
         item { SectionTitle("СВЯЗЬ") }
         item {
             Surface(
