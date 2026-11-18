@@ -552,10 +552,18 @@ void manageEvCAN() {
   if (!evCanOk) return;
   // checkReceive() returns bool: comparing it against ERROR_OK (0) would be
   // always false and silently discard every frame. Keep the plain bool test.
-  while (evCan->checkReceive()) {
+  // A wake burst can refill both MCP2515 buffers faster than the loop drains
+  // them. Yield to the web server and Wi-Fi after a bounded batch instead of
+  // keeping the main loop here indefinitely during heavy CAN traffic.
+  uint8_t drained = 0;
+  while (drained++ < 64 && evCan->checkReceive()) {
     struct can_frame frame;
     if (evCan->readMessage(&frame) != MCP2515::ERROR_OK) break;
     canFramesA++;
+    // The sweep intentionally tries incorrect clock/bitrate combinations.
+    // Count their frames for timing selection, but never treat them as car
+    // telemetry (or reset the age of the last valid measurement).
+    if (scanActive || !timingLocked) continue;
     lastEvFrameMs = millis();
     evFrameSeen = true;
     canLoggerAppend('A', '<', frame.can_id, frame.data, frame.can_dlc);
@@ -579,14 +587,7 @@ void manageEvCAN() {
   }
 
   if (!timingLocked) {
-    if (canFramesA >= kLockFrames) {
-      // Frames arrived with the stored/default timing: accept it.
-      timingLocked = true;
-      storeTiming(activeTiming);
-      refreshErrorCounters();
-      Serial.printf("EV-CAN: timing confirmed on boot: %s / %s\n",
-                    kTimings[activeTiming].clockName, kTimings[activeTiming].speedName);
-    } else if (evCanLastFrameAgeSec() > 20) {
+    if (evCanLastFrameAgeSec() > 20) {
       bool dueAfterBoot = !scanCompleted && millis() > kAutoScanAfterMs;
       bool dueAgain = scanCompleted && (millis() - lastScanEndMs > kUnlockedRescanMs);
       if (dueAfterBoot || dueAgain) evCanRequestScan();

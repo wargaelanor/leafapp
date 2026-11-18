@@ -64,6 +64,15 @@ object Settings {
         get() = p.getBoolean("monitor", true)
         set(v) = p.edit().putBoolean("monitor", v).apply()
 
+    /**
+     * Which home layout the app shows: "classic" (the garage/status pager
+     * that has always been there) or "new" (the dashboard redesign).
+     * Default is the classic one, so existing users see no surprise.
+     */
+    var uiDesign: String
+        get() = p.getString("ui_design", "classic") ?: "classic"
+        set(v) = p.edit().putString("ui_design", if (v == "new") "new" else "classic").apply()
+
     /** Climate duration selected on the Distance screen; 0 means no timer. */
     var climateMinutes: Int
         get() = p.getInt("climate_minutes", 15)

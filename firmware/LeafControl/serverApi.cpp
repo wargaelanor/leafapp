@@ -64,23 +64,10 @@ static char statusText[48] = "off";
 static int pendingAck[8];
 static uint8_t pendingAckCount = 0;
 
-// В«РЎРІРµР¶РµСЃС‚СЊВ» РґР°РЅРЅС‹С…: РєРѕРіРґР° РІ РїРѕСЃР»РµРґРЅРёР№ СЂР°Р· РјРµРЅСЏР»РёСЃСЊ РїРѕРєР°Р·Р°РЅРёСЏ С€РёРЅС‹.
-static unsigned long lastCanActivityMs = 0;
-static float prevSocFingerprint = -1.0f;
-static uint32_t prevOdoFingerprint = 0;
-
 static uint32_t busAgeSeconds() {
-  if (lastCanActivityMs == 0) return 0;
-  return (millis() - lastCanActivityMs) / 1000UL;
-}
-
-static void noteCanActivity() {
-  float soc = evData.instrumentSOC >= 0 ? evData.instrumentSOC : currentSOC;
-  if (soc != prevSocFingerprint || evData.odometerKm != prevOdoFingerprint) {
-    prevSocFingerprint = soc;
-    prevOdoFingerprint = evData.odometerKm;
-    lastCanActivityMs = millis();
-  }
+  // Existing clients interpret this field as fage (EV-CAN freshness).
+  // A CAR-CAN diagnostic reply cannot make battery telemetry fresh.
+  return evCanLastFrameAgeSec();
 }
 
 // РѕС‡РµСЂРµРґСЊ Р·Р°РїРёСЃРµР№ РїРѕРµР·РґРѕРє/Р·Р°СЂСЏРґРѕРє

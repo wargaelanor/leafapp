@@ -42,9 +42,9 @@ SERVER_BASE = os.environ.get("LEAF_SERVER_BASE", "https://leaf.wargaelanor.keene
 CAN_DIR = os.environ.get("LEAF_CAN_DIR", os.path.join(os.path.dirname(DB_PATH), "can"))
 
 # Ссылка на Android-приложение (release-ассет проекта).
-APP_REV = os.environ.get("LEAF_REV", "sync-5b5f99e")
-APP_VERSION = "1.64"  # версия APK, доступная для скачивания
-APP_NOTES = "Отмена климата по расписанию и обновление истории при работающем мониторинге"
+APP_REV = os.environ.get("LEAF_REV", "sync-newdesign-1")
+APP_VERSION = "1.66"  # версия APK, доступная для скачивания
+APP_NOTES = "Переключатель двух дизайнов (классический/новый), новый дашборд с живой машиной"
 
 APK_URL = os.environ.get(
     "LEAF_APK_URL",
@@ -543,6 +543,11 @@ class Api(BaseHTTPRequestHandler):
                 if self.user():
                     return self.serve_static("app.html")
                 return self.serve_static("login.html")
+            if path in ("/new", "/new.html"):
+                # Новый дизайн. Без сессии — на логин, как и /.
+                if self.user():
+                    return self.serve_static("new.html")
+                return self._send(302, b"", "text/plain", {"Location": "/login"})
             if path in ("/classic", "/classic.html"):
                 if self.user():
                     return self.serve_static("classic.html")

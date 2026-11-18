@@ -92,6 +92,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -161,8 +162,47 @@ private val tabs = listOf(
     TabItem("Ещё", Icons.Outlined.MoreHoriz),
 )
 
+private val newTabs = listOf(
+    TabItem("Главная", Icons.Outlined.Home),
+    TabItem("Управление", Icons.Outlined.AcUnit),
+    TabItem("История", Icons.Outlined.Route),
+    TabItem("Ещё", Icons.Outlined.MoreHoriz),
+)
+
+/**
+ * Точка входа UI. Оба дизайна живут рядом и работают с одним и тем же
+ * [LeafViewModel], поэтому переключение не влияет на данные и команды.
+ */
 @Composable
 fun MainScreen(vm: LeafViewModel = viewModel()) {
+    when (rememberUiDesign()) {
+        "new" -> NewShell(vm)
+        else -> ClassicShell(vm)
+    }
+}
+
+/**
+ * Настройки открываются отдельной Activity, поэтому SharedPreferences надо
+ * перечитывать при возврате на экран — иначе новый дизайн появится только
+ * после перезапуска приложения.
+ */
+@Composable
+private fun rememberUiDesign(): String {
+    var design by remember { mutableStateOf(Settings.uiDesign) }
+    val owner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(owner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) design = Settings.uiDesign
+        }
+        owner.lifecycle.addObserver(observer)
+        onDispose { owner.lifecycle.removeObserver(observer) }
+    }
+    return design
+}
+
+/** Классический дизайн: те же вкладки, что были до 1.66. */
+@Composable
+private fun ClassicShell(vm: LeafViewModel) {
     val state by vm.state.collectAsStateWithLifecycle()
     val trips by vm.trips.collectAsStateWithLifecycle()
     val charges by vm.charges.collectAsStateWithLifecycle()
@@ -362,6 +402,184 @@ private fun LeafLogo(modifier: Modifier, color: Color) {
     )
 }
 
+/**
+ * Новый дизайн: нижняя навигация из четырёх вкладок, внутри — дашборд и
+ * существующие экраны. Ничего не переписано заново: «Управление», «История» и
+ * «Ещё» — это те же composable, что и в классическом дизайне.
+ */
+@Composable
+private fun NewShell(vm: LeafViewModel) {
+    val state by vm.state.collectAsStateWithLifecycle()
+    val trips by vm.trips.collectAsStateWithLifecycle()
+    val charges by vm.charges.collectAsStateWithLifecycle()
+    val snack = remember { SnackbarHostState() }
+    var tab by remember { mutableIntStateOf(0) }
+    val onRefresh = {
+        vm.command("refresh")
+        vm.refresh()
+    }
+
+    LaunchedEffect(Unit) {
+        vm.message.collect { msg ->
+            if (msg != null) {
+                snack.showSnackbar(msg)
+                vm.message.value = null
+            }
+        }
+    }
+
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+        ) {
+            NewTopBar(
+                title = newTabs[tab.coerceIn(0, newTabs.lastIndex)].label,
+                state = state,
+                onRefresh = onRefresh,
+            )
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                when (tab) {
+                    0 -> NewDashboard(state = state, onCommand = vm::command, onRefresh = onRefresh)
+                    1 -> DistanceScreen(state, vm::command)
+                    2 -> NewHistoryScreen(trips, charges, vm)
+                    else -> MoreScreen(
+                        state = state,
+                        trips = trips,
+                        charges = charges,
+                        onSettings = { vm.openSettings() },
+                        onCheckUpdate = { vm.checkUpdate() },
+                    )
+                }
+            }
+            NewBottomBar(tab.coerceIn(0, newTabs.lastIndex)) { tab = it }
+        }
+        SnackbarHost(
+            hostState = snack,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 76.dp),
+        )
+    }
+}
+
+@Composable
+private fun NewTopBar(title: String, state: LeafState, onRefresh: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(start = 16.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            title,
+            fontSize = 17.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+        )
+        Box(
+            Modifier
+                .size(7.dp)
+                .background(if (state.connected) online else Color(0xFFE05A5A), CircleShape)
+        )
+        Spacer(Modifier.width(5.dp))
+        Text(
+            if (state.connected) "на связи" else "нет связи",
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        IconButton(onClick = { onRefresh() }) {
+            Icon(
+                Icons.Outlined.Refresh,
+                contentDescription = "Обновить",
+                tint = MaterialTheme.colorScheme.primary,
+            )
+        }
+    }
+}
+
+@Composable
+private fun NewBottomBar(selected: Int, onSelect: (Int) -> Unit) {
+    val outline = MaterialTheme.colorScheme.outline
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(64.dp)
+            .background(MaterialTheme.colorScheme.surface)
+            .drawBehind {
+                drawLine(outline, Offset(0f, 0f), Offset(size.width, 0f), 1.dp.toPx())
+            }
+    ) {
+        newTabs.forEachIndexed { index, tab ->
+            val active = selected == index
+            val interaction = remember { MutableInteractionSource() }
+            Column(
+                Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .padding(horizontal = 3.dp, vertical = 4.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(
+                        if (active) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                        else Color.Transparent
+                    )
+                    .pressable(interaction) { onSelect(index) },
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Icon(
+                    tab.icon,
+                    contentDescription = tab.label,
+                    modifier = Modifier.size(22.dp),
+                    tint = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    tab.label,
+                    fontSize = 9.sp,
+                    color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+/** История в новом дизайне: тот же список, но с переключателем зарядок/поездок. */
+@Composable
+private fun NewHistoryScreen(trips: List<Trip>, charges: List<Charge>, vm: LeafViewModel) {
+    var isCharges by remember { mutableStateOf(true) }
+    val scope = rememberCoroutineScope()
+    Column(Modifier.fillMaxSize()) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            listOf(true to "Зарядки", false to "Поездки").forEach { (value, label) ->
+                FilterChip(
+                    selected = isCharges == value,
+                    onClick = { isCharges = value },
+                    label = { Text(label, fontSize = 12.sp) },
+                )
+            }
+        }
+        Box(Modifier.weight(1f)) {
+            HistoryScreen(
+                trips = trips,
+                charges = charges,
+                isCharges = isCharges,
+                onClear = { vm.clearHistory(isCharges) },
+                onExport = { if (isCharges) exportCharges(vm, charges) else exportTrips(vm, trips) },
+                onExcel = { scope.launch { exportExcelWorkbook(vm) } },
+            )
+        }
+    }
+}
+
 @Composable
 private fun LeafBottomBar(selected: Int, onSelect: (Int) -> Unit) {
     val outline = MaterialTheme.colorScheme.outline
@@ -488,16 +706,17 @@ private fun GarageScreen(
 
 @Composable
 private fun CarStage(state: LeafState) {
-    var wheelFrame by remember { mutableIntStateOf(0) }
+    var wheelFrame by remember { mutableIntStateOf(4) }
     val moving = state.on == 1 && !state.charging
     LaunchedEffect(moving) {
         if (!moving) {
-            wheelFrame = 0
+            wheelFrame = 4
             return@LaunchedEffect
         }
         while (true) {
             delay(140)
-            wheelFrame = (wheelFrame + 1) % 4
+            // Same rotation direction as the web design: frames 4 -> 1.
+            wheelFrame = if (wheelFrame > 1) wheelFrame - 1 else 4
         }
     }
     Box(Modifier.fillMaxWidth().height(180.dp)) {

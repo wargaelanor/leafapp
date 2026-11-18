@@ -89,6 +89,7 @@ class SettingsActivity : ComponentActivity() {
         var monitor by remember { mutableStateOf(Settings.monitorEnabled) }
         var autoUpdate by remember { mutableStateOf(Settings.autoUpdate) }
 
+        var uiDesign by remember { mutableStateOf(Settings.uiDesign) }
         var mode by remember { mutableStateOf(Settings.mode) }
         var serverUrl by remember { mutableStateOf(Settings.serverUrl) }
         var serverUser by remember { mutableStateOf(Settings.serverUser) }
@@ -299,6 +300,32 @@ class SettingsActivity : ComponentActivity() {
             }
 
             Group("Приложение") {
+                // Design switch sits first: it changes every screen of the app.
+                Text(
+                    "Дизайн интерфейса",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("classic" to "Классический", "new" to "Новый").forEach { (value, label) ->
+                        FilterChip(
+                            selected = uiDesign == value,
+                            onClick = {
+                                uiDesign = value
+                                Settings.uiDesign = value
+                                Toast.makeText(ctx, "Дизайн: $label", Toast.LENGTH_SHORT).show()
+                            },
+                            label = { Text(label, fontSize = 12.sp) },
+                        )
+                    }
+                }
+                Text(
+                    if (uiDesign == "new") "Главная с дашбордом, вкладки «Главная / Управление / История / Ещё»"
+                    else "Привычные вкладки «Гараж / Дистанция / Состояние / Зарядки / Поездки / Ещё»",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
                 SwitchRow("Фоновый мониторинг", monitor) {
                     monitor = it
                     Settings.monitorEnabled = it

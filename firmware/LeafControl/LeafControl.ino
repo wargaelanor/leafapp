@@ -28,8 +28,8 @@
 #define LEAF_FIRMWARE_VERSION "FR-TCall.177"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: OTA-capable partitions (min_spiffs), gz-only UI, wifi from app, tariff sync"
 #else
-#define LEAF_FIRMWARE_VERSION "FR-2can.182"
-#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: motion-only trips, charge telemetry retention, sleep guard"
+#define LEAF_FIRMWARE_VERSION "FR-2can.184"
+#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: Wi-Fi recovery, bounded EV-CAN drain, telemetry age"
 #endif
 
 // Доступ к версии из других модулей (serverApi.cpp).
@@ -2087,31 +2087,11 @@ static void connectWifiProfile(bool rotateProfile = false) {
       if (wifiProfileSsid(candidate)[0]) { bestProfile = candidate; break; }
     }
   } else {
-    int count = WiFi.scanNetworks(false, true);
+    // Do not block boot on a scan: a hidden/weak AP may be missed, while a
+    // direct association can still succeed. Try the preferred saved profile
+    // first; the reconnect path rotates through the remaining profiles.
     for (uint8_t profile = 0; profile < 3; profile++) {
-      const char* wanted = wifiProfileSsid(profile);
-      if (!wanted[0]) continue;
-      for (int network = 0; network < count; network++) {
-        if (WiFi.SSID(network) == wanted && WiFi.RSSI(network) > bestRssi) {
-          bestProfile = profile;
-          bestRssi = WiFi.RSSI(network);
-        }
-      }
-    }
-    if (bestProfile < 0) {
-      Serial.printf("Wi-Fi: none of the saved SSIDs visible (%d networks)\n", count);
-      for (int i = 0; i < count && i < 12; i++) {
-        Serial.printf("  seen: %s rssi=%d\n", WiFi.SSID(i).c_str(), WiFi.RSSI(i));
-      }
-    }
-    WiFi.scanDelete();
-  }
-  if (bestProfile < 0) {
-    // No saved SSID was visible; rotate profiles in case it is hidden or the
-    // scan missed it. The connection timeout will move to the next profile.
-    for (uint8_t step = 1; step <= 3; step++) {
-      uint8_t candidate = (currentWifiProfile + step) % 3;
-      if (wifiProfileSsid(candidate)[0]) { bestProfile = candidate; break; }
+      if (wifiProfileSsid(profile)[0]) { bestProfile = profile; break; }
     }
   }
   if (bestProfile < 0) return;
@@ -2147,10 +2127,15 @@ void manageWiFi() {
     return;
   }
 
-  static unsigned long previousAttemptTime = 0;
+  // setup() has already started the first association. Do not immediately
+  // disconnect it on the first loop iteration just because the timer was 0.
+  static unsigned long previousAttemptTime = millis();
   static unsigned long staDownSinceMs = 0;
   static uint8_t retryStep = 0;
-  static const unsigned long retryBackoffMs[] = {8000, 15000, 30000, 60000};
+  // Let a slow WPA/DHCP association finish before disconnecting to try the
+  // next profile. Short retries repeatedly tore down a working attempt.
+  static const unsigned long retryBackoffMs[] = {30000, 45000, 60000, 90000};
+  static const unsigned long apClientRetryMs = 90000;
   unsigned long currentTime = millis();
 
   if (WiFi.status() != WL_CONNECTED)
@@ -2174,20 +2159,11 @@ void manageWiFi() {
     // alive (AP beaconing, visible from a phone) while being unreachable on
     // the network. Back off instead, and restart the radio if it stays dead.
     unsigned long interval = retryBackoffMs[retryStep > 3 ? 3 : retryStep];
-    // Someone is configuring the board through its own access point. A missing
-    // STA is then expected (that is why they use the AP), and hammering it
-    // steals radio time from the page they are trying to open. Worse, the
-    // 5-minute radio restart below would drop their connection mid-load.
-    if (WiFi.softAPgetStationNum() > 0) {
-      // A phone on the board's AP is expected during configuration. Pause STA
-      // retries only while that page is actually being used; otherwise a
-      // forgotten client would keep the board off the house Wi-Fi forever.
-      if (lastUserActivityMs != 0 && millis() - lastUserActivityMs < 300000UL) {
-        staDownSinceMs = currentTime;
-        wifiStaDownSinceMs = 0;
-        return;
-      }
-    }
+    // Polling the settings page over the AP must not freeze STA recovery or
+    // reset the reported outage age. Space attempts out to protect AP clients.
+    bool apClientActive = WiFi.softAPgetStationNum() > 0 &&
+                          lastUserActivityMs != 0 &&
+                          currentTime - lastUserActivityMs < 300000UL;
     // After 45 s without a link, raise a recovery AP. This is the only
     // way back in when the saved password is wrong (e.g. autocapitalised on a
     // phone keyboard) and the board is not on the house network. Two minutes
@@ -2207,8 +2183,8 @@ void manageWiFi() {
       }
       startMdnsServices();
     }
-    if (currentTime - previousAttemptTime >= interval) {
-      if (currentTime - staDownSinceMs >= 300000UL) {
+    if (currentTime - previousAttemptTime >= (apClientActive ? apClientRetryMs : interval)) {
+      if (!apClientActive && currentTime - staDownSinceMs >= 300000UL) {
         // Radio restarts did not bring the link back three times in a row:
         // this is a stuck driver state, not weak signal. A full reboot is the
         // only reliable way out, and it is much better than sitting offline
@@ -2220,12 +2196,21 @@ void manageWiFi() {
           ESP.restart();
         }
         Serial.println("WiFi: STA down for 5 min, restarting the radio");
+        if (captivePortalActive) {
+          dnsServer.stop();
+          captivePortalActive = false;
+        }
         WiFi.disconnect(true, false);
         WiFi.mode(WIFI_OFF);
         delay(300);
         WiFi.mode(strlen(getApSSID()) > 0 ? WIFI_AP_STA : WIFI_STA);
         WiFi.setSleep(false);
         startSoftAp();
+        if ((WiFi.getMode() & WIFI_AP) != 0) {
+          dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
+          dnsServer.start(53, "*", WiFi.softAPIP());
+          captivePortalActive = true;
+        }
         staDownSinceMs = currentTime;
         wifiStaDownSinceMs = staDownSinceMs;
         retryStep = 0;
