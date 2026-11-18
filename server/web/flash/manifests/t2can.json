@@ -6,9 +6,9 @@
     {
       "chipFamily": "ESP32-S3",
       "parts": [
-        { "path": "/fw/t2can-bootloader.bin", "offset": 0 },
-        { "path": "/fw/t2can-partitions.bin", "offset": 32768 },
-        { "path": "/fw/boot_app0.bin", "offset": 57344 },
+        { "path": "/flash/parts/t2can-bootloader.bin", "offset": 0 },
+        { "path": "/flash/parts/t2can-partitions.bin", "offset": 32768 },
+        { "path": "/flash/parts/boot_app0.bin", "offset": 57344 },
         { "path": "/fw/FR-2can.181.bin", "offset": 65536 }
       ]
     }

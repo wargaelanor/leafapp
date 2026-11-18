@@ -6,9 +6,9 @@
     {
       "chipFamily": "ESP32",
       "parts": [
-        { "path": "/fw/tcall-bootloader.bin", "offset": 4096 },
-        { "path": "/fw/tcall-partitions.bin", "offset": 32768 },
-        { "path": "/fw/boot_app0.bin", "offset": 57344 },
+        { "path": "/flash/parts/tcall-bootloader.bin", "offset": 4096 },
+        { "path": "/flash/parts/tcall-partitions.bin", "offset": 32768 },
+        { "path": "/flash/parts/boot_app0.bin", "offset": 57344 },
         { "path": "/fw/FR-TCall.177.bin", "offset": 65536 }
       ]
     }
