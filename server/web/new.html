@@ -513,6 +513,7 @@ input[type=range]::-moz-range-thumb{width:24px;height:24px;border-radius:50%;bac
                     <button class="pill on" onclick="postSched()">Запланировать</button>
                   </div>
                   <div style="font-size:12px;color:var(--muted);margin-top:8px" id="sched-hint">Машина прогреется к выбранному времени.</div>
+                  <div id="control-sched-list" style="margin-top:8px"></div>
                 </div>
               </div>
               <div style="height:14px"></div>
@@ -605,8 +606,8 @@ input[type=range]::-moz-range-thumb{width:24px;height:24px;border-radius:50%;bac
           </div>
           <div class="gtitle" id="sched-title" style="display:none">Расписания климата</div>
           <div class="group" id="sched-group" style="display:none"></div>
-          <div class="gtitle" id="tariff-title" style="display:none">Тарифы</div>
-          <div class="group" id="tariff-group" style="display:none"></div>
+          <div class="gtitle" id="tariff-title" style="display:none">Тарифы и бензин</div>
+          <div class="group" id="tariff-group" style="display:none"><div class="gi" onclick="toggleTariff()" id="tariff-row"><div class="ic gray"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M14.5 9.5c0-1.2-1.1-2-2.5-2s-2.5.8-2.5 1.8c0 2.4 5 1.3 5 3.8 0 1-1.1 1.9-2.5 1.9s-2.5-.8-2.5-1.9"/></svg></div><div class="tx"><b>Тарифы электричества и бензина</b><small id="tariff-sum">день, ночь, ночное окно, цена и расход бензина</small></div><span class="chev" id="tariff-chev" style="transform:rotate(-90deg)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6l-1.4 1.4L13.2 12l-4.6 4.6L10 18l6-6z"/></svg></span></div><div id="tariff-body" style="display:none;padding:4px 16px 14px"></div></div>
           <div class="gtitle">Аккаунт</div>
           <div class="group">
             <div class="gi" onclick="logout()" id="gi-logout"><div class="ic gray"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg></div><div class="tx"><b>Выйти</b><small id="logout-sub">…</small></div></div>
@@ -627,8 +628,8 @@ input[type=range]::-moz-range-thumb{width:24px;height:24px;border-radius:50%;bac
 
 <button class="icon-btn theme-fab" id="theme-fab" onclick="toggleTheme()" title="Тема">🌙</button>
 
-<div class="sheet-bd" id="bd" onclick="closeSheets()"></div>
-<div class="sheet" id="sheet-dev">
+<div class="sheet-bd" id="bd" onclick="closeSheets()" style="display:none"></div>
+<div class="sheet" id="sheet-dev" style="display:none">
   <div class="grab"></div>
   <b style="font-size:16px">Выбор машины</b>
   <div id="dev-list" style="margin-top:12px"><div class="empty">Загрузка…</div></div>
@@ -664,8 +665,8 @@ function setRing(id,vid,pct){ var c=$(id),v=$(vid); if(!c||!v)return; if(pct==nu
 function toggleTheme(){ var h=document.documentElement; var cur=h.getAttribute('data-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'); var n=cur==='dark'?'light':'dark'; h.setAttribute('data-theme',n); $('theme-fab').textContent = n==='dark'?'☀️':'🌙'; }
 function go(el){ var v=el.dataset.view; document.querySelectorAll('.view').forEach(function(s){s.classList.toggle('active', s.id==='view-'+v);}); document.querySelectorAll('.tabbar .tab, .snav button').forEach(function(x){x.classList.toggle('on', x.dataset.view===v);}); window.scrollTo({top:0}); if(v==='history') loadHistory(); if(v==='more') loadMore(); if(v==='history'&&deviceKind==='charts') loadCharts(); }
 function goMore(){ go(document.querySelector('[data-view="more"]')); }
-function openSheet(id){ $('bd').classList.add('show'); $(id).classList.add('show'); if(id==='sheet-dev') loadDevices(); }
-function closeSheets(){ $('bd').classList.remove('show'); document.querySelectorAll('.sheet').forEach(function(s){s.classList.remove('show');}); }
+function openSheet(id){ $('bd').style.display=''; $(id).style.display=''; requestAnimationFrame(function(){ $('bd').classList.add('show'); $(id).classList.add('show'); }); if(id==='sheet-dev') loadDevices(); }
+function closeSheets(){ $('bd').classList.remove('show'); document.querySelectorAll('.sheet').forEach(function(s){ s.classList.remove('show'); }); setTimeout(function(){ $('bd').style.display='none'; document.querySelectorAll('.sheet').forEach(function(s){ s.style.display='none'; }); },320); }
 
 /* ---------- сценарий машины по состоянию ---------- */
 function setStage(st){
@@ -930,6 +931,7 @@ function schedMode(){
   row.style.display=show?'':'none';
   $('seg-sched').classList.toggle('on',show);
   $('mode-seg').firstElementChild.classList.toggle('on',!show);
+  if(show && MODE==='server') loadSchedules('control-sched-list');
 }
 
 /* ---------- расписания (только сервер) ---------- */
@@ -942,7 +944,7 @@ function postSched(){
   fetch('/api/sched',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({at:Math.floor(d.getTime()/1000),minutes:hvacMinutes})})
     .then(function(r){return r.json().catch(function(){return {};});})
-    .then(function(j){ toast(j&&j.ok?'Расписание создано':'Не удалось создать расписание'); loadMore(); })
+    .then(function(j){ toast(j&&j.ok?'Расписание создано':'Не удалось создать расписание'); refreshSchedules(); })
     .catch(function(){ toast('Ошибка сети'); });
 }
 
@@ -981,10 +983,40 @@ function histItem(kind, it){
   }
   var end = kind==='trip' ? (kwh?kwh.toFixed(1)+' кВт·ч':'—') : (('₽'+(it.wn!=null?'':'')));
   var endHtml = kind==='trip' ? '<b>'+(kwh?kwh.toFixed(1):'—')+' кВт·ч</b>' : '<b>'+(kwh?kwh.toFixed(1):'—')+' кВт·ч</b>';
-  return '<div class="hist-item '+kind+'"><div class="ic">'+(kind==='trip'
+  return '<div class="hist-item '+kind+'" data-ts0="'+(it.s||0)+'" data-ts1="'+(it.e||it.s||0)+'" onclick="toggleSessionChart(this)" style="cursor:pointer"><div class="ic">'+(kind==='trip'
     ?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3.5 18.5l5.6-5.6 3.5 3.5L20.5 8V16h-2v-5.5L9.6 17.4l-3.5-3.5L4 16.1l-.5 2.4zM2 20h20v2H2z"/></svg>'
     :'<svg viewBox="0 0 25 25" fill="currentColor"><path d="M14.65 2.17a1.13 1.13 0 00-2.25 0l-.01 4.13h2.25l.01-4.13zM5.63 2.17a1.13 1.13 0 00-2.25 0l-.01 4.13h2.26l0-4.13zm11.65 5.64H.75A.75.75 0 000 8.56v.75c0 .42.34.75.75.75H1.5v3a7.5 7.5 0 006.39 7.4v7.62h2.25V20.46a7.5 7.5 0 006.39-7.4v-3h.75a.75.75 0 00.75-.75v-.75a.75.75 0 00-.75-.75zm-3 5.26a5.26 5.26 0 01-10.52 0v-3h10.52v3z"/></svg>')
-    +'</div><div class="mid"><div class="tt">'+esc(title)+'</div><div class="ss">'+esc(sub)+'</div></div><div class="end">'+endHtml+'</div></div>';
+    +'</div><div class="mid"><div class="tt">'+esc(title)+'</div><div class="ss">'+esc(sub)+'</div></div><div class="end">'+endHtml+'</div>'+
+    '<div class="session-chart" style="display:none;flex-basis:100%;width:100%;padding-top:8px"></div></div>';
+}
+/* график конкретной сессии: /api/samples от начала до конца */
+function toggleSessionChart(item){
+  var box=item.querySelector('.session-chart');
+  if(!box) return;
+  var open=box.style.display!=='none';
+  box.style.display=open?'none':'';
+  if(open || box.dataset.loaded==='1'){ if(!open) box.dataset.loaded=''; return; }
+  var s=parseInt(item.dataset.ts0,10), e=parseInt(item.dataset.ts1,10);
+  if(!s||!e||e<=s){ box.innerHTML='<div class="empty">Нет интервала</div>'; return; }
+  var dev=(LAST&&LAST.device_id)?LAST.device_id:'';
+  box.innerHTML='<div class="empty">Загрузка графика…</div>';
+  fetch('/api/samples?device='+dev+'&from='+s+'&to='+e,{credentials:'same-origin',signal:fetchTimeout(15000)})
+    .then(function(r){return r.ok?r.json():null;})
+    .then(function(j){
+      var pts=(j&&j.points)||[];
+      box.dataset.loaded='1';
+      if(pts.length<3){ box.innerHTML='<div class="empty">Точек телеметрии за эту сессию нет</div>'; return; }
+      var pw=document.createElement('div'), sc=document.createElement('div');
+      box.appendChild(pw); box.appendChild(sc);
+      var okP=drawChart(pw, pts, 'kw', '#0a84c1', true, '', 1);
+      var okS=drawChart(sc, pts, 'soc', '#19b8a6', false, '', 0);
+      var lab=document.createElement('div');
+      lab.style.cssText='font-size:11px;color:var(--muted);margin-top:4px';
+      lab.textContent=(okP?'синяя — мощность, кВт · ':'')+(okS?'зелёная — заряд, %':'');
+      box.appendChild(lab);
+      if(!okP&&!okS) box.innerHTML='<div class="empty">Точек телеметрии за эту сессию нет</div>';
+    })
+    .catch(function(){ box.innerHTML='<div class="empty">Не удалось загрузить</div>'; });
 }
 function hm(d){ return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2); }
 function fmtDur(sec){ sec=Math.max(0,Math.round(sec||0)); var h=Math.floor(sec/3600),m=Math.round((sec%3600)/60); return h?h+' ч '+m+' мин':m+' мин'; }
@@ -1064,26 +1096,86 @@ function loadMore(){
   $('tariff-group').style.display=isServer?'':'none';
   $('gi-logout').style.display=isServer?'':'none';
   if(!isServer) return;
+  loadSchedules('sched-group');
+  loadTariffs();
+}
+/* активные расписания: один рендер для «Ещё» и для «Управления» */
+function loadSchedules(containerId){
   fetch('/api/sched',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;}).then(function(j){
     var list=(j&&j.schedules||[]).filter(function(s){return s.status==='waiting';});
-    var g=$('sched-group');
+    var g=$(containerId); if(!g) return;
     g.innerHTML = list.length? list.map(function(s){
       var d=new Date(s.at_ts*1000);
       return '<div class="gi"><div class="ic gray"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></div>'+
-        '<div class="tx"><b>Климат '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2)+'</b><small>'+d.toLocaleDateString('ru-RU')+'</small></div>'+
+        '<div class="tx"><b>Климат '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2)+'</b><small>'+d.toLocaleDateString('ru-RU')+' · '+((s.args&&JSON.parse(s.args).minutes)||'?')+' мин</small></div>'+
         '<button class="pill" data-cancel="'+s.id+'">Отменить</button></div>';
     }).join('') : '<div class="gi"><div class="tx"><small style="font-size:13px">Активных расписаний нет</small></div></div>';
     g.querySelectorAll('[data-cancel]').forEach(function(b){
       b.onclick=function(ev){ ev.stopPropagation();
         fetch('/api/sched/cancel',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:b.dataset.cancel})})
-          .then(function(){ toast('Расписание отменено'); loadMore(); });
+          .then(function(r){ return r.json().catch(function(){return {};}); })
+          .then(function(j){ toast(j&&j.ok?'Расписание отменено':'Не удалось отменить'); refreshSchedules(); });
       };
     });
   }).catch(function(){});
-  fetch('/api/settings',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;}).then(function(j){
-    if(!j) return;
-    $('tariff-group').innerHTML='<div class="gi"><div class="tx"><b>День '+esc(j.tariff_day)+' ₽ · ночь '+esc(j.tariff_night)+' ₽</b><small>ночь с '+esc(j.night_from)+':00 до '+esc(j.night_to)+':00 · изменение в классическом виде</small></div></div>';
-  }).catch(function(){});
+}
+function refreshSchedules(){ loadSchedules('sched-group'); loadSchedules('control-sched-list'); }
+/* тарифы: чтение платы (/api/config) + сервера (/api/settings), запись в оба места */
+var tariffOpen=false;
+function toggleTariff(){
+  tariffOpen=!tariffOpen;
+  $('tariff-body').style.display=tariffOpen?'':'none';
+  var ch=$('tariff-chev'); if(ch) ch.style.transform=tariffOpen?'':'rotate(-90deg)';
+  if(tariffOpen) loadTariffs();
+}
+function loadTariffs(){
+  var b=$('tariff-body'); if(!b) return;
+  b.innerHTML='<div class="empty">Загрузка…</div>';
+  var boardP = fetch('/api/config',{credentials:'same-origin',signal:fetchTimeout(10000)}).then(function(r){return r.ok?r.json():null;}).catch(function(){return null;});
+  var srvP = fetch('/api/settings',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;}).catch(function(){return null;});
+  Promise.all([boardP, srvP]).then(function(res){
+    var bc=res[0]||{}, ss=res[1]||{};
+    var vals={
+      tariff_day: (bc.tariff_day!=null && bc.tariff_day>=0)?bc.tariff_day:(ss.tariff_day||''),
+      tariff_night:(bc.tariff_night!=null && bc.tariff_night>=0)?bc.tariff_night:(ss.tariff_night||''),
+      night_from: (bc.night_from!=null)?bc.night_from:(ss.night_from||'0'),
+      night_to:   (bc.night_to!=null)?bc.night_to:(ss.night_to||'7'),
+      petrol_price: ss.petrol_price||'',
+      petrol_l100:  ss.petrol_l100||''
+    };
+    b.innerHTML=
+      cfgRow('Тариф день, ₽/кВт·ч','tariff_day','numf',vals) +
+      cfgRow('Тариф ночь, ₽/кВт·ч','tariff_night','numf',vals) +
+      cfgRow('Ночное окно с, ч','night_from','num',vals) +
+      cfgRow('Ночное окно до, ч','night_to','num',vals) +
+      cfgRow('Бензин, ₽/литр','petrol_price','numf',vals) +
+      cfgRow('Расход бензина, л/100 км','petrol_l100','numf',vals) +
+      '<div style="display:flex;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap">'+
+      '<button class="pill on" onclick="saveTariffs()">Сохранить</button>'+
+      '<span style="font-size:11.5px;color:var(--muted)">тарифы уезжают на плату и в настройки сервера; отплаты вернутся в статусе</span></div>';
+  });
+}
+function saveTariffs(){
+  var b=$('tariff-body');
+  var get=function(k,parse){ var el=b.querySelector('[data-cfg="'+k+'"]'); var v=el?el.value.trim():''; return parse?(parseFloat(v.replace(',','.'))||0):v; };
+  var tDay=get('tariff_day',1), tNight=get('tariff_night',1);
+  var nF=parseInt(get('night_from'),10)||0, nT=parseInt(get('night_to'),10)||0;
+  var pP=get('petrol_price',1), pL=get('petrol_l100',1);
+  // 1) тарифы — на плату (set_config по одному ключу, как в классике)
+  var keys=[['tariff_day',tDay],['tariff_night',tNight],['night_from',nF],['night_to',nT]];
+  var chain=keys.reduce(function(acc, kv){
+    return acc.then(function(){
+      return fetch('/api/config',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({key:kv[0],value:kv[1]})});
+    });
+  }, Promise.resolve());
+  // 2) всё — в настройки сервера (тарифы + бензин)
+  chain=chain.then(function(){
+    return fetch('/api/settings',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({tariff_day:String(tDay),tariff_night:String(tNight),night_from:String(nF),night_to:String(nT),petrol_price:String(pP),petrol_l100:String(pL)})});
+  });
+  Promise.resolve(chain).then(function(){ toast('Тарифы сохранены — на плате применятся при следующей связи'); })
+    .catch(function(){ toast('Ошибка сохранения'); });
 }
 function logout(){
   fetch('/api/auth/logout',{method:'POST',credentials:'same-origin'}).then(function(){ location.href='/login'; });
@@ -1212,8 +1304,10 @@ document.querySelectorAll('#chart-range button').forEach(function(b){
 
 /* ---------- настройки платы ---------- */
 var boardCfg = null, settingsOpen = false;
-function cfgRow(label, key, type, opts){
-  var v = boardCfg ? boardCfg[key] : '';
+function cfgRow(label, key, type, vals){
+  var src = vals || boardCfg || {};
+  var v = src[key];
+  if (v == null) v = '';
   var ctl;
   if (type==='bool'){
     ctl = '<button type="button" class="pill'+(v?' on':'')+'" data-cfgb="'+key+'">'+(v?'Вкл':'Выкл')+'</button>';

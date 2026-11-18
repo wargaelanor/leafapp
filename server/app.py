@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 LeafControl API — единый сервер для платы, PWA и Android-приложения.
 
@@ -574,13 +574,14 @@ class Api(BaseHTTPRequestHandler):
             if path.startswith("/static/"):
                 return self.serve_static(path[len("/static/"):])
             if path == "/api/fw/latest" and method == "GET":
-                # Последняя прошивка для платы. Имена: FR-2can.N / FR-TCall.N,
-                # старые t2can-N / tcall-N тоже принимаем.
+                # Последняя прошивка для платы. Имена: FR-2can.N (классический UI)
+                # и FR-2can.N_nui (новый UI); старые t2can-N тоже принимаем.
+                # При равном номере _nui приоритетнее.
                 board = (q.get("board") or "CMD").upper()
                 if board not in ("TCALL", "T2CAN", "CMD"):
                     return self.err(400, "unknown board")
                 patterns = (r"^fr-tcall\.(\d+)\.bin$", r"^tcall-(\d+)\.bin$") if board == "TCALL" \
-                    else (r"^fr-2can\.(\d+)\.bin$", r"^t2can-(\d+)\.bin$")
+                    else (r"^fr-2can\.(\d+)(?:_nui)?\.bin$", r"^t2can-(\d+)\.bin$")
                 label = "FR-TCall" if board == "TCALL" else "FR-2can"
                 fw_dir = os.path.join(WEB_DIR, "fw")
                 best = None
@@ -591,8 +592,10 @@ class Api(BaseHTTPRequestHandler):
                             m = re.fullmatch(pat, low)
                             if not m:
                                 continue
-                            # новые имена приоритетнее старых при равном номере
-                            key = (int(m.group(1)), -idx)
+                            # новые имена приоритетнее старых при равном номере;
+                            # у _nui ключ на 1 больше, чтобы победить классику
+                            nui = "_nui" in low
+                            key = (int(m.group(1)), -idx, 1 if nui else 0)
                             if best is None or key > best[0]:
                                 best = (key, name)
                             break
@@ -602,11 +605,12 @@ class Api(BaseHTTPRequestHandler):
                 name = best[1]
                 full = os.path.join(fw_dir, name)
                 ver = str(best[0][0])
+                suffix = "_nui" if "_nui" in name.lower() else ""
                 return self.json(200, {
                     "ok": True,
                     "board": board,
                     "version": ver,
-                    "name": label + "." + ver,
+                    "name": label + "." + ver + suffix,
                     "file": name,
                     "url": SERVER_BASE + "/fw/" + name,
                     "size": os.path.getsize(full),
