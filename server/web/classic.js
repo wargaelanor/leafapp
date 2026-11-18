@@ -634,16 +634,60 @@
       if (p.soc !== undefined && p.soc !== null) series.soc.push([ts, Number(p.soc)]);
     });
 
-    const colors = { kw: 'var(--accent)', spd: '#34c759', batt: '#ff9500', soc: '#af52de' };
+    // Сессия заряда может дойти до сервера без сэмплов: устройство в это время
+    // спало или было без связи. Тогда вместо пустого места показываем сводку
+    // сессии (начальный и конечный SOC) и подписываем её числами.
+    let fallbackNote = '';
+    if (!pts.length && kind === 'charge') {
+      const s0 = Number(rec.s0), s1 = Number(rec.s1);
+      const dur = Number(rec.d) || (e - s);
+      const wh = Number(rec.w);
+      if (isFinite(s0) && isFinite(s1) && s0 >= 0 && s1 > s0 && dur > 0) {
+        const n = 24;
+        for (let i = 0; i < n; i++) {
+          series.soc.push([Math.round(s + dur * i / (n - 1)), s0 + (s1 - s0) * i / (n - 1)]);
+        }
+        const mins = Math.round(dur / 60);
+        const durTxt = mins >= 90
+          ? Math.floor(mins / 60) + ' ч ' + (mins % 60) + ' мин'
+          : mins + ' мин';
+        fallbackNote = 'Телеметрии за эту зарядку нет — на графике сводка сессии: ' +
+          fmt(s0, 0) + '% → ' + fmt(s1, 0) + '%, ' +
+          (isFinite(wh) && wh > 0
+            ? fmt(wh / 1000, 2) + ' кВт·ч за ' + durTxt + ', средняя мощность ' + fmt(wh / (dur / 3600) / 1000, 2) + ' кВт'
+            : durTxt);
+      }
+    }
+
+    // Кнопки без данных не должны выглядеть рабочими.
+    $$('.lc-btn', box).forEach(b => {
+      const k = b.dataset.k;
+      if (series[k] && series[k].length) return;
+      state[k] = false;
+      b.disabled = true;
+      b.style.opacity = '0.45';
+      b.style.background = 'var(--surface)';
+      b.style.color = 'var(--text)';
+      b.title = 'нет данных';
+    });
+
+    // Скорость — красным: зелёный уже занят рекуперацией на графике мощности,
+    // синий — основной линией, оранжевый — температурой, фиолетовый — SOC.
+    const colors = { kw: 'var(--accent)', spd: '#ff3b30', batt: '#ff9500', soc: '#af52de' };
 
     function draw() {
       const sel = Object.keys(state).filter(k => state[k] && series[k].length);
       const el = $('.lc-chart', box);
       if (!sel.length) {
-        el.innerHTML = '<div style="font-size:12px;color:var(--muted)">Нет данных за эту поездку.</div>';
+        el.innerHTML = '<div style="font-size:12px;color:var(--muted)">' +
+          (kind === 'charge' ? 'Нет телеметрии за эту зарядку.' : 'Нет данных за эту поездку.') + '</div>';
         return;
       }
       chart(el, sel.map(k => ({ key: k, show: true, points: series[k], color: colors[k] })), { minSpan: 2, from: s, to: e });
+      if (fallbackNote) {
+        el.insertAdjacentHTML('afterbegin',
+          '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">' + fallbackNote + '</div>');
+      }
       el.insertAdjacentHTML('beforeend',
         '<div style="display:flex;gap:12px;font-size:11px;color:var(--muted);margin-top:4px">' +
         sel.map(k => `<span><i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${colors[k]};margin-right:4px"></i>${k === 'kw' ? 'кВт' : k === 'spd' ? 'км/ч' : k === 'batt' ? '°C' : '%'}</span>`).join('') +
