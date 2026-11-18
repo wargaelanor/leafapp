@@ -485,7 +485,8 @@ class LeafMonitorService : Service() {
                 }
                 tripWh += wh
                 if (LeafRepo.isNight(now)) tripWhNight += wh else tripWhDay += wh
-                val end = (s.on == 0 && now - lastMoveMs > 180_000L) || now - lastMoveMs > 900_000L
+                // Standing in traffic with READY on must not split a journey.
+                val end = s.on == 0 && now - lastMoveMs > 900_000L
                 if (end) {
                     if ((tripDist >= 0.05 || tripWh >= 10.0) &&
                         !HistoryDb.hasBoardTripNear(tripStart, now)

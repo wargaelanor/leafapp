@@ -112,6 +112,7 @@ static void applyValue(const UdsEntry& e, const uint8_t* d, uint8_t len) {
     const char* n = e.name;
     if (!strcmp(n, "gear")) {
         udsData.gear = (int8_t)d[4];
+        udsData.gearMs = millis() ? millis() : 1;
     } else if (!strcmp(n, "v12")) {
         udsData.v12 = (float)d[4] * 0.08f;
     } else if (!strcmp(n, "i12")) {
@@ -124,6 +125,7 @@ static void applyValue(const UdsEntry& e, const uint8_t* d, uint8_t len) {
     } else if (!strcmp(n, "speed")) {
         if (len < 6) return;
         udsData.speed = (float)(uint16_t)be16(d, 4) / 10.0f;
+        udsData.speedMs = millis() ? millis() : 1;
     } else if (!strcmp(n, "obcpower")) {
         if (len < 6) return;
         udsData.obcW = (int)(uint16_t)be16(d, 4) * 100;

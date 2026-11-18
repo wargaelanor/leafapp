@@ -15,6 +15,7 @@ extern void serverApiHistSample(float soc, float kw, float batt, float spd);
 #include <Preferences.h>
 #include "vehicleTypes.h"
 #include "evCanLeaf.h"
+#include "udsLeaf.h"
 
 // Board-side history: the phone can be closed, the board keeps counting. One
 // JSON line per finished trip / charge session in the FAT partition.
@@ -75,6 +76,8 @@ static float tripPendSoc = -1;
 // Пробег, посчитанный по скорости: одометр машины шагает целыми километрами,
 // и короткая поездка по нему дала бы 0 км.
 static float tripKmSpeed = 0;
+static float pendingKmSpeed = 0;
+static unsigned long pendingLastMs = 0;
 
 // Признак «машина живёт» для авто-записи CAN: включена, едет, климат, зарядка.
 static bool sessionActive = false;
@@ -426,7 +429,7 @@ void tripLogTick() {
   // exactly while a charger is connected and 0 while driving, so regen
   // phantom charges stay impossible even with a frozen odometer.
   float chargeLim = evCanChargeLimitAmps();
-  bool pluggedIn = (chargeLim > 0.0f);
+  bool pluggedIn = (chargeLim > 0.0f && evCanLastFrameAgeSec() < 30UL);
   bool evChargeRaw = dataOk && v > 100.0f && i < -0.5f &&
                      pluggedIn && !odoMoving;
   static uint8_t evSeen = 0;
@@ -470,39 +473,56 @@ void tripLogTick() {
   // раньше поездку рвало через 3 минуты стоянки, отсюда «1 км + 16 км».
   bool ready = (evData.vehicleOn == 1);
   float powerW = (dataOk && v > 0) ? fabsf(v * i) : 0.0f;
-  // Тяга со знаком: зарядка идёт с минусом, поездка — с плюсом.
   float powerKw = (dataOk && v > 0) ? (v * i) / 1000.0f : 0.0f;
 
   float speedKph = evSpeedKph();
+  if (speedKph < 0.5f && udsData.speedMs && now - udsData.speedMs < 30000UL &&
+      udsData.speed >= 0.0f && udsData.speed <= 250.0f) {
+    speedKph = udsData.speed;
+  }
   bool speeding = speedKph >= 5.0f;   // поехали (5 км/ч), даже если не набежал километр
 
-  // На некоторых машинах (ZE1 через IT-CAN) кадр скорости 0x284 не приходит,
-  // а одометр за поездку не набегает — и вся езда пропадала мимо поездок.
-  // Одного замера выше порога достаточно; зарядка имеет противоположный знак.
-  // Краткий пик климата и других потребителей также может вызвать старт.
-  bool powering = powerKw > 8.0f && !charging;
+  // A selector reading is useful for ending a trip, but is not a verified
+  // start signal on every car. Neither climate power nor READY proves motion.
+  bool gearFresh = udsData.gearMs && now - udsData.gearMs < 30000UL;
+  bool parked = gearFresh && udsData.gear == 1;
+
+  if (!tripActive && epoch && !charging && speedKph > 0.5f) {
+    if (!tripPending || now - pendingLastMs > 30000UL) {
+      tripPending = true;
+      tripPendEpoch = epoch;
+      tripPendMs = now;
+      tripPendOdo = lastOdo;
+      tripPendSoc = soc;
+      pendingKmSpeed = 0;
+    } else if (dtMs > 0 && dtMs < 30000UL) {
+      pendingKmSpeed += speedKph * ((float)dtMs / 3600000.0f);
+    }
+    pendingLastMs = now;
+  }
 
   if (!tripActive) {
-    // Старт — по скорости выше 5 км/ч, по тяге или по первому новому километру
-    // одометра (если кадр скорости не пришёл). Раньше требовался второй
-    // километр в пределах двух минут: короткие и городские поездки терялись.
-    if (((speeding && epoch) || (moved && epoch && lastOdo > 0) || (powering && epoch))) {
+    // 5 km/h or 100 m of measured motion. The integer-km odometer remains a
+    // fallback when the EV speed frame is absent; do not infer from watts.
+    if (epoch && !charging && (speeding || pendingKmSpeed >= 0.1f || moved)) {
       tripActive = true;
-      tripPending = false;
-      tripStartEpoch = epoch;
-      tripStartMs = now;
-      tripOdoStart = lastOdo;
-      tripSocStart = soc;
+      tripStartEpoch = tripPending ? tripPendEpoch : epoch;
+      tripStartMs = tripPending ? tripPendMs : now;
+      tripOdoStart = tripPending ? tripPendOdo : lastOdo;
+      tripSocStart = tripPending ? tripPendSoc : soc;
       tripSocEnd = soc;
       tripKwh = tripKwhDay = tripKwhNight = 0;
-      tripKmSpeed = 0;
+      tripKmSpeed = pendingKmSpeed;
+      tripPending = false;
+      pendingKmSpeed = 0;
       tripMoveMs = now;
       tripOffSinceMs = 0;
       saveTripToRtc(true);
       Serial.printf("[log] trip started: %.0f km, %.0f km/h\n",
                     (double)tripOdoStart, (double)speedKph);
-    } else if (tripPending && (now - tripPendMs > 120000UL)) {
+    } else if (tripPending && (charging || now - pendingLastMs > 30000UL)) {
       tripPending = false;
+      pendingKmSpeed = 0;
     }
   }
 
@@ -510,13 +530,13 @@ void tripLogTick() {
     if (dtMs > 0 && dtMs < 30000UL && speedKph > 0.5f) {
       tripKmSpeed += speedKph * ((float)dtMs / 3600000.0f);
     }
-    if (moved || speeding || powering) {
+    if (moved || speedKph > 0.5f) {
       tripMoveMs = now;
       tripOffSinceMs = 0;
       rtcTripOdoLast = lastOdo;
     }
     if (soc >= 0) tripSocEnd = soc;
-    if (wh > 0) {
+    if (wh > 0 && !charging) {
       tripKwh += wh;
       if (isNight(epoch)) tripKwhNight += wh; else tripKwhDay += wh;
       rtcTripKwh = tripKwh;
@@ -524,21 +544,24 @@ void tripLogTick() {
     // Конец поездки: машина не в READY, не едет и не заряжается. Пять минут
     // запаса — чтобы стоянка у магазина не закрывала поездку.
     // Машина выключена = не READY, не едет, не заряжается и не тянет ток.
-    if (!ready && !moved && !speeding && !charging && powerW < 150.0f) {
+    if (!moved && speedKph < 0.5f && !charging &&
+        (parked || (!ready && powerW < 150.0f))) {
       if (tripOffSinceMs == 0) tripOffSinceMs = now;
     } else {
       tripOffSinceMs = 0;
     }
-    // Страховка: шина молчит 2 минуты — машина точно спит.
-    bool busSilent = evCanLastFrameAgeSec() > 120UL;
-    if ((tripOffSinceMs != 0 && now - tripOffSinceMs > 60000UL) || busSilent) {
+    // A brief bus gap or a traffic stop is NOT a trip boundary. If all EV
+    // traffic vanishes, wait long enough for reconnection before closing.
+    bool busLost = !charging && evCanLastFrameAgeSec() > 900UL;
+    if ((tripOffSinceMs != 0 && now - tripOffSinceMs >
+         (parked ? 60000UL : 900000UL)) || busLost) {
       finishTrip("off");
     }
   }
 
   // ---- климат ------------------------------------------------------------
   // Машина включена, стоит и тянет ток — это климат, а не поездка.
-  bool idling = ready && !moved && !charging && !tripActive && !tripPending;
+  bool idling = ready && !moved && !speeding && !charging && !tripActive;
   if (!climActive) {
     if (idling && powerW > 300.0f && epoch) {
       climActive = true;
@@ -580,15 +603,16 @@ void tripLogTick() {
   // Признак активной сессии для авто-записи CAN: машина отвечает по шине и
   // происходит что-то осмысленное (READY, поездка, климат, зарядка) либо течёт
   // заметная тяга — иначе езда без кадра скорости не попадает в лог вовсе.
-  sessionActive = (evCanLastFrameAgeSec() < 300UL) &&
-                  (ready || tripActive || climActive || chgActive ||
-                   powerKw >= 2.0f || powerKw <= -2.0f);
+  sessionActive = tripActive || chgActive ||
+                  ((evCanLastFrameAgeSec() < 300UL) &&
+                  (ready || climActive ||
+                    powerKw >= 2.0f || powerKw <= -2.0f));
   if (sessionActive) noteVehicleAwake();
 
   // Точка для графиков (копится на плате, уходит пачкой при связи).
   {
     float kw = (dataOk && v > 0) ? (v * i) / 1000.0f : 0.0f;
-    serverApiHistSample(soc, kw, evData.batteryTemp, evSpeedKph());
+    serverApiHistSample(soc, kw, evData.batteryTemp, speedKph);
   }
 
   if (odo > 0) lastOdo = odo;

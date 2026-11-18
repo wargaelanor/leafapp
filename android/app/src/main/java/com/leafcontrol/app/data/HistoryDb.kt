@@ -153,7 +153,7 @@ object HistoryDb {
         try {
             // The board records the same trip independently of the phone. When
             // its copy arrives, drop the phone copy instead of counting twice.
-            if (t.source == "board") {
+            if (t.source == "board" || t.source == "server") {
                 db.delete(
                     "trips",
                     "source = 'phone' AND ABS(start_ms - ?) <= $DEDUPE_START_MS " +
@@ -172,7 +172,7 @@ object HistoryDb {
         val db = helper.writableDatabase
         db.beginTransaction()
         try {
-            if (c.source == "board") {
+            if (c.source == "board" || c.source == "server") {
                 db.delete(
                     "charges",
                     "source = 'phone' AND ABS(start_ms - ?) <= $DEDUPE_START_MS " +
@@ -194,7 +194,7 @@ object HistoryDb {
 
     private fun hasBoardNear(table: String, startMs: Long, endMs: Long): Boolean {
         helper.readableDatabase.rawQuery(
-            "SELECT 1 FROM $table WHERE source = 'board' " +
+            "SELECT 1 FROM $table WHERE source IN ('board', 'server') " +
                 "AND ABS(start_ms - ?) <= $DEDUPE_START_MS AND ABS(end_ms - ?) <= $DEDUPE_END_MS LIMIT 1",
             arrayOf(startMs.toString(), endMs.toString()),
         ).use { return it.moveToFirst() }

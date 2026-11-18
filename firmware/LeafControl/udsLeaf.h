@@ -16,11 +16,13 @@
 
 struct UdsTier1Data {
     int8_t gear = -1;          // 1=P 2=R 3=N 4=D 7=Eco, -1 unknown
+    unsigned long gearMs = 0; // last successful gear response; never trust stale P
     float  v12 = -1.0f;        // auxiliary battery voltage, V
     float  i12 = 999.0f;       // auxiliary battery current, A (+charge -drain)
     int8_t plug = -1;          // J1772: 0 not plugged, 1 partial, 2 plugged
     int8_t chargeMode = -1;    // 0 none, 1 L1, 2 L2, 3 QC
     float  speed = -1.0f;      // VCM speed km/h
+    unsigned long speedMs = 0; // last successful speed response
     int    obcW = -1;          // on-board charger input power, W
     uint32_t qcCount = 0;      // quick-charge session counter
     uint32_t l1l2Count = 0;    // L1/L2 session counter

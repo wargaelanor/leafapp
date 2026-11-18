@@ -106,7 +106,10 @@ object LeafRepo {
         if (to <= from) return emptyList()
         val device = "${Settings.serverUrl}|${Settings.serverDevice}"
         val cached = withContext(Dispatchers.IO) { HistoryDb.samples(device, from, to) }
-        if (Settings.mode == "local" ||
+        if (Settings.mode == "local") return cached
+        // A previously empty chart range may have been cached while the board
+        // was offline. Retry it so delayed telemetry can appear later.
+        if (cached.isNotEmpty() &&
             withContext(Dispatchers.IO) { HistoryDb.hasSampleRange(device, from, to) }) return cached
         val downloaded = ServerApi.samples(context, from, to)
         if (downloaded.isNotEmpty()) {

@@ -917,20 +917,24 @@ static bool sendPing() {
 // Плата копит телеметрию сама: при слабом Wi-Fi сервер получал по 4 точки за
 // поездку, и графики превращались в прямые. Теперь точки уходят пачкой, как
 // только появляется связь.
-static const int HIST_N = 240;
+// ~43 min at 5 s cadence; on overflow downsample rather than dropping the
+// beginning of a long charge. Keep RAM headroom for cellular TLS.
+static const int HIST_N = 512;
 struct HistPoint { uint32_t ts; int16_t soc10; int16_t kw10; int8_t batt; uint8_t spd; };
 static HistPoint histBuf[HIST_N];
 static int histCount = 0;
 static uint32_t histLastTs = 0;
+static uint32_t histMinInterval = 5;
 
 void serverApiHistSample(float soc, float kw, float batt, float spd) {
   time_t tnow = time(nullptr);
   if (tnow < 1600000000) return;
   uint32_t ts = (uint32_t)tnow;
-  if (ts <= histLastTs + 4) return;           // чаще, чем раз в 5 с, не нужно
-  if (histCount >= HIST_N) {                   // старые вытесняем
-    memmove(&histBuf[0], &histBuf[1], sizeof(HistPoint) * (HIST_N - 1));
-    histCount = HIST_N - 1;
+  if (ts < histLastTs || ts - histLastTs < histMinInterval) return;
+  if (histCount >= HIST_N) {
+    for (int j = 0; j < HIST_N / 2; ++j) histBuf[j] = histBuf[j * 2];
+    histCount = HIST_N / 2;
+    histMinInterval *= 2;
   }
   HistPoint& h = histBuf[histCount++];
   h.ts = ts;
@@ -943,10 +947,13 @@ void serverApiHistSample(float soc, float kw, float batt, float spd) {
 
 static bool uploadHistory() {
   if (histCount <= 0) return true;
+  // Server accepts at most 500 points per request. Never acknowledge/drop the
+  // tail of a longer offline buffer as though it had been persisted.
+  const int batchCount = histCount < 400 ? histCount : 400;
   String body;
-  body.reserve(histCount * 34 + 24);
+  body.reserve(batchCount * 34 + 24);
   body += "{\"points\":[";
-  for (int i = 0; i < histCount; i++) {
+  for (int i = 0; i < batchCount; i++) {
     const HistPoint& h = histBuf[i];
     if (i) body += ",";
     body += "[";
@@ -964,8 +971,10 @@ static bool uploadHistory() {
   body += "]}";
   String resp;
   if (!postJson("/api/device/hist", body.c_str(), resp)) return false;
-  Serial.printf("[srv] история: отправлено %d точек\n", histCount);
-  histCount = 0;
+  Serial.printf("[srv] история: отправлено %d точек\n", batchCount);
+  histCount -= batchCount;
+  if (histCount > 0) memmove(histBuf, histBuf + batchCount, histCount * sizeof(HistPoint));
+  else histMinInterval = 5;
   return true;
 }
 

@@ -28,8 +28,8 @@
 #define LEAF_FIRMWARE_VERSION "FR-TCall.177"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: OTA-capable partitions (min_spiffs), gz-only UI, wifi from app, tariff sync"
 #else
-#define LEAF_FIRMWARE_VERSION "FR-2can.181"
-#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: reliability - cellular fallback, bigger session queue, trip thresholds, tz config"
+#define LEAF_FIRMWARE_VERSION "FR-2can.182"
+#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: motion-only trips, charge telemetry retention, sleep guard"
 #endif
 
 // Доступ к версии из других модулей (serverApi.cpp).
@@ -2681,7 +2681,9 @@ void loop() {
   bool callControlKeepsAwake = getModemEnable() && getModemCallEnabled();
   if (getSleepEnabled() && !callControlKeepsAwake && !canLoggerIsRecording() &&
       !otaInProgress && activeSequence == CanSequence::NONE &&
-      !isChargingNow && !tripLogIsCharging() && !isHvacOn &&
+       !isChargingNow && !tripLogIsCharging() && !isHvacOn &&
+       !(evCanLastFrameAgeSec() < 30UL && evCanChargeLimitAmps() > 0.0f &&
+         evData.packDataValid && evData.packCurrent < -0.5f) &&
       !tripLogSessionActive()) {
     static unsigned long lastIdleTickMs = 0;
     unsigned long now = millis();
