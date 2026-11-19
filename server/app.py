@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 LeafControl API — единый сервер для платы, PWA и Android-приложения.
 
@@ -43,7 +43,7 @@ CAN_DIR = os.environ.get("LEAF_CAN_DIR", os.path.join(os.path.dirname(DB_PATH), 
 
 # Ссылка на Android-приложение (release-ассет проекта).
 APP_REV = os.environ.get("LEAF_REV", "sync-newdesign-1")
-APP_VERSION = "1.67"  # версия APK, доступная для скачивания
+APP_VERSION = "1.68"  # версия APK, доступная для скачивания
 APP_NOTES = "Два дизайна: полный функционал нового (графики, настройки платы, прошивка, админка) и переключение в «Ещё»"
 
 APK_URL = os.environ.get(
