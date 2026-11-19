@@ -6,6 +6,7 @@
 #include "vehicleTypes.h"
 #include "udsLeaf.h"
 #include "modemHw.h"
+#include "serverApi.h"
 #include "modemManager.h"
 
 // Live vehicle state, defined in LeafControl.ino (diagnostics only)
@@ -109,6 +110,7 @@ void executeCommand(char* cmd) {
             else if (strcmp(key, "ap_ssid") == 0) status = setApSSID(val);
             else if (strcmp(key, "ap_password") == 0) status = setApPassword(val);
             else if (strcmp(key, "hostName") == 0) status = setHostName(val);
+            else if (strcmp(key, "base") == 0) { serverApiSetBase(val); status = ConfigStatus::OK; }
             else if (strcmp(key, "locking_enabled") == 0) {
                 if (strcmp(val, "true") == 0 || strcmp(val, "1") == 0) {
                     status = setLockingEnabled(true);

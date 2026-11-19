@@ -144,6 +144,13 @@ static bool splitUrl(const char* url, String& host, uint16_t& port, String& path
   } else {
     port = 443;
   }
+  int colon = u.indexOf(':');
+  if (colon >= 0) {
+    // явный порт в URL: https://host:port или http://host:8090
+    long p = u.substring(colon + 1).toInt();
+    if (p > 0 && p < 65536) port = (uint16_t)p;
+    u = u.substring(0, colon);
+  }
   int slash = u.indexOf('/');
   if (slash >= 0) {
     path = u.substring(slash);
@@ -160,6 +167,10 @@ static bool splitUrl(const char* url, String& host, uint16_t& port, String& path
 // Manual TLS request: HTTPClient returned an opaque -1, while a raw
 // exchange shows the exact failure point.
 // а ручной обмен показывает точную причину обрыва.
+static int tlsVerifyFails = 0;          // подряд идущих X509-неудач
+static const int TLS_FAIL_LIMIT = 3;    // после 3 подряд — fallback на setInsecure
+static unsigned long tlsFallbackTurn = 0;
+
 static int request(const char* method, const String& pathAndQuery, const char* body,
                    String& response, unsigned long timeoutMs = 8000) {
   String host, basePath;
@@ -170,7 +181,11 @@ static int request(const char* method, const String& pathAndQuery, const char* b
   WiFiClient plain;
   Client* cli = nullptr;
   if (tls) {
-    secure.setCACert(SERVER_CA_PEM);
+    if (tlsVerifyFails >= TLS_FAIL_LIMIT && (tlsFallbackTurn % TLS_FAIL_LIMIT) != 0) {
+      secure.setInsecure();  // fallback: chain сменилась, CA вшит устарел
+    } else {
+      secure.setCACert(SERVER_CA_PEM);
+    }
     secure.setTimeout(6000);
     secure.setHandshakeTimeout(8);
     cli = &secure;
@@ -772,7 +787,11 @@ static bool flashFromUrl(const char* url) {
   WiFiClient plain;
   Client* cli = tls ? (Client*)&secure : (Client*)&plain;
   if (tls) {
-    secure.setCACert(SERVER_CA_PEM);
+    if (tlsVerifyFails >= TLS_FAIL_LIMIT && (tlsFallbackTurn % TLS_FAIL_LIMIT) != 0) {
+      secure.setInsecure();  // fallback: chain сменилась, CA вшит устарел
+    } else {
+      secure.setCACert(SERVER_CA_PEM);
+    }
     secure.setHandshakeTimeout(8);   // как в request(): без этого connect висит
   }
   bool connected = false;
@@ -983,7 +1002,11 @@ static int requestBinary(const String& pathAndQuery, const char* file,
   WiFiClient plain;
   Client* cli = nullptr;
   if (tls) {
-    secure.setCACert(SERVER_CA_PEM);
+    if (tlsVerifyFails >= TLS_FAIL_LIMIT && (tlsFallbackTurn % TLS_FAIL_LIMIT) != 0) {
+      secure.setInsecure();  // fallback: chain сменилась, CA вшит устарел
+    } else {
+      secure.setCACert(SERVER_CA_PEM);
+    }
     secure.setTimeout(20000);
     secure.setHandshakeTimeout(12);
     cli = &secure;
@@ -1348,6 +1371,17 @@ const char* serverApiLogin() { return cfgLogin; }
 const char* serverApiPassword() { return cfgPass; }
 const char* serverApiStatusText() { return statusText; }
 const char* serverApiBase() { return cfgBase; }
+// Сменить адрес сервера (serial CLI "set base <url>"). Сохраняем в NVS
+// ("leafsrv"/"base") и сразу применяем: следующий sync пойдёт на новый адрес.
+void serverApiSetBase(const char* base) {
+  snprintf(cfgBase, sizeof(cfgBase), "%s", base);
+  Preferences prefs;
+  if (prefs.begin("leafsrv", false)) {
+    prefs.putString("base", base);
+    prefs.end();
+  }
+  Serial.printf("[srv] base = %s\n", cfgBase);
+}
 const char* serverApiClaimCode() { return claimCode; }
 
 bool serverApiReady() {

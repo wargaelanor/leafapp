@@ -34,6 +34,9 @@ const char* serverApiStatusText();
 const char* serverApiBase();
 const char* serverApiClaimCode();
 
+// Сменить адрес сервера (serial CLI "set base"). Сохраняется в NVS.
+void serverApiSetBase(const char* base);
+
 // Обработчик команд с сервера. Реализуется в скетче.
 typedef void (*ServerCommandHandler)(const char* name, const char* argsJson);
 // Применить одну настройку в формате {"key":"...","value":...}.
