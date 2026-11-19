@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
@@ -356,10 +356,10 @@ input[type=range]::-moz-range-thumb{width:24px;height:24px;border-radius:50%;bac
       <div class="car-badge state-sleep" id="sb-badge2"><i></i><span id="sb-state2">…</span></div>
       <div class="car-stage" id="car-stage2" data-lights="0" data-cable="0" data-moving="0" data-frame="1">
         <img class="car-base" src="/leaf.png" alt="">
-        <div class="car-layer" data-when="lights"><img src="/car-lights.png" alt=""></div>
-        <div class="car-layer" data-when="cable"><img src="/car-cable.png" alt=""></div>
+        <div class="car-layer" data-when="lights"><img src="/car-lights.png" alt="" onerror="this.parentNode.style.display='none'"></div>
+        <div class="car-layer" data-when="cable"><img src="/car-cable.png" alt="" onerror="this.parentNode.style.display='none'"></div>
         <div class="car-layer frames" data-when="moving">
-          <img src="/car-wheel4.png" alt=""><img src="/car-wheel3.png" alt=""><img src="/car-wheel2.png" alt=""><img src="/car-wheel1.png" alt="">
+          <img src="/car-wheel4.png" alt=""><img src="/car-wheel3.png" alt=""><img src="/car-wheel2.png" alt=""><img src="/car-wheel1.png" alt="" onerror="this.style.display='none'">
         </div>
         <div class="car-glow"></div>
       </div>
@@ -424,10 +424,10 @@ input[type=range]::-moz-range-thumb{width:24px;height:24px;border-radius:50%;bac
             <div class="car-badge state-sleep" id="hero-badge"><i></i><span id="hero-state">…</span></div>
             <div class="car-stage" id="car-stage" data-lights="0" data-cable="0" data-moving="0" data-frame="1">
               <img class="car-base" src="/leaf.png" alt="">
-              <div class="car-layer" data-when="lights"><img src="/car-lights.png" alt=""></div>
-              <div class="car-layer" data-when="cable"><img src="/car-cable.png" alt=""></div>
+              <div class="car-layer" data-when="lights"><img src="/car-lights.png" alt="" onerror="this.parentNode.style.display='none'"></div>
+              <div class="car-layer" data-when="cable"><img src="/car-cable.png" alt="" onerror="this.parentNode.style.display='none'"></div>
               <div class="car-layer frames" data-when="moving">
-                <img src="/car-wheel4.png" alt=""><img src="/car-wheel3.png" alt=""><img src="/car-wheel2.png" alt=""><img src="/car-wheel1.png" alt="">
+                <img src="/car-wheel4.png" alt=""><img src="/car-wheel3.png" alt=""><img src="/car-wheel2.png" alt=""><img src="/car-wheel1.png" alt="" onerror="this.style.display='none'">
               </div>
               <div class="car-glow"></div>
             </div>
@@ -566,6 +566,7 @@ input[type=range]::-moz-range-thumb{width:24px;height:24px;border-radius:50%;bac
               <button data-r="720">30 дней</button>
             </div>
             <div class="card" style="padding:16px">
+              <div id="chart-keys" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"></div>
               <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
                 <b style="font-size:14px">Мощность и заряд</b>
                 <span style="font-size:11px;color:var(--muted)" id="chart-cap"></span>
@@ -661,6 +662,291 @@ function fmtN(v,d){ return (v==null||!isFinite(v))?'—':Number(v).toFixed(d===u
 function hhmm(ts){ if(!ts) return '—'; var d=new Date(ts*1000); return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2); }
 function ago(sec){ sec=Math.max(0,Math.round(sec)); if(sec<60)return sec+' с назад'; if(sec<3600)return Math.round(sec/60)+' мин назад'; if(sec<86400)return Math.round(sec/3600)+' ч назад'; return Math.round(sec/86400)+' дн назад'; }
 function fetchTimeout(ms){ var c=new AbortController(); setTimeout(function(){c.abort();},ms); return c.signal; }
+function fmtC(v, d){ return (v===null||v===undefined||!isFinite(v))?'—':Number(v).toFixed(d===undefined?1:d).replace('.',','); }
+/* Полный чарт из классического интерфейса: сглаживание, сетка, нулевая линия
+   с зелёной рекуперацией, crosshair с плашкой значений, touch-action:none. */
+function classicChart(el, series, opts) {
+  if (!el) return;
+  opts = opts || {};
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  var W = Math.max(240, Math.floor(el.clientWidth || (el.parentElement && el.parentElement.clientWidth) || 320));
+  var H = opts.height || 300;
+  var padL = 36, padR = 12, padT = 18, padB = 22;
+  var plotW = W - padL - padR, plotH = H - padT - padB;
+
+  var all = [];
+  series.forEach(function(sr){
+    var raw = sr.points || (sr.values || []).map(function(v){ return [0, v]; });
+    sr._raw = raw.map(function(p){ return [Number(p[0]) || 0, Number(p[1])]; }).filter(function(p){ return isFinite(p[1]); });
+    var sm = sr._raw.map(function(p){ return [p[0], p[1]]; });
+    for (var i = 1; i < sm.length - 1; i++) {
+      sm[i][1] = (sr._raw[i - 1][1] + 2 * sr._raw[i][1] + sr._raw[i + 1][1]) / 4;
+    }
+    sr._pts = sm;
+    sr._pts.forEach(function(p){ all.push(p[1]); });
+  });
+
+  el.innerHTML = '';
+  if (!all.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 0">нет данных</div>';
+    return;
+  }
+
+  var min = Math.min.apply(null, all), max = Math.max.apply(null, all);
+  var step = opts.minSpan || 1;
+  if (max - min < step) {
+    var cc = (max + min) / 2;
+    min = cc - step / 2; max = cc + step / 2;
+  }
+  var span = (max - min) || 1;
+
+  var t0 = opts.from, t1 = opts.to;
+  if (!t0 || !t1) {
+    var tsAll = series.flatMap(function(sr){ return (sr.points || []).map(function(p){ return Number(p[0]) || 0; }); }).filter(function(t){ return t > 0; });
+    if (tsAll.length) { t0 = Math.min.apply(null, tsAll); t1 = Math.max.apply(null, tsAll); }
+  }
+  var hasTime = !!(t0 && t1 && t1 > t0);
+  var longSpan = hasTime && (t1 - t0) > 86400;
+
+  function xFor(p, i, n){
+    if (hasTime && p[0] > 0) {
+      var f = Math.min(1, Math.max(0, (p[0] - t0) / (t1 - t0)));
+      return padL + f * plotW;
+    }
+    return padL + (n > 1 ? i / (n - 1) : 0.5) * plotW;
+  }
+  function yFor(v){ return padT + plotH - ((v - min) / span) * plotH; }
+
+  var svg = document.createElementNS(SVGNS, 'svg');
+  svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+  svg.setAttribute('width', W);
+  svg.setAttribute('height', H);
+  svg.setAttribute('style', 'display:block;width:100%;height:' + H + 'px');
+
+  [0, 0.5, 1].forEach(function(f){
+    var line = document.createElementNS(SVGNS, 'path');
+    line.setAttribute('d', 'M' + padL + ' ' + (padT + f * plotH).toFixed(1) + ' H' + (W - padR));
+    line.setAttribute('stroke', 'var(--line)');
+    line.setAttribute('fill', 'none');
+    svg.appendChild(line);
+  });
+  [0.25, 0.5, 0.75].forEach(function(f){
+    var line = document.createElementNS(SVGNS, 'path');
+    line.setAttribute('d', 'M' + (padL + f * plotW).toFixed(1) + ' ' + padT + ' V' + (padT + plotH));
+    line.setAttribute('stroke', 'var(--line)');
+    line.setAttribute('fill', 'none');
+    line.setAttribute('opacity', '0.6');
+    svg.appendChild(line);
+  });
+
+  function smooth(pts){
+    if (!pts.length) return '';
+    if (pts.length === 1) return 'M' + pts[0][0].toFixed(1) + ' ' + pts[0][1].toFixed(1);
+    var d = 'M' + pts[0][0].toFixed(1) + ' ' + pts[0][1].toFixed(1);
+    for (var i = 1; i < pts.length - 1; i++) {
+      var mx = (pts[i][0] + pts[i + 1][0]) / 2;
+      var my = (pts[i][1] + pts[i + 1][1]) / 2;
+      d += ' Q' + pts[i][0].toFixed(1) + ' ' + pts[i][1].toFixed(1) + ' ' + mx.toFixed(1) + ' ' + my.toFixed(1);
+    }
+    var last = pts[pts.length - 1];
+    d += ' L' + last[0].toFixed(1) + ' ' + last[1].toFixed(1);
+    return d;
+  }
+
+  var hasZero = min < 0 && max > 0;
+  var yZero = 0;
+  if (hasZero) {
+    yZero = yFor(0);
+    var zl = document.createElementNS(SVGNS, 'path');
+    zl.setAttribute('d', 'M' + padL + ' ' + yZero.toFixed(1) + ' H' + (W - padR));
+    zl.setAttribute('stroke', 'var(--muted)');
+    zl.setAttribute('stroke-width', '1');
+    zl.setAttribute('stroke-dasharray', '4 3');
+    zl.setAttribute('fill', 'none');
+    svg.appendChild(zl);
+  }
+
+  var defs = document.createElementNS(SVGNS, 'defs');
+  var clipAbove = document.createElementNS(SVGNS, 'clipPath');
+  clipAbove.setAttribute('id', 'clipAbove' + (classicChart._uid = (classicChart._uid || 0) + 1));
+  var uid = classicChart._uid;
+  var rectAbove = document.createElementNS(SVGNS, 'rect');
+  rectAbove.setAttribute('x', padL); rectAbove.setAttribute('y', padT);
+  rectAbove.setAttribute('width', plotW); rectAbove.setAttribute('height', Math.max(0, yZero - padT));
+  clipAbove.appendChild(rectAbove);
+  var clipBelow = document.createElementNS(SVGNS, 'clipPath');
+  clipBelow.setAttribute('id', 'clipBelow' + uid);
+  var rectBelow = document.createElementNS(SVGNS, 'rect');
+  rectBelow.setAttribute('x', padL); rectBelow.setAttribute('y', yZero);
+  rectBelow.setAttribute('width', plotW); rectBelow.setAttribute('height', Math.max(0, padT + plotH - yZero));
+  clipBelow.appendChild(rectBelow);
+  defs.appendChild(clipAbove); defs.appendChild(clipBelow);
+  svg.appendChild(defs);
+
+  series.forEach(function(sr){
+    var pts = sr._pts;
+    if (!pts.length) return;
+    var dst = smooth(pts.map(function(p, i){ return [xFor(p, i, pts.length), yFor(p[1])]; }));
+    var mk = function(color, clip){
+      var path = document.createElementNS(SVGNS, 'path');
+      path.setAttribute('d', dst);
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', color);
+      path.setAttribute('stroke-width', '2');
+      path.setAttribute('stroke-linejoin', 'round');
+      path.setAttribute('stroke-linecap', 'round');
+      if (clip) path.setAttribute('clip-path', 'url(#' + clip + ')');
+      svg.appendChild(path);
+    };
+    if (hasZero && sr.key === 'kw') {
+      mk(sr.color || 'var(--accent)', 'clipAbove' + uid);
+      mk('#34c759', 'clipBelow' + uid);
+    } else {
+      mk(sr.color || 'var(--accent)', null);
+    }
+  });
+
+  function text(x, y, str, anchor){
+    var e = document.createElementNS(SVGNS, 'text');
+    e.setAttribute('x', x); e.setAttribute('y', y);
+    e.setAttribute('font-size', '10');
+    e.setAttribute('fill', 'var(--muted)');
+    e.setAttribute('text-anchor', anchor || 'start');
+    e.textContent = str;
+    svg.appendChild(e);
+  }
+  text(padL - 4, padT + 4, fmtC(max, 1), 'end');
+  text(padL - 4, padT + plotH + 3, fmtC(min, 1), 'end');
+  if (hasZero) text(padL - 4, yZero + 3, '0', 'end');
+  if (opts.label) text(W - padR, padT - 6, opts.label, 'end');
+
+  if (hasTime) {
+    var clock = function(ts){
+      var d = new Date(ts * 1000);
+      var hh = String(d.getHours()).padStart(2, '0');
+      var mm = String(d.getMinutes()).padStart(2, '0');
+      return longSpan
+        ? d.getDate().toString().padStart(2, '0') + '.' + String(d.getMonth() + 1).padStart(2, '0') + ' ' + hh + ':' + mm
+        : hh + ':' + mm;
+    };
+    var marks = 5;
+    for (var mi = 0; mi < marks; mi++) {
+      var ts = t0 + (t1 - t0) * (mi / (marks - 1));
+      var mx = padL + plotW * (mi / (marks - 1));
+      text(mx, H - 6, clock(ts), mi === 0 ? 'start' : (mi === marks - 1 ? 'end' : 'middle'));
+    }
+
+    var vline = document.createElementNS(SVGNS, 'path');
+    vline.setAttribute('stroke', 'var(--muted)');
+    vline.setAttribute('stroke-width', '1');
+    vline.setAttribute('stroke-dasharray', '3 3');
+    vline.setAttribute('fill', 'none');
+    vline.setAttribute('visibility', 'hidden');
+    svg.appendChild(vline);
+
+    var dots = series.map(function(sr){
+      var c = document.createElementNS(SVGNS, 'circle');
+      c.setAttribute('r', '3.5');
+      c.setAttribute('fill', sr.color || 'var(--accent)');
+      c.setAttribute('stroke', 'var(--surface)');
+      c.setAttribute('stroke-width', '1.5');
+      c.setAttribute('visibility', 'hidden');
+      svg.appendChild(c);
+      return c;
+    });
+
+    var bubbleBg = document.createElementNS(SVGNS, 'rect');
+    bubbleBg.setAttribute('rx', '5');
+    bubbleBg.setAttribute('fill', 'var(--surface-2)');
+    bubbleBg.setAttribute('stroke', 'var(--line)');
+    bubbleBg.setAttribute('height', '18');
+    bubbleBg.setAttribute('visibility', 'hidden');
+    svg.appendChild(bubbleBg);
+
+    var bubble = document.createElementNS(SVGNS, 'text');
+    bubble.setAttribute('font-size', '10.5');
+    bubble.setAttribute('fill', 'var(--text)');
+    bubble.setAttribute('visibility', 'hidden');
+    svg.appendChild(bubble);
+
+    var hit = document.createElementNS(SVGNS, 'rect');
+    hit.setAttribute('x', padL);
+    hit.setAttribute('y', padT);
+    hit.setAttribute('width', plotW);
+    hit.setAttribute('height', plotH);
+    hit.setAttribute('fill', 'transparent');
+    hit.setAttribute('style', 'cursor:crosshair;touch-action:none');
+    svg.appendChild(hit);
+
+    var clockFull = function(ts){
+      var d = new Date(ts * 1000);
+      return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    };
+    var unit = { kw: ' кВт', spd: ' км/ч', soc: ' %', batt: ' °C' };
+
+    var hide = function(){
+      vline.setAttribute('visibility', 'hidden');
+      bubble.setAttribute('visibility', 'hidden');
+      bubbleBg.setAttribute('visibility', 'hidden');
+      dots.forEach(function(d){ d.setAttribute('visibility', 'hidden'); });
+    };
+
+    var show = function(ev){
+      var r = svg.getBoundingClientRect();
+      var px = (ev.clientX - r.left) * (W / r.width);
+      if (px < padL - 4 || px > W - padR + 4) return hide();
+      var f = Math.min(1, Math.max(0, (px - padL) / plotW));
+      var ts = t0 + f * (t1 - t0);
+      var x = padL + f * plotW;
+
+      vline.setAttribute('d', 'M' + x.toFixed(1) + ' ' + padT + ' V' + (padT + plotH));
+      vline.setAttribute('visibility', 'visible');
+
+      var parts = [];
+      series.forEach(function(sr, idx){
+        var dot = dots[idx];
+        if (!sr.show || !sr._pts.length) { dot.setAttribute('visibility', 'hidden'); return; }
+        var pts = sr._pts;
+        if (!pts.length) { dot.setAttribute('visibility', 'hidden'); return; }
+        var v;
+        if (ts <= pts[0][0]) v = pts[0][1];
+        else if (ts >= pts[pts.length - 1][0]) v = pts[pts.length - 1][1];
+        else {
+          var i = 1;
+          while (i < pts.length && pts[i][0] < ts) i++;
+          var a = pts[i - 1], b = pts[i];
+          var k = (ts - a[0]) / Math.max(1, b[0] - a[0]);
+          v = a[1] + (b[1] - a[1]) * k;
+        }
+        dot.setAttribute('cx', x.toFixed(1));
+        dot.setAttribute('cy', yFor(v).toFixed(1));
+        dot.setAttribute('fill', (hasZero && sr.key === 'kw' && v < 0) ? '#34c759' : (sr.color || 'var(--accent)'));
+        dot.setAttribute('visibility', 'visible');
+        parts.push(fmtC(v, 1) + unit[sr.key]);
+      });
+
+      var labelText = clockFull(ts) + (parts.length ? ' · ' + parts.join(' · ') : '');
+      bubble.textContent = labelText;
+      var tw = labelText.length * 5.6 + 10;
+      var bx = Math.min(W - padR - tw, Math.max(padL, x - tw / 2));
+      bubbleBg.setAttribute('x', bx);
+      bubbleBg.setAttribute('y', padT - 14);
+      bubbleBg.setAttribute('width', tw);
+      bubble.setAttribute('x', bx + 5);
+      bubble.setAttribute('y', padT - 1);
+      bubbleBg.setAttribute('visibility', 'visible');
+      bubble.setAttribute('visibility', 'visible');
+    };
+
+    hit.addEventListener('pointerdown', function(ev){ ev.preventDefault(); show(ev); });
+    hit.addEventListener('pointermove', function(ev){ ev.preventDefault(); show(ev); });
+    hit.addEventListener('pointerleave', hide);
+    hit.addEventListener('pointerup', hide);
+    hit.addEventListener('pointercancel', hide);
+  }
+
+  el.appendChild(svg);
+}
 function setRing(id,vid,pct){ var c=$(id),v=$(vid); if(!c||!v)return; if(pct==null||!isFinite(pct)){v.textContent='—';c.style.strokeDashoffset=2*Math.PI*48;return;} var len=2*Math.PI*48; c.style.strokeDasharray=len; c.style.strokeDashoffset=len*(1-Math.max(0,Math.min(100,pct))/100); v.textContent=Math.round(pct); }
 function toggleTheme(){ var h=document.documentElement; var cur=h.getAttribute('data-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'); var n=cur==='dark'?'light':'dark'; h.setAttribute('data-theme',n); $('theme-fab').textContent = n==='dark'?'☀️':'🌙'; }
 function go(el){ var v=el.dataset.view; document.querySelectorAll('.view').forEach(function(s){s.classList.toggle('active', s.id==='view-'+v);}); document.querySelectorAll('.tabbar .tab, .snav button').forEach(function(x){x.classList.toggle('on', x.dataset.view===v);}); window.scrollTo({top:0}); if(v==='history') loadHistory(); if(v==='more') loadMore(); if(v==='history'&&deviceKind==='charts') loadCharts(); }
@@ -983,38 +1269,94 @@ function histItem(kind, it){
   }
   var end = kind==='trip' ? (kwh?kwh.toFixed(1)+' кВт·ч':'—') : (('₽'+(it.wn!=null?'':'')));
   var endHtml = kind==='trip' ? '<b>'+(kwh?kwh.toFixed(1):'—')+' кВт·ч</b>' : '<b>'+(kwh?kwh.toFixed(1):'—')+' кВт·ч</b>';
-  return '<div class="hist-item '+kind+'" data-ts0="'+(it.s||0)+'" data-ts1="'+(it.e||it.s||0)+'" onclick="toggleSessionChart(this)" style="cursor:pointer"><div class="ic">'+(kind==='trip'
+  return '<div class="hist-item '+kind+'" data-kind="'+kind+'" data-ts0="'+(it.s||0)+'" data-ts1="'+(it.e||it.s||0)+'" data-s0="'+(it.s0!=null?it.s0:'')+'" data-s1="'+(it.s1!=null?it.s1:'')+'" data-dur="'+(it.d||0)+'" data-wh="'+(it.w||0)+'" onclick="toggleSessionChart(this)" style="cursor:pointer"><div class="ic">'+(kind==='trip'
     ?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3.5 18.5l5.6-5.6 3.5 3.5L20.5 8V16h-2v-5.5L9.6 17.4l-3.5-3.5L4 16.1l-.5 2.4zM2 20h20v2H2z"/></svg>'
     :'<svg viewBox="0 0 25 25" fill="currentColor"><path d="M14.65 2.17a1.13 1.13 0 00-2.25 0l-.01 4.13h2.25l.01-4.13zM5.63 2.17a1.13 1.13 0 00-2.25 0l-.01 4.13h2.26l0-4.13zm11.65 5.64H.75A.75.75 0 000 8.56v.75c0 .42.34.75.75.75H1.5v3a7.5 7.5 0 006.39 7.4v7.62h2.25V20.46a7.5 7.5 0 006.39-7.4v-3h.75a.75.75 0 00.75-.75v-.75a.75.75 0 00-.75-.75zm-3 5.26a5.26 5.26 0 01-10.52 0v-3h10.52v3z"/></svg>')
     +'</div><div class="mid"><div class="tt">'+esc(title)+'</div><div class="ss">'+esc(sub)+'</div></div><div class="end">'+endHtml+'</div>'+
     '<div class="session-chart" style="display:none;flex-basis:100%;width:100%;padding-top:8px"></div></div>';
 }
 /* график конкретной сессии: /api/samples от начала до конца */
+var sessionKeyState = {};
 function toggleSessionChart(item){
   var box=item.querySelector('.session-chart');
   if(!box) return;
   var open=box.style.display!=='none';
   box.style.display=open?'none':'';
-  if(open || box.dataset.loaded==='1'){ if(!open) box.dataset.loaded=''; return; }
+  if(open){ box.dataset.loaded=''; return; }
+  var kind=item.dataset.kind||'trip';
   var s=parseInt(item.dataset.ts0,10), e=parseInt(item.dataset.ts1,10);
   if(!s||!e||e<=s){ box.innerHTML='<div class="empty">Нет интервала</div>'; return; }
+  box.dataset.loaded='1';
+  var keys = kind==='trip' ? ['kw','spd','soc','batt'] : ['kw','batt','soc'];
+  var stKey = 'sess_'+kind;
+  if(!sessionKeyState[stKey]){
+    sessionKeyState[stKey] = kind==='trip'
+      ? { kw:true, spd:false, soc:true, batt:false }
+      : { kw:true, batt:false, soc:true };
+  }
+  var state=sessionKeyState[stKey];
   var dev=(LAST&&LAST.device_id)?LAST.device_id:'';
   box.innerHTML='<div class="empty">Загрузка графика…</div>';
   fetch('/api/samples?device='+dev+'&from='+s+'&to='+e,{credentials:'same-origin',signal:fetchTimeout(15000)})
     .then(function(r){return r.ok?r.json():null;})
     .then(function(j){
       var pts=(j&&j.points)||[];
-      box.dataset.loaded='1';
-      if(pts.length<3){ box.innerHTML='<div class="empty">Точек телеметрии за эту сессию нет</div>'; return; }
-      var pw=document.createElement('div'), sc=document.createElement('div');
-      box.appendChild(pw); box.appendChild(sc);
-      var okP=drawChart(pw, pts, 'kw', '#0a84c1', true, '', 1);
-      var okS=drawChart(sc, pts, 'soc', '#19b8a6', false, '', 0);
-      var lab=document.createElement('div');
-      lab.style.cssText='font-size:11px;color:var(--muted);margin-top:4px';
-      lab.textContent=(okP?'синяя — мощность, кВт · ':'')+(okS?'зелёная — заряд, %':'');
-      box.appendChild(lab);
-      if(!okP&&!okS) box.innerHTML='<div class="empty">Точек телеметрии за эту сессию нет</div>';
+      var series={ kw:[], spd:[], batt:[], soc:[] };
+      pts.forEach(function(p){
+        var ts=Number(p.ts)||0;
+        if(p.kw!=null) series.kw.push([ts, kind==='charge'?Math.abs(Number(p.kw)):Number(p.kw)]);
+        if(p.spd!=null) series.spd.push([ts,Number(p.spd)]);
+        if(p.batt!=null && Number(p.batt)>-50) series.batt.push([ts,Number(p.batt)]);
+        if(p.soc!=null) series.soc.push([ts,Number(p.soc)]);
+      });
+      var fallbackNote='';
+      if(!pts.length && kind==='charge'){
+        var s0=Number(item.dataset.s0), s1=Number(item.dataset.s1), dur=Number(item.dataset.dur)||(e-s), wh=Number(item.dataset.w);
+        if(isFinite(s0)&&isFinite(s1)&&s0>=0&&s1>s0&&dur>0){
+          var nn=24;
+          for(var ii=0;ii<nn;ii++) series.soc.push([Math.round(s+dur*ii/(nn-1)), s0+(s1-s0)*ii/(nn-1)]);
+          var mins=Math.round(dur/60);
+          var durTxt=mins>=90?(Math.floor(mins/60)+' ч '+(mins%60)+' мин'):mins+' мин';
+          fallbackNote='Телеметрии за эту зарядку нет — сводка: '+fmtC(s0,0)+'% → '+fmtC(s1,0)+'%'+
+            (isFinite(wh)&&wh>0 ? ', '+fmtC(wh/1000,2)+' кВт·ч за '+durTxt : '');
+        }
+      }
+      var chips='<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">'+
+        keys.map(function(k){
+          var on=state[k], has=series[k].length;
+          return '<button type="button" data-k="'+k+'"'+(has?'':' disabled title="нет данных" style="opacity:.45"')+' class="pill'+(on?' on':'')+'" style="padding:6px 12px;font-size:12px">'+CHART_LABELS[k]+'</button>';
+        }).join('')+'</div><div class="lc-chart"></div>';
+      box.innerHTML='<div style="border-top:1px solid var(--line);margin-top:8px;padding-top:8px">'+chips+
+        (fallbackNote?'<div style="font-size:11px;color:var(--muted);margin-bottom:6px">'+esc(fallbackNote)+'</div>':'')+'</div>';
+      function draw(){
+        var el=box.querySelector('.lc-chart');
+        var sel=keys.filter(function(k){ return state[k] && series[k].length; });
+        if(!sel.length){ el.innerHTML='<div class="empty">Нет телеметрии за эту сессию</div>'; return; }
+        classicChart(el, sel.map(function(k){
+          return { key:k, show:true, points:series[k], color:CHART_COLORS[k] };
+        }), { minSpan:2, from:s, to:e });
+        el.insertAdjacentHTML('beforeend',
+          '<div style="display:flex;gap:12px;font-size:11px;color:var(--muted);margin-top:4px">'+
+          sel.map(function(k){ return '<span><i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:'+CHART_COLORS[k]+';margin-right:4px"></i>'+CHART_UNITS[k]+'</span>'; }).join('') + '</div>');
+      }
+      box.querySelectorAll('[data-k]').forEach(function(btn){
+        btn.onclick=function(ev){ ev.stopPropagation();
+          var k=btn.dataset.k;
+          if(!series[k].length) return;
+          state[k]=!state[k];
+          btn.classList.toggle('on',state[k]);
+          draw();
+        };
+      });
+      draw();
+      if(window.ResizeObserver){
+        var lastW=0;
+        var ro=new ResizeObserver(function(){
+          var w=(box.querySelector('.lc-chart')||{}).clientWidth||0;
+          if(w && Math.abs(w-lastW)>8){ lastW=w; draw(); }
+        });
+        ro.observe(box);
+      }
     })
     .catch(function(){ box.innerHTML='<div class="empty">Не удалось загрузить</div>'; });
 }
@@ -1100,14 +1442,28 @@ function loadMore(){
   loadTariffs();
 }
 /* активные расписания: один рендер для «Ещё» и для «Управления» */
+function countdown(at){
+  var s=Math.round(at-Date.now()/1000);
+  if(s<=0) return 'уже прогревается';
+  var h=Math.floor(s/3600), m=Math.round((s%3600)/60);
+  return h>0 ? 'через '+h+' ч '+m+' мин' : 'через '+m+' мин';
+}
+function tickCountdowns(){
+  document.querySelectorAll('[data-at]').forEach(function(el){
+    el.textContent=countdown(parseInt(el.dataset.at,10));
+  });
+}
+setInterval(tickCountdowns, 30000);
 function loadSchedules(containerId){
   fetch('/api/sched',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;}).then(function(j){
     var list=(j&&j.schedules||[]).filter(function(s){return s.status==='waiting';});
     var g=$(containerId); if(!g) return;
     g.innerHTML = list.length? list.map(function(s){
       var d=new Date(s.at_ts*1000);
-      return '<div class="gi"><div class="ic gray"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></div>'+
-        '<div class="tx"><b>Климат '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2)+'</b><small>'+d.toLocaleDateString('ru-RU')+' · '+((s.args&&JSON.parse(s.args).minutes)||'?')+' мин</small></div>'+
+      var mins=((s.args&&JSON.parse(s.args).minutes)||'?');
+      return '<div class="gi" style="border-bottom:1px solid var(--line)">'+
+        '<div class="tx"><b>Климат '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2)+'</b>'+
+        '<small><span data-at="'+s.at_ts+'">'+countdown(s.at_ts)+'</span> · '+mins+' мин · '+d.toLocaleDateString('ru-RU')+'</small></div>'+
         '<button class="pill" data-cancel="'+s.id+'">Отменить</button></div>';
     }).join('') : '<div class="gi"><div class="tx"><small style="font-size:13px">Активных расписаний нет</small></div></div>';
     g.querySelectorAll('[data-cancel]').forEach(function(b){
@@ -1117,6 +1473,7 @@ function loadSchedules(containerId){
           .then(function(j){ toast(j&&j.ok?'Расписание отменено':'Не удалось отменить'); refreshSchedules(); });
       };
     });
+    tickCountdowns();
   }).catch(function(){});
 }
 function refreshSchedules(){ loadSchedules('sched-group'); loadSchedules('control-sched-list'); }
@@ -1242,42 +1599,12 @@ function renderDemoHistory(){
 
 /* ---------- графики (только сервер) ---------- */
 var chartRangeH = 24;
-function drawChart(container, points, key, color, fill, unit, digits, scaleMax){
-  var W = Math.max(280, (container.clientWidth||360));
-  var H = 150, padL = 34, padB = 16, padT = 8;
-  var vals = points.map(function(p){ return p[key]; }).filter(function(v){ return v!=null && isFinite(v); });
-  if (!vals.length){ return false; }
-  var max = scaleMax || Math.max.apply(null, vals.concat([0.1]));
-  var min = Math.min.apply(null, vals.concat([0]));
-  if (min > 0) min = 0;
-  var span = (max - min) || 1;
-  var t0 = points[0].ts, t1 = points[points.length-1].ts || (t0+1);
-  var X = function(ts){ return padL + (ts - t0) / (t1 - t0) * (W - padL - 6); };
-  var Y = function(v){ return padT + (1 - (v - min) / span) * (H - padT - padB); };
-  var svg = '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block">';
-  svg += '<line x1="'+padL+'" y1="'+(H-padB)+'" x2="'+(W-6)+'" y2="'+(H-padB)+'" stroke="var(--line)"/>';
-  svg += '<text x="2" y="'+(Y(max)+4)+'" font-size="9" fill="var(--muted)">'+max.toFixed(digits).replace('.',',')+'</text>';
-  svg += '<text x="2" y="'+(H-padB)+'" font-size="9" fill="var(--muted)">0</text>';
-  var path = '', area = '', started = false, firstX = 0, lastX = 0;
-  points.forEach(function(p){
-    if (p[key]==null || !isFinite(p[key])) return;
-    var x = X(p.ts).toFixed(1), y = Y(p[key]).toFixed(1);
-    if (!started){ path = 'M'+x+' '+y; area = 'M'+x+' '+(H-padB)+' L'+x+' '+y; started=true; firstX=+x; }
-    else { path += ' L'+x+' '+y; area += ' L'+x+' '+y; }
-    lastX = +x;
-  });
-  if (!started){ return false; }
-  area += ' L'+lastX+' '+(H-padB)+' Z';
-  if (fill) svg += '<path d="'+area+'" fill="'+color+'" opacity="0.14"/>';
-  svg += '<path d="'+path+'" fill="none" stroke="'+color+'" stroke-width="1.8" stroke-linejoin="round"/>';
-  svg += '<text x="'+padL+'" y="'+(H-3)+'" font-size="9" fill="var(--muted)">'+new Date(t0*1000).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})+'</text>';
-  svg += '<text x="'+(W-6)+'" y="'+(H-3)+'" font-size="9" fill="var(--muted)" text-anchor="end">'+new Date(t1*1000).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})+'</text>';
-  svg += '</svg>';
-  container.innerHTML = svg;
-  return true;
-}
+var chartKeys = { kw: true, soc: true, batt: false, spd: false };
+var CHART_COLORS = { kw: 'var(--accent)', spd: '#ff3b30', batt: '#ff9500', soc: '#af52de' };
+var CHART_LABELS = { kw: 'Мощность, кВт', spd: 'Скорость, км/ч', soc: 'Заряд, %', batt: 'Батарея, °C' };
 function loadCharts(){
   if (MODE!=='server'){ return; }
+  renderChartKeys();
   var dev=(LAST&&LAST.device_id)?LAST.device_id:'';
   var to = Math.floor(Date.now()/1000), from = to - chartRangeH*3600;
   var pw=$('chart-power'), sc=$('chart-soc'), em=$('chart-empty');
@@ -1287,13 +1614,39 @@ function loadCharts(){
     .then(function(j){
       var pts=(j&&j.points)||[];
       $('chart-cap').textContent = pts.length+' точек';
-      var okP = drawChart(pw, pts, 'kw', '#0a84c1', true, 'кВт', 1);
-      var okS = drawChart(sc, pts, 'soc', '#19b8a6', false, '%', 0);
-      em.style.display = (okP||okS)?'none':'';
-      if(!okP) pw.innerHTML='';
-      if(!okS) sc.innerHTML='';
+      var series={ kw:[], spd:[], batt:[], soc:[] };
+      pts.forEach(function(p){
+        var ts=Number(p.ts)||0;
+        if(p.kw!=null) series.kw.push([ts,Number(p.kw)]);
+        if(p.spd!=null) series.spd.push([ts,Number(p.spd)]);
+        if(p.batt!=null && Number(p.batt)>-50) series.batt.push([ts,Number(p.batt)]);
+        if(p.soc!=null) series.soc.push([ts,Number(p.soc)]);
+      });
+      var any = series.kw.length||series.soc.length||series.batt.length||series.spd.length;
+      em.style.display = any?'none':'';
+      pw.innerHTML=''; sc.innerHTML='';
+      var mainKeys = ['kw','batt','spd'].filter(function(k){ return chartKeys[k] && series[k].length; });
+      if(mainKeys.length){
+        classicChart(pw, mainKeys.map(function(k){
+          return { key:k, show:true, points:series[k], color:CHART_COLORS[k] };
+        }), { minSpan: 2, from: from, to: to, label: 'кВт / °C / км/ч' });
+      }
+      if(chartKeys.soc && series.soc.length){
+        classicChart(sc, [{ key:'soc', show:true, points:series.soc, color:CHART_COLORS.soc }], { minSpan: 2, from: from, to: to, label: 'SOC %' });
+      }
     })
     .catch(function(){ pw.innerHTML='<div class="empty">Не удалось загрузить</div>'; });
+}
+function renderChartKeys(){
+  var b=$('chart-keys'); if(!b) return;
+  b.innerHTML=['kw','soc','batt','spd'].map(function(k){
+    var on=chartKeys[k];
+    return '<button type="button" data-ck="'+k+'" style="padding:6px 12px;border-radius:14px;border:1px solid '+(on?'transparent':'var(--line)')+
+      ';background:'+(on?'var(--accent)':'var(--surface)')+';color:'+(on?'#fff':'var(--text-2)')+';font-size:12px;font-weight:600">'+CHART_LABELS[k]+'</button>';
+  }).join('');
+  b.querySelectorAll('[data-ck]').forEach(function(btn){
+    btn.onclick=function(){ chartKeys[btn.dataset.ck]=!chartKeys[btn.dataset.ck]; renderChartKeys(); loadCharts(); };
+  });
 }
 document.querySelectorAll('#chart-range button').forEach(function(b){
   b.onclick=function(){

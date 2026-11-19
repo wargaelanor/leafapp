@@ -1947,10 +1947,17 @@ private fun MoreScreen(
         }
         item { SectionTitle("ПРИЛОЖЕНИЕ · ДИЗАЙН") }
         item {
-            MoreRow(Icons.Outlined.Home, "Классический дизайн", "Вернуть прежний интерфейс приложения") {
+            MoreRow(Icons.Outlined.Home, "Классический дизайн", "Переключить и перезапустить экран") {
                 if (Settings.uiDesign != "classic") {
                     Settings.uiDesign = "classic"
-                    (ctx as? android.app.Activity)?.recreate()
+                    val intent = android.content.Intent(ctx, com.leafcontrol.app.MainActivity::class.java)
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
+                                  android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                                  Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    ctx.startActivity(intent)
+                    (ctx as? android.app.Activity)?.finish()
+                } else {
+                    android.widget.Toast.makeText(ctx, "Уже классический дизайн", Toast.LENGTH_SHORT).show()
                 }
             }
         }
