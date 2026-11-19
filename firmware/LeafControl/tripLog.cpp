@@ -443,8 +443,15 @@ void tripLogTick() {
     else if (!chgActive) evStop = 0;
   }
   bool evHolding = chgActive && evStop < 3;
-  bool evCharging = (evChargeRaw && evSeen >= 12) || evHolding;
+  bool evCharging = (evChargeRaw && evSeen >= 3) || evHolding;
   bool charging = isChargingNow || evCharging;
+  // Гистерезис: пропадание одного кадра 0x390 (шлюз дремлет) не рвёт сессию.
+  // 90 с после последнего признака зарядки — безопасно для 12 В и графиков.
+  static uint32_t lastChargingSeenMs = 0;
+  if (charging) lastChargingSeenMs = now;
+  else if (chgActive && now - lastChargingSeenMs < 90000UL) {
+    charging = true;
+  }
   uint32_t epoch = epochNow();
 
   // Wake the CAR-CAN gateway read-only when EV-CAN shows a charge but the

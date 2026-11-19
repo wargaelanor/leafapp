@@ -1,4 +1,4 @@
-#include <WiFi.h>
+﻿#include <WiFi.h>
 #include <WebServer.h>
 #include <DNSServer.h>
 #include <ESPmDNS.h>
@@ -28,7 +28,7 @@
 #define LEAF_FIRMWARE_VERSION "FR-TCall.177"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: OTA-capable partitions (min_spiffs), gz-only UI, wifi from app, tariff sync"
 #else
-#define LEAF_FIRMWARE_VERSION "FR-2can.184"
+#define LEAF_FIRMWARE_VERSION "FR-2can.185"
 #define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: Wi-Fi recovery, bounded EV-CAN drain, telemetry age"
 #endif
 
@@ -51,8 +51,8 @@ static void loopWatchdogTask(void* arg) {
     vTaskDelay(pdMS_TO_TICKS(5000));
     uint32_t now = gLoopBeat;
     if (now == last) {
-      if (++same >= 18) {          // 90 секунд без прогресса
-        Serial.println("### watchdog: loop stalled 90 s, restart ###");
+      if (++same >= 36) {          // 180 секунд без прогресса
+        Serial.println("### watchdog: loop stalled 180 s, restart ###");
         delay(50);
         ESP.restart();
       }
@@ -1167,7 +1167,7 @@ static void loopSupervisorTask(void*) {
       continue;
     }
     uint32_t heartbeat = loopHeartbeatMs;
-    if (heartbeat != 0 && millis() - heartbeat > 60000UL) {
+    if (heartbeat != 0 && millis() - heartbeat > 90000UL) {
       Serial.println("### Supervisor: main loop stalled, rebooting ###");
       recordSoftwareRestart(1);
       delay(100);
@@ -1239,6 +1239,7 @@ void handleOtaUpload() {
   } else if (upload.status == UPLOAD_FILE_WRITE) {
     otaLastProgressMs = millis();
     gLoopBeat++;
+    loopHeartbeatMs = millis();
     if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
       Update.printError(Serial);
     }
@@ -2101,7 +2102,10 @@ static void connectWifiProfile(bool rotateProfile = false) {
   // A weak 5 V rail sags on Wi-Fi peaks (brownout reboot looks like a page
   // reload). 11 dBm is still plenty for a car parked near the house.
   WiFi.setTxPower(WIFI_POWER_11dBm);
-  WiFi.disconnect(false, false);
+  // Рвём ассоциацию только если она реально застряла (не CONNECTED и не в
+  // процессе): иначе мы собственными руками отменяем автопереподключение.
+  wl_status_t st = (wl_status_t)WiFi.status();
+  if (st == WL_CONNECTED || st == WL_IDLE_STATUS) WiFi.disconnect(false, false);
   WiFi.begin(wifiProfileSsid(currentWifiProfile), wifiProfilePassword(currentWifiProfile));
 }
 
@@ -2134,8 +2138,8 @@ void manageWiFi() {
   static uint8_t retryStep = 0;
   // Let a slow WPA/DHCP association finish before disconnecting to try the
   // next profile. Short retries repeatedly tore down a working attempt.
-  static const unsigned long retryBackoffMs[] = {30000, 45000, 60000, 90000};
-  static const unsigned long apClientRetryMs = 90000;
+  static const unsigned long retryBackoffMs[] = {20000, 30000, 45000, 60000};
+  static const unsigned long apClientRetryMs = 60000;
   unsigned long currentTime = millis();
 
   if (WiFi.status() != WL_CONNECTED)
@@ -2189,8 +2193,8 @@ void manageWiFi() {
         // this is a stuck driver state, not weak signal. A full reboot is the
         // only reliable way out, and it is much better than sitting offline
         // until someone power-cycles the car.
-        if (++wifiRadioRestarts >= 3) {
-          Serial.println("WiFi: 3 radio restarts without a link, rebooting");
+        if (++wifiRadioRestarts >= 6) {
+          Serial.println("WiFi: 6 radio restarts without a link, rebooting");
           recordSoftwareRestart(4);
           delay(200);
           ESP.restart();
@@ -2365,7 +2369,7 @@ void setup() {
       }
       Serial.printf("AP status=%d SSID=%s IP=%s\n", (int)WiFi.softAPgetStationNum(),
                     getApSSID(), WiFi.softAPIP().toString().c_str());
-      WiFi.setAutoReconnect(false);
+      WiFi.setAutoReconnect(true);
       connectWifiProfile();
       WiFi.setSleep(false);
       wifiEnabled = true;
@@ -2378,12 +2382,12 @@ void setup() {
         WiFi.mode(WIFI_AP_STA);
         WiFi.setSleep(false);
         WiFi.softAP("LeafControl-Setup");
-        WiFi.setAutoReconnect(false);
+        WiFi.setAutoReconnect(true);
         connectWifiProfile();
         WiFi.setSleep(false);
       } else {
         WiFi.mode(WIFI_STA);
-        WiFi.setAutoReconnect(false);
+        WiFi.setAutoReconnect(true);
         connectWifiProfile();
         WiFi.setSleep(false);
       }

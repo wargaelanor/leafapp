@@ -4,13 +4,15 @@ Mirrors the output format of tools/mkwebapp.ps1 (INDEX_HTML rawliteral +
 gzip + LITE + SETUP + LEAF_IMG + WEBAPP_ASSETS), but embeds the new design
 and only the assets it actually references (no fonts).
 """
-import base64, gzip, os, re
+import base64, gzip, os, re, sys
 
 ROOT = r'D:\OpenCode_projeck\OVMS\leafapp'
 SRC_HTML = os.path.join(ROOT, 'server', 'web', 'new.html')
 LITE = os.path.join(ROOT, 'lite.html')
 SETUP = os.path.join(ROOT, 'setup.html')
-OUT = r'D:\OpenCode_projeck\OVMS\leafapp\firmware\LeafControl\webapp_html_new.h'
+BOARD = 'tcall' if (len(sys.argv) > 2 and sys.argv[1] == '-Board' and sys.argv[2] == 'tcall') else 't2can'
+OUT = os.path.join(ROOT, 'firmware', 'LeafControl',
+                   'webapp_html_new.h' if BOARD == 't2can' else 'webapp_html_new_tcall.h')
 
 html = open(SRC_HTML, encoding='utf-8').read()
 # Убираем переключатель «Классический интерфейс»? Нужен: ведёт на / (старую прошивку
@@ -60,14 +62,18 @@ assets = [
     ('logo-mark-dark.png', 'image/png'),
 ]
 sb = []
-sb.append('// GENERATED FILE - new UI. Source: server/web/new.html')
+sb.append('// GENERATED FILE - new UI (' + BOARD + '). Source: server/web/new.html')
 sb.append('#ifndef WEBAPP_HTML_H')
 sb.append('#define WEBAPP_HTML_H')
 sb.append('#include <Arduino.h>')
 sb.append('')
-sb.append('static const char INDEX_HTML[] PROGMEM = R"rawliteral(')
-sb.append(html)
-sb.append(')rawliteral";')
+if BOARD == 'tcall':
+    sb.append('#define WEBAPP_GZ_ONLY 1')
+    sb.append('static const char INDEX_HTML[] PROGMEM = "";')
+else:
+    sb.append('static const char INDEX_HTML[] PROGMEM = R"rawliteral(')
+    sb.append(html)
+    sb.append(')rawliteral";')
 sb.append('static const unsigned char INDEX_HTML_GZ[] PROGMEM = {' + gz + '};')
 sb.append('static const size_t INDEX_HTML_GZ_LEN = %d;' % gz_len)
 sb.append('static const char LITE_HTML[] PROGMEM = R"rawliteral(')
@@ -81,23 +87,44 @@ sb.append('static const size_t LEAF_IMG_LEN = %d;' % len(img))
 sb.append('static const char LEAF_IMG_TYPE[] PROGMEM = "image/png";')
 sb.append('')
 entries = []
-for name, typ in assets:
-    p = os.path.join(ROOT, name)
-    if not os.path.isfile(p):
-        print('WARN missing asset', name)
-        continue
-    data = open(p, 'rb').read()
-    var = re.sub(r'[^A-Za-z0-9]', '_', name).upper()
-    h = []
-    for i, b in enumerate(data):
-        if i % 16 == 0:
-            h.append('\n  ')
-        else:
-            h.append(' ')
-        h.append('0x%02x,' % b)
-    sb.append('static const unsigned char %s[] PROGMEM = {%s};' % (var, ''.join(h)))
-    entries.append('  {"/%s", %s, sizeof(%s), "%s"},' % (name, var, var, typ))
-    print('asset', name, len(data))
+if BOARD == 't2can':
+    for name, typ in assets:
+        p = os.path.join(ROOT, name)
+        if not os.path.isfile(p):
+            print('WARN missing asset', name)
+            continue
+        data = open(p, 'rb').read()
+        var = re.sub(r'[^A-Za-z0-9]', '_', name).upper()
+        h = []
+        for i, b in enumerate(data):
+            if i % 16 == 0:
+                h.append('\n  ')
+            else:
+                h.append(' ')
+            h.append('0x%02x,' % b)
+        sb.append('static const unsigned char %s[] PROGMEM = {%s};' % (var, ''.join(h)))
+        entries.append('  {"/%s", %s, sizeof(%s), "%s"},' % (name, var, var, typ))
+        print('asset', name, len(data))
+else:
+    # T-Call (4 МБ, два OTA-слота): только логотипы — overlays страницы
+    # подгрузятся с сети или спрячутся через onerror.
+    for name, typ in [('logo-mark-light.png', 'image/png'), ('logo-mark-dark.png', 'image/png')]:
+        p = os.path.join(ROOT, name)
+        if not os.path.isfile(p):
+            print('WARN missing asset', name)
+            continue
+        data = open(p, 'rb').read()
+        var = re.sub(r'[^A-Za-z0-9]', '_', name).upper()
+        h = []
+        for i, b in enumerate(data):
+            if i % 16 == 0:
+                h.append('\n  ')
+            else:
+                h.append(' ')
+            h.append('0x%02x,' % b)
+        sb.append('static const unsigned char %s[] PROGMEM = {%s};' % (var, ''.join(h)))
+        entries.append('  {"/%s", %s, sizeof(%s), "%s"},' % (name, var, var, typ))
+        print('asset', name, len(data))
 sb.append('struct WebAppAsset { const char* path; const unsigned char* data; size_t len; const char* type; };')
 sb.append('static const WebAppAsset WEBAPP_ASSETS[] = {')
 sb.extend(entries)
