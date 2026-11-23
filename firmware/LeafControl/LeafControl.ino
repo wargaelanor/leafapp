@@ -28,8 +28,8 @@
 #define LEAF_FIRMWARE_VERSION "FR-TCall.177"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: OTA-capable partitions (min_spiffs), gz-only UI, wifi from app, tariff sync"
 #else
-#define LEAF_FIRMWARE_VERSION "FR-2can.185"
-#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: Wi-Fi recovery, bounded EV-CAN drain, telemetry age"
+#define LEAF_FIRMWARE_VERSION "FR-2can.200"
+#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: TLS-fallback, mDNS retry, APN presets"
 #endif
 
 // Доступ к версии из других модулей (serverApi.cpp).
@@ -106,6 +106,8 @@ static uint8_t wifiRadioRestarts = 0;
 // mDNS/NBNS state. They are also useful on the board's own access point, where
 // there is no STA link at all, so they are started once the radio is up.
 static bool mdnsUp = false;
+// Last mDNS start attempt (used for the retry backoff in manageWiFi).
+static unsigned long mdnsRetryMs = 0;
 // Milliseconds since the STA link went down (0 while connected). Reported as
 // wifi_down_s so a "board alive but unreachable" state is visible at a glance.
 static unsigned long wifiStaDownSinceMs = 0;
@@ -132,19 +134,59 @@ static void startSoftAp() {
                 WiFi.softAPIP().toString().c_str());
 }
 
+// The host name comes from a free-text settings field, but mDNS needs a single
+// valid DNS label: lowercase letters, digits and dashes. Anything else (space,
+// dot, underscore, Cyrillic) makes mdns_hostname_set() fail, and then the board
+// has no name at all. Sanitize instead of failing.
+static void mdnsSafeHost(char* out, size_t len) {
+  const char* in = getHostName();
+  size_t o = 0;
+  for (; *in && o + 2 < len; in++) {
+    char c = *in;
+    if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+    if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') {
+      out[o++] = c;
+    } else if (o > 0 && out[o - 1] != '-') {
+      out[o++] = '-';
+    }
+  }
+  while (o > 0 && out[o - 1] == '-') o--;
+  if (o == 0) { memcpy(out, "leaf", 4); o = 4; }
+  out[o] = 0;
+}
+
 // Serve leaf.local over whichever interface is up. ESPmDNS answers on the AP
 // interface too, so connecting straight to the board's access point works
 // without knowing its IP. Idempotent: safe to call from several places.
+//
+// mdns_init() fails with "already initialized" once the responder was started,
+// and mdns_free() does not always release the sockets immediately. A failed
+// (re)bind therefore used to leave the board without a name until the next
+// reboot — the very reason leaf.local stopped working. Now every failure is
+// recorded and retried from manageWiFi().
 static void startMdnsServices() {
   if (mdnsUp) return;
-  if (!MDNS.begin(getHostName())) {
-    Serial.println("Error starting mDNS service!");
-    return;
+  char host[64];
+  mdnsSafeHost(host, sizeof(host));
+  if (!MDNS.begin(host)) {
+    // Force a clean state once: a half-initialised responder never recovers.
+    MDNS.end();
+    if (!MDNS.begin(host)) {
+      mdnsRetryMs = millis();
+      Serial.println("Error starting mDNS service! (will retry)");
+      return;
+    }
   }
+  // Announce the same name as instance too: Windows and Avahi list the
+  // instance, and the stale "esp32-xxxx" name is what users picked before.
+  MDNS.setInstanceName(host);
   MDNS.addService("http", "tcp", 80);
+  MDNS.addServiceTxt("http", "tcp", "path", "/");
   mdnsUp = true;
-  Serial.println("mDNS service started.");
-  if (!NBNS.begin(getHostName())) {
+  Serial.printf("mDNS service started: %s.local (%s)\n", host,
+                WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString().c_str()
+                                              : WiFi.softAPIP().toString().c_str());
+  if (!NBNS.begin(host)) {
     Serial.println("Error starting NBNS service!");
   } else {
     Serial.println("NBNS service started.");
@@ -1383,6 +1425,12 @@ void handleSettingsSave() {
   String m800Apn = server.arg("modem800_apn");
   m800Apn.trim();
   setModem800Apn(m800Apn.c_str());
+  // Выбор готового APN: у Tele2 логина и пароля нет, поэтому выбранный пресет
+  // должен стирать сохранённые значения, а не оставлять их от прежнего оператора.
+  if (server.hasArg("modem800_preset") && server.arg("modem800_preset").length() > 0) {
+    setModem800User("");
+    setModem800Pass("");
+  }
   String m800User = server.arg("modem800_user");
   m800User.trim();
   if (m800User.length() > 0) setModem800User(m800User.c_str());
@@ -2114,6 +2162,11 @@ void manageWiFi() {
   bool staEnabled = wifiStaEnabled();
   static bool wifiAvailable = false;
 
+  // mDNS is kept alive across link changes, but a single failed (re)bind must
+  // not leave the board nameless until the next reboot: retry every 10 s while
+  // the responder is down. This is what makes leaf.local recover on its own.
+  if (!mdnsUp && millis() - mdnsRetryMs > 10000UL) startMdnsServices();
+
   if (!staEnabled) {
     // AP-only mode, no STA connection to manage
     if (!wifiAvailable) {
@@ -2244,6 +2297,8 @@ void manageWiFi() {
     }
 
     // Rebind mDNS so the freshly connected STA interface is included too.
+    // If the rebind fails, startMdnsServices() records the attempt and
+    // manageWiFi() retries instead of leaving the board unreachable by name.
     if (mdnsUp) stopMdnsServices();
     startMdnsServices();
 

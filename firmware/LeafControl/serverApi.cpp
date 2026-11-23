@@ -5,6 +5,10 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <esp_mac.h>
+#include <WiFiUdp.h>
+#include <lwip/netdb.h>
+#include <lwip/inet.h>
+#include <lwip/dns.h>
 
 #include "canLeafZE1.h"
 #include "evCanLeaf.h"
@@ -43,6 +47,11 @@ static char cfgBase[96] = LEAF_SERVER_BASE;
 static char cfgLogin[24] = {0};
 static char cfgPass[20] = {0};
 static char cfgToken[64] = {0};
+// Рабочий A-адрес сервера: у имени два адреса, и один из них отдаёт 410 Gone
+// (веб-морда Keenetic). Храним в NVS, чтобы после перезагрузки сразу идти
+// проверенным путём и не тратить дефицитную память на перебор.
+static IPAddress goodIp;
+static bool haveGoodIp = false;
 static char claimCode[24] = {0};
 static bool cfgEnabled = true;
 static volatile bool configDirty = false;
@@ -71,7 +80,7 @@ static uint32_t busAgeSeconds() {
 }
 
 // РѕС‡РµСЂРµРґСЊ Р·Р°РїРёСЃРµР№ РїРѕРµР·РґРѕРє/Р·Р°СЂСЏРґРѕРє
-static const int REC_QUEUE = 48;
+static const int REC_QUEUE = 24;   // 24*220 байт статики: heap и так в обрез
 static char recQueue[REC_QUEUE][220];
 static char recKind[REC_QUEUE][8];
 static int recHead = 0, recTail = 0, recCount = 0;
@@ -123,6 +132,16 @@ static void loadConfig() {
   snprintf(cfgLogin, sizeof(cfgLogin), "%s", login.c_str());
   snprintf(cfgPass, sizeof(cfgPass), "%s", pass.c_str());
   snprintf(cfgToken, sizeof(cfgToken), "%s", token.c_str());
+
+  String srvIp = prefs.getString("srvip", "");
+  if (srvIp.length() > 0) {
+    IPAddress ip;
+    if (ip.fromString(srvIp)) {
+      goodIp = ip;
+      haveGoodIp = true;
+      Serial.printf("[srv] рабочий адрес сервера: %s\n", srvIp.c_str());
+    }
+  }
 }
 
 static void saveToken(const char* token) {
@@ -169,7 +188,127 @@ static bool splitUrl(const char* url, String& host, uint16_t& port, String& path
 // а ручной обмен показывает точную причину обрыва.
 static int tlsVerifyFails = 0;          // подряд идущих X509-неудач
 static const int TLS_FAIL_LIMIT = 3;    // после 3 подряд — fallback на setInsecure
-static unsigned long tlsFallbackTurn = 0;
+
+// Имя leaf.wargaelanor.keenetic.link резолвится в два адреса (Keenetic DyDNS),
+// и один из них отдаёт сертификат на *.keenetic.link: проверка имени там падает
+// всегда, и плата оставалась без связи до перезагрузки. Поэтому после серии
+// X509-неудач переходим на работу без проверки цепочки и держим этот режим,
+// пока связь не восстановится проверенным соединением.
+static bool tlsVerifyEnabled() { return tlsVerifyFails < TLS_FAIL_LIMIT; }
+
+static void tlsConfigure(WiFiClientSecure& secure) {
+  if (tlsVerifyEnabled()) secure.setCACert(SERVER_CA_PEM);
+  else secure.setInsecure();  // fallback: сертификат сервера не сходится с именем
+}
+
+static void tlsNoteFailure(WiFiClientSecure& secure) {
+  char err[80] = {0};
+  secure.lastError(err, sizeof(err));
+  // Считаем любые подряд идущие неудачи, а не только X509: при нехватке heap
+  // mbedTLS отдаёт "Generic error", но лечится это тем же отключением проверки
+  // (парсинг цепочки из трёх CA — самая дорогая часть рукопожатия).
+  if (tlsVerifyFails < 100) tlsVerifyFails++;
+  Serial.printf("[srv] tls: соединение не установлено (%d/%d): %s\n",
+                tlsVerifyFails, TLS_FAIL_LIMIT, err);
+}
+
+static void tlsNoteSuccess(bool usedVerification) {
+  // Успех без проверки ничего не доказывает: остаёмся в fallback-режиме.
+  if (usedVerification) tlsVerifyFails = 0;
+}
+
+// lwIP отдаёт по имени только один A-адрес, а у Keenetic DyDNS их два: релей
+// (отвечает API) и домашний роутер (на :443 отдаёт 410 Gone). Поэтому спрашиваем
+// DNS сами и получаем полный список.
+static int dnsQueryA(const String& host, IPAddress out[], int maxN) {
+  IPAddress dnsIp = WiFi.dnsIP(0);
+  if ((uint32_t)dnsIp == 0) return 0;
+
+  uint8_t q[256];
+  size_t p = 0;
+  q[p++] = 0x4C; q[p++] = 0x46;          // ID
+  q[p++] = 0x01; q[p++] = 0x00;          // флаги: обычный запрос
+  q[p++] = 0x00; q[p++] = 0x01;          // QDCOUNT
+  for (int i = 0; i < 6; i++) q[p++] = 0x00;  // AN/NS/AR counts
+  const char* s = host.c_str();
+  while (*s) {
+    const char* dot = strchr(s, '.');
+    size_t len = dot ? (size_t)(dot - s) : strlen(s);
+    if (len == 0 || len > 63 || p + len + 2 >= sizeof(q)) return 0;
+    q[p++] = (uint8_t)len;
+    memcpy(q + p, s, len);
+    p += len;
+    if (!dot) break;
+    s = dot + 1;
+  }
+  q[p++] = 0x00;                         // конец имени
+  q[p++] = 0x00; q[p++] = 0x01;          // QTYPE = A
+  q[p++] = 0x00; q[p++] = 0x01;          // QCLASS = IN
+
+  WiFiUDP udp;
+  if (!udp.begin(0)) return 0;
+  udp.beginPacket(dnsIp, 53);
+  udp.write(q, p);
+  udp.endPacket();
+
+  int n = 0;
+  unsigned long deadline = millis() + 2500;
+  while (millis() < deadline && n == 0) {
+    int sz = udp.parsePacket();
+    if (sz < 12) { delay(10); continue; }
+    uint8_t r[512];
+    int rl = udp.read(r, sizeof(r));
+    if (rl < 12) continue;
+    int qd = (r[4] << 8) | r[5];
+    int an = (r[6] << 8) | r[7];
+    int i = 12;
+    for (int k = 0; k < qd && i < rl; k++) {     // пропускаем вопросы
+      while (i < rl && r[i] != 0) {
+        if ((r[i] & 0xC0) == 0xC0) { i++; break; }
+        i += r[i] + 1;
+      }
+      i += 5;                                    // 0x00 + QTYPE + QCLASS
+    }
+    for (int k = 0; k < an && i + 10 < rl; k++) {
+      if ((r[i] & 0xC0) == 0xC0) i += 2;         // сжатое имя
+      else { while (i < rl && r[i] != 0) i += r[i] + 1; i++; }
+      if (i + 10 > rl) break;
+      uint16_t type = (r[i] << 8) | r[i + 1];
+      uint16_t rdlen = (r[i + 8] << 8) | r[i + 9];
+      i += 10;
+      if (type == 1 && rdlen == 4 && i + 4 <= rl && n < maxN) {
+        IPAddress ip(r[i], r[i + 1], r[i + 2], r[i + 3]);
+        if ((uint32_t)ip != 0) out[n++] = ip;
+      }
+      i += rdlen;
+    }
+  }
+  udp.stop();
+  return n;
+}
+
+static int resolveAll(const String& host, IPAddress out[], int maxN) {
+  struct addrinfo hints;
+  memset(&hints, 0, sizeof(hints));
+  hints.ai_family = AF_INET;
+  hints.ai_socktype = SOCK_STREAM;
+  struct addrinfo* res = nullptr;
+  if (getaddrinfo(host.c_str(), "443", &hints, &res) != 0 || !res) return 0;
+  int n = 0;
+  for (struct addrinfo* p = res; p && n < maxN; p = p->ai_next) {
+    const struct sockaddr_in* sa = (const struct sockaddr_in*)p->ai_addr;
+    if (!sa) continue;
+    IPAddress ip((uint32_t)sa->sin_addr.s_addr);
+    bool dup = false;
+    for (int i = 0; i < n; i++) if (out[i] == ip) dup = true;
+    if (!dup) out[n++] = ip;
+  }
+  freeaddrinfo(res);
+  return n;
+}
+
+static int plainByIp(const String& host, const IPAddress& ip, const String& req,
+                     String& response);
 
 static int request(const char* method, const String& pathAndQuery, const char* body,
                    String& response, unsigned long timeoutMs = 8000) {
@@ -180,12 +319,10 @@ static int request(const char* method, const String& pathAndQuery, const char* b
   WiFiClientSecure secure;
   WiFiClient plain;
   Client* cli = nullptr;
+  bool verify = false;
   if (tls) {
-    if (tlsVerifyFails >= TLS_FAIL_LIMIT && (tlsFallbackTurn % TLS_FAIL_LIMIT) != 0) {
-      secure.setInsecure();  // fallback: chain сменилась, CA вшит устарел
-    } else {
-      secure.setCACert(SERVER_CA_PEM);
-    }
+    verify = tlsVerifyEnabled();
+    tlsConfigure(secure);
     secure.setTimeout(6000);
     secure.setHandshakeTimeout(8);
     cli = &secure;
@@ -194,25 +331,10 @@ static int request(const char* method, const String& pathAndQuery, const char* b
     cli = &plain;
   }
 
-  unsigned long t0 = millis();
-  bool connected = false;
-  for (int attempt = 0; attempt < 1 && !connected; attempt++) {
-    connected = (cli->connect(host.c_str(), port) == 1);
-    if (!connected) {
-      cli->stop();
-      delay(400);
-    }
-  }
-  if (!connected) {
-    char err[80] = {0};
-    if (tls) secure.lastError(err, sizeof(err));
-    Serial.printf("[srv] connect fail %s:%u heap=%u tls=%d err=%s\n",
-                  host.c_str(), port, (unsigned)ESP.getFreeHeap(), tls ? 1 : 0, err);
-    return -2;
-  }
-
   String path = pathAndQuery.startsWith("/") ? pathAndQuery : ("/" + pathAndQuery);
-  String req = String(method) + " " + path + " HTTP/1.1\r\n";
+  String req;
+  req.reserve(420);
+  req += String(method) + " " + path + " HTTP/1.1\r\n";
   req += "Host: " + host + "\r\n";
   req += "User-Agent: LeafControl\r\n";
   req += "Accept: application/json\r\n";
@@ -225,45 +347,162 @@ static int request(const char* method, const String& pathAndQuery, const char* b
   } else {
     req += "Content-Length: 0\r\n\r\n";
   }
-  cli->print(req);
-  cli->flush();
 
-  response = "";
-  // A proxy error page can be much larger than the JSON reply we expect.
-  // The old inner-loop break still let the outer loop append for six seconds,
-  // exhausting the ESP32 heap on a long/chunked response.
-  response.reserve(1024);
-  static const size_t MAX_RESPONSE_BYTES = 8192;
-  bool truncated = false;
-  unsigned long deadline = millis() + 6000;
-  while (millis() < deadline) {
-    while (cli->available()) {
-      int ch = cli->read();
-      if (response.length() < MAX_RESPONSE_BYTES) response += (char)ch;
-      else { truncated = true; break; }
+  unsigned long t0 = millis();
+  static const size_t MAX_RESPONSE_BYTES = 4096;
+
+  // Один обмен с конкретным адресом (byIp) или по имени хоста.
+  // altHost позволяет обратиться к тому же серверу под вариантом имени —
+  // так обходим кэш DNS, который в lwIP хранит только один A-адрес.
+  // Возвращает HTTP-код, -2 при отказе соединения, -4 при слишком большом ответе.
+  auto exchange = [&](bool byIp, const IPAddress& ip, const char* altHost) -> int {
+    cli->stop();
+    if (tls) {
+      if (byIp) secure.setInsecure();   // по IP имя не проверить
+      else tlsConfigure(secure);
+      // mbedTLS с тремя CA и полными буферами просит ~45 КБ. Когда heap ниже,
+      // проверку цепочки отключаем: разбор трёх сертификатов — самая дорогая
+      // часть рукопожатия, а без неё плата хотя бы не молчит.
+      if (ESP.getFreeHeap() < 62000) secure.setInsecure();
     }
-    if (truncated) break;
-    if (!cli->connected() && !cli->available()) break;
-    delay(1);
-  }
-  cli->stop();
+    bool connected = byIp ? (cli->connect(ip, port) == 1)
+                          : (cli->connect(altHost ? altHost : host.c_str(), port) == 1);
+    if (!connected) {
+      if (tls) tlsNoteFailure(secure);
+      char err[80] = {0};
+      if (tls) secure.lastError(err, sizeof(err));
+      Serial.printf("[srv] connect fail %s:%u heap=%u max=%u tls=%d verify=%d err=%s\n",
+                    host.c_str(), port, (unsigned)ESP.getFreeHeap(),
+                    (unsigned)ESP.getMaxAllocHeap(), tls ? 1 : 0,
+                    (verify && !byIp) ? 1 : 0, err);
+      cli->stop();
+      delay(200);
+      return -2;
+    }
+    tlsNoteSuccess(verify && !byIp);
 
-  if (truncated) {
-    Serial.printf("[srv] response exceeds %u bytes; discarded (heap=%u)\n",
-                  (unsigned)MAX_RESPONSE_BYTES, (unsigned)ESP.getFreeHeap());
-    response = "";
-    return -4;
+    // Запоминаем адрес, с которым реально установилось соединение: имя имеет
+    // два A-адреса, и один из них отдаёт 410 вместо API.
+    if (tls && !haveGoodIp) {
+      IPAddress rip = secure.remoteIP();
+      if ((uint32_t)rip != 0) {
+        goodIp = rip;
+        haveGoodIp = true;
+        if (prefsReady) prefs.putString("srvip", goodIp.toString());
+        Serial.printf("[srv] рабочий адрес сервера: %s\n", goodIp.toString().c_str());
+      }
+    }
+
+    cli->print(req);
+    cli->flush();
+
+    // Копим ответ в статическом буфере и только в конце делаем одну строку:
+    // посимвольный += перестраивал буфер десятки раз и дробил heap.
+    static char rbuf[MAX_RESPONSE_BYTES + 1];
+    size_t rlen = 0;
+    bool truncated = false;
+    unsigned long deadline = millis() + 6000;
+    while (millis() < deadline) {
+      while (cli->available()) {
+        int ch = cli->read();
+        if (rlen < MAX_RESPONSE_BYTES) rbuf[rlen++] = (char)ch;
+        else { truncated = true; break; }
+      }
+      if (truncated) break;
+      if (!cli->connected() && !cli->available()) break;
+      delay(1);
+    }
+    cli->stop();
+    rbuf[rlen] = 0;
+    response = rbuf;
+
+    if (truncated) {
+      Serial.printf("[srv] response exceeds %u bytes; discarded (heap=%u)\n",
+                    (unsigned)MAX_RESPONSE_BYTES, (unsigned)ESP.getFreeHeap());
+      response = "";
+      return -4;
+    }
+    int c = -3;
+    int sp = response.indexOf(' ');
+    if (sp > 0) c = response.substring(sp + 1, sp + 4).toInt();
+    return c;
+  };
+
+  // Порядок попыток: сначала проверенный адрес, затем полный список из DNS,
+  // затем имя. По IP TLS не передаёт SNI и релей закрывает соединение, поэтому
+  // по адресу ходим обычным HTTP на серверный plain-порт с заголовком Host —
+  // сервер так и принимает устройства (проверено).
+  int code = -2;
+  if (!tls) {
+    code = exchange(false, IPAddress(), nullptr);
+  } else {
+    if (haveGoodIp) {
+      code = plainByIp(host, goodIp, req, response);
+      if (!(code > 0 && code != 410)) haveGoodIp = false;
+    }
+    if (!haveGoodIp) {
+      IPAddress addrs[4];
+      int n = dnsQueryA(host, addrs, 4);
+      for (int i = 0; i < n; i++) {
+        int c2 = plainByIp(host, addrs[i], req, response);
+        if (c2 > 0 && c2 != 410) {
+          code = c2;
+          goodIp = addrs[i];
+          haveGoodIp = true;
+          if (prefsReady) prefs.putString("srvip", goodIp.toString());
+          Serial.printf("[srv] сервер через %s\n", goodIp.toString().c_str());
+          break;
+        }
+        if (code < 0 && c2 > 0) code = c2;
+        delay(150);
+      }
+      if (code <= 0 || code == 410) {
+        int c3 = exchange(false, IPAddress(), nullptr);
+        if (c3 > 0) code = c3;
+      }
+    }
   }
 
-  int code = -3;
-  int sp = response.indexOf(' ');
-  if (sp > 0) code = response.substring(sp + 1, sp + 4).toInt();
   Serial.printf("[srv] %s %s -> %d (%lu ms, heap=%u)\n", method, path.c_str(), code,
                 (unsigned long)(millis() - t0), (unsigned)ESP.getFreeHeap());
   return code;
 }
 
 static void setStatus(const char* s);  // forward
+
+#ifndef LEAF_PLAIN_PORT
+#define LEAF_PLAIN_PORT 8090
+#endif
+
+// Обмен по обычному HTTP с конкретным адресом сервера (plain-порт 8090).
+// Нужен потому, что TLS по IP теряет SNI и облачный релей закрывает соединение,
+// а по имени половина запросов попадает на домашний роутер с 410 Gone.
+static int plainByIp(const String& host, const IPAddress& ip, const String& req,
+                     String& response) {
+  WiFiClient c;
+  c.setTimeout(8000);
+  if (c.connect(ip, LEAF_PLAIN_PORT) != 1) { c.stop(); return -2; }
+  c.print(req);
+  c.flush();
+
+  static char prb[2049];
+  size_t rlen = 0;
+  unsigned long deadline = millis() + 8000;
+  while (millis() < deadline) {
+    while (c.available()) {
+      int ch = c.read();
+      if (rlen < sizeof(prb) - 1) prb[rlen++] = (char)ch;
+    }
+    if (!c.connected() && !c.available()) break;
+    delay(1);
+  }
+  c.stop();
+  prb[rlen] = 0;
+  response = prb;
+  int sp = response.indexOf(' ');
+  return sp > 0 ? response.substring(sp + 1, sp + 4).toInt() : -3;
+}
+
 
 // ---------------------------------------------------------------- SIM800 HTTP
 // Наш TLS-сервер модуль не тянет (нет SNI), поэтому через симку ходим на
@@ -786,12 +1025,10 @@ static bool flashFromUrl(const char* url) {
   WiFiClientSecure secure;
   WiFiClient plain;
   Client* cli = tls ? (Client*)&secure : (Client*)&plain;
+  bool verify = false;
   if (tls) {
-    if (tlsVerifyFails >= TLS_FAIL_LIMIT && (tlsFallbackTurn % TLS_FAIL_LIMIT) != 0) {
-      secure.setInsecure();  // fallback: chain сменилась, CA вшит устарел
-    } else {
-      secure.setCACert(SERVER_CA_PEM);
-    }
+    verify = tlsVerifyEnabled();
+    tlsConfigure(secure);
     secure.setHandshakeTimeout(8);   // как в request(): без этого connect висит
   }
   bool connected = false;
@@ -800,6 +1037,7 @@ static bool flashFromUrl(const char* url) {
     if (!connected) { cli->stop(); delay(400); }
   }
   if (!connected) {
+    if (tls) tlsNoteFailure(secure);
     char err[80] = {0};
     if (tls) secure.lastError(err, sizeof(err));
     snprintf(otaStat, sizeof(otaStat), "connect,err=%.20s,h=%u", err,
@@ -808,6 +1046,7 @@ static bool flashFromUrl(const char* url) {
                   (unsigned)ESP.getFreeHeap(), err);
     return false;
   }
+  tlsNoteSuccess(verify);
   cli->setTimeout(15000);
   String req = String("GET ") + path + " HTTP/1.1\r\nHost: " + host +
                "\r\nConnection: close\r\nUser-Agent: LeafControl\r\n\r\n";
@@ -998,15 +1237,16 @@ static int requestBinary(const String& pathAndQuery, const char* file,
   uint16_t port = 443;
   bool tls = splitUrl(cfgBase, host, port, basePath);
 
+  // Свой клиент на каждый вызов: так mbedTLS освобождает и контекст, и
+  // буферы, и heap возвращается к исходному. Постоянный клиент держал ~12 КБ
+  // занятыми и оставлял TLS без непрерывного куска.
   WiFiClientSecure secure;
   WiFiClient plain;
   Client* cli = nullptr;
+  bool verify = false;
   if (tls) {
-    if (tlsVerifyFails >= TLS_FAIL_LIMIT && (tlsFallbackTurn % TLS_FAIL_LIMIT) != 0) {
-      secure.setInsecure();  // fallback: chain сменилась, CA вшит устарел
-    } else {
-      secure.setCACert(SERVER_CA_PEM);
-    }
+    verify = tlsVerifyEnabled();
+    tlsConfigure(secure);
     secure.setTimeout(20000);
     secure.setHandshakeTimeout(12);
     cli = &secure;
@@ -1014,13 +1254,18 @@ static int requestBinary(const String& pathAndQuery, const char* file,
     plain.setTimeout(20000);
     cli = &plain;
   }
+  cli->stop();
   if (cli->connect(host.c_str(), port) != 1) {
+    if (tls) tlsNoteFailure(secure);
     cli->stop();
     return -2;
   }
+  tlsNoteSuccess(verify);
 
   String path = pathAndQuery.startsWith("/") ? pathAndQuery : ("/" + pathAndQuery);
-  String req = "POST " + path + " HTTP/1.1\r\n";
+  String req;
+  req.reserve(320);
+  req += "POST " + path + " HTTP/1.1\r\n";
   req += "Host: " + host + "\r\n";
   req += "User-Agent: LeafControl\r\n";
   req += "Connection: close\r\n";
@@ -1495,7 +1740,7 @@ unsigned long serverApiLastOkMs() { return lastOkMs; }
 void serverApiTick() {
   static bool started = false;
   if (started) return;
-  if (xTaskCreatePinnedToCore(serverNetLoop, "leaf-net", 16384, nullptr, 1, nullptr, 0) == pdPASS) {
+  if (xTaskCreatePinnedToCore(serverNetLoop, "leaf-net", 12288, nullptr, 1, nullptr, 0) == pdPASS) {
     started = true;
     Serial.println("[srv] сетевой поток запущен");
   } else {

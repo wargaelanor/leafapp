@@ -81,6 +81,7 @@ void executeCommand(char* cmd) {
             else if (strcmp(key, "charge_limit_pct") == 0) Serial.println(getChargeLimitPct());
              else if (strcmp(key, "wake_slow_min") == 0) Serial.println(getWakeSlowMinutes());
              else if (strcmp(key, "modem800_apn") == 0) Serial.println(getModem800Apn());
+    else if (strcmp(key, "modem_enable") == 0) Serial.println(getModemEnable() ? "true" : "false");
              else if (strcmp(key, "modem800_user") == 0) Serial.println(getModem800User());
              else if (strcmp(key, "modem800_pass") == 0) Serial.println("****");
             else Serial.println("Unknown parameter.");
@@ -162,6 +163,12 @@ void executeCommand(char* cmd) {
                 else { Serial.println("Error: Value must be 0 or 70-95."); return; }
             }
             else if (strcmp(key, "modem800_apn") == 0) status = setModem800Apn(val);
+            else if (strcmp(key, "modem_enable") == 0) {
+                // true/false без учёта регистра: с клавиатуры удобнее.
+                bool on = (val && (val[0] == '1' || val[0] == 't' || val[0] == 'T' ||
+                                   val[0] == 'y' || val[0] == 'Y'));
+                status = setModemEnable(on);
+            }
             else if (strcmp(key, "modem800_user") == 0) status = setModem800User(val);
             else if (strcmp(key, "modem800_pass") == 0) status = setModem800Pass(val);
             else {

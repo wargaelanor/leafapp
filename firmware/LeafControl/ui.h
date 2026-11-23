@@ -221,6 +221,16 @@ void sendSettingsPage(WebServer& server, const char* saveResult) {
   server.sendContent(F(
      ">SIM800 (2G, GPRS)</label>\n"
     "<div id='m800box'>\n"
+    "<label for='modem800_apn_preset'>Готовый APN оператора</label>\n"
+    "<select id='modem800_apn_preset'>"
+    "<option value=''>— выбрать —</option>"
+    "<option value='mts'>МТС</option>"
+    "<option value='beeline'>Билайн</option>"
+    "<option value='megafon'>МегаФон</option>"
+    "<option value='tele2'>Tele2</option>"
+    "</select>\n"
+    "<input type='hidden' id='modem800_preset' name='modem800_preset' value=''>\n"
+    "<div class='hint'>Выбор заполнит APN, логин и пароль ниже; поля остаются редактируемыми.</div>\n"
     "<label for='modem800_apn'>APN (SIM800)</label>\n"
     "<input type='text' id='modem800_apn' name='modem800_apn' value='"
   ));
@@ -238,6 +248,21 @@ void sendSettingsPage(WebServer& server, const char* saveResult) {
    ));
     server.sendContent(strlen(getModem800Pass()) > 0 ? "сохранён — пусто не менять" : "не задан");
     server.sendContent(F("'>\n"
+     "<script>(function(){"
+     "var p={mts:['internet.mts.ru','mts','mts'],"
+     "beeline:['internet.beeline.ru','beeline','beeline'],"
+     "megafon:['internet','gdata','gdata'],"
+     "tele2:['internet.tele2.ru','','']};"
+     "var s=document.getElementById('modem800_apn_preset'),"
+     "h=document.getElementById('modem800_preset');"
+     "if(!s||!h)return;"
+     "s.addEventListener('change',function(){var v=p[s.value];if(!v)return;"
+     "document.getElementById('modem800_apn').value=v[0];"
+     "document.getElementById('modem800_user').value=v[1];"
+     "var pw=document.getElementById('modem800_pass');"
+     "pw.value=v[2];pw.placeholder=v[2]?'':'не задан';"
+     "h.value=s.value;});"
+     "})();</script>\n"
      "<div class='call-settings'>\n"
      "<label class='chk'><input type='checkbox' name='modem_call_enable' value='1'"
    ));
