@@ -310,6 +310,25 @@ static int resolveAll(const String& host, IPAddress out[], int maxN) {
 static int plainByIp(const String& host, const IPAddress& ip, const String& req,
                      String& response);
 
+// Отметка последнего успешного ответа сервера по Wi-Fi. Драйвер умеет залипнуть
+// в состоянии «connected» без данных: тогда обычная ветка восстановления по
+// WiFi.status() не срабатывает, и плата молча исчезает из сети до перезагрузки.
+// Сторож в manageWiFi() смотрит на этот возраст.
+static volatile unsigned long wifiOkMs = 0;
+static volatile bool wifiOkSeen = false;
+
+void serverNoteWifiAlive() {
+  wifiOkMs = millis();
+  wifiOkSeen = true;
+}
+
+unsigned long serverWifiIdleMs() {
+  // millis() | 1 давало millis()+1 и разницу в минус (4294967 s), из-за чего
+  // сторож срабатывал на ровном месте. Считаем по отдельному признаку.
+  if (!wifiOkSeen) return millis();
+  return millis() - wifiOkMs;
+}
+
 static int request(const char* method, const String& pathAndQuery, const char* body,
                    String& response, unsigned long timeoutMs = 8000) {
   String host, basePath;
@@ -462,6 +481,8 @@ static int request(const char* method, const String& pathAndQuery, const char* b
       }
     }
   }
+
+  if (code > 0) serverNoteWifiAlive();
 
   Serial.printf("[srv] %s %s -> %d (%lu ms, heap=%u)\n", method, path.c_str(), code,
                 (unsigned long)(millis() - t0), (unsigned)ESP.getFreeHeap());
@@ -1303,6 +1324,9 @@ static int requestBinary(const String& pathAndQuery, const char* file,
   int code = -3;
   int sp = response.indexOf(' ');
   if (sp > 0) code = response.substring(sp + 1, sp + 4).toInt();
+  // Успех по Wi-Fi отмечаем и здесь: через этот путь идут сессии, а сторож
+  // живости иначе считает канал мёртвым и дёргает переподключение зря.
+  if (code > 0) serverNoteWifiAlive();
   return code;
 }
 

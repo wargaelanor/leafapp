@@ -17,6 +17,9 @@ void serverApiHistSample(float soc, float kw, float batt, float spd);
 
 void serverApiBegin();
 void serverApiTick();
+// Диагностика живости Wi-Fi: возраст последнего успешного ответа сервера.
+unsigned long serverWifiIdleMs();
+void serverNoteWifiAlive();
 
 // Вызывается из loop(): выполняет команду с сервера в основном цикле.
 void serverApiCommandPump();

@@ -1,4 +1,4 @@
-﻿#include <WiFi.h>
+#include <WiFi.h>
 #include <WebServer.h>
 #include <DNSServer.h>
 #include <ESPmDNS.h>
@@ -28,8 +28,8 @@
 #define LEAF_FIRMWARE_VERSION "FR-TCall.177"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: OTA-capable partitions (min_spiffs), gz-only UI, wifi from app, tariff sync"
 #else
-#define LEAF_FIRMWARE_VERSION "FR-2can.201"
-#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: HTTP-via-DNS relay, mDNS retry, APN presets, Wi-Fi drop stats"
+#define LEAF_FIRMWARE_VERSION "FR-2can.205"
+#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: HTTP-via-DNS relay, mDNS retry, APN presets, Wi-Fi dead-link watchdog, paced profile retry"
 #endif
 
 // Доступ к версии из других модулей (serverApi.cpp).
@@ -124,7 +124,8 @@ static void loadWifiStats() {
   Preferences prefs;
   if (!prefs.begin("leafwifi", true)) return;
   wifiDropCount = prefs.getULong("drops", 0);
-  wifiDropReason = (int)prefs.getChar("reason", 0);
+  // Код причины храним как unsigned short: 300 (сторож) в char не влезает.
+  wifiDropReason = (int)prefs.getUShort("reason", 0);
   prefs.end();
 }
 
@@ -132,7 +133,7 @@ static void saveWifiStats() {
   Preferences prefs;
   if (!prefs.begin("leafwifi", false)) return;
   prefs.putULong("drops", wifiDropCount);
-  prefs.putChar("reason", (char)wifiDropReason);
+  prefs.putUShort("reason", (unsigned short)wifiDropReason);
   prefs.end();
 }
 
@@ -2171,6 +2172,10 @@ static void connectWifiProfile(bool rotateProfile = false) {
       uint8_t candidate = (currentWifiProfile + step) % 3;
       if (wifiProfileSsid(candidate)[0]) { bestProfile = candidate; break; }
     }
+  } else if (wifiProfileSsid(currentWifiProfile)[0]) {
+    // Остаёмся на текущем профиле: смена профиля на каждой попытке гоняет плату
+    // по сети, которую здесь не видно.
+    bestProfile = currentWifiProfile;
   } else {
     // Do not block boot on a scan: a hidden/weak AP may be missed, while a
     // direct association can still succeed. Try the preferred saved profile
@@ -2206,6 +2211,10 @@ void manageWiFi() {
   if(!wifiEnabled) return;
   bool staEnabled = wifiStaEnabled();
   static bool wifiAvailable = false;
+  // Сколько раз подряд не удалось подняться на текущем профиле. Профиль меняем
+  // только после трёх неудач: иначе плата скачет между рабочей сетью и
+  // сохранённым, но отсутствующим профилем и мигает в сети (NO_AP_FOUND).
+  static uint8_t profileFails = 0;
 
   // mDNS is kept alive across link changes, but a single failed (re)bind must
   // not leave the board nameless until the next reboot: retry every 10 s while
@@ -2317,8 +2326,11 @@ void manageWiFi() {
         wifiStaDownSinceMs = staDownSinceMs;
         retryStep = 0;
       }
-      Serial.printf("WiFi connection missing, status=%d; trying saved profiles...\n", (int)WiFi.status());
-      connectWifiProfile(true);
+      Serial.printf("WiFi connection missing, status=%d; trying profile %u...\n",
+                    (int)WiFi.status(), (unsigned)(currentWifiProfile + 1));
+      bool rotate = profileFails >= 3;
+      connectWifiProfile(rotate);
+      profileFails = rotate ? 0 : (uint8_t)(profileFails + 1);
       previousAttemptTime = currentTime;
       if (retryStep < 3) retryStep++;
     }
@@ -2330,6 +2342,7 @@ void manageWiFi() {
     previousAttemptTime = currentTime;
     Serial.println("\nWi-Fi connected!");
     wifiRadioRestarts = 0;
+    profileFails = 0;
     // The saved network is reachable again вЂ” the next reboot must not raise
     // the setup AP on the stale recovery hint.
     if (getWifiRecoveryHint()) setWifiRecoveryHint(false);
@@ -2354,6 +2367,39 @@ void manageWiFi() {
     Serial.println(" or by IP address:");
     Serial.println(WiFi.localIP());
     wifiAvailable = true;
+  }
+
+  // --- сторож «тихого» зависания Wi-Fi --------------------------------------
+  // Бывает так: драйвер считает, что соединение есть (WL_CONNECTED), а данные не
+  // ходят. Обычная ветка восстановления выше смотрит только на WiFi.status() и
+  // молчит, поэтому плата пропадает из сети до перезагрузки. Здесь следим за
+  // фактическими успешными ответами сервера по Wi-Fi.
+  if (WiFi.status() == WL_CONNECTED) {
+    static unsigned long lastKickMs = 0;
+    static uint8_t deadSteps = 0;
+    unsigned long idle = serverWifiIdleMs();
+    if (idle > 120000UL && currentTime - lastKickMs > 60000UL) {
+      lastKickMs = currentTime;
+      if (++deadSteps > 2) {
+        Serial.println("WiFi: data path dead for 3 min, restarting the radio");
+        WiFi.disconnect(true, false);
+        delay(300);
+        WiFi.mode(strlen(getApSSID()) > 0 ? WIFI_AP_STA : WIFI_STA);
+        WiFi.setSleep(false);
+        if ((WiFi.getMode() & WIFI_AP) != 0) startSoftAp();
+        connectWifiProfile();
+        deadSteps = 0;
+      } else {
+        Serial.printf("WiFi: connected but no data for %lu s, re-associating\n",
+                      idle / 1000UL);
+        wifiDropReason = 300;     // 300 — наш сторож, не код драйвера
+        wifiDropCount++;
+        saveWifiStats();
+        wifiForceReconnect();
+      }
+    } else if (idle < 30000UL) {
+      deadSteps = 0;
+    }
   }
 }
 
