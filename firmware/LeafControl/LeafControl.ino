@@ -28,8 +28,8 @@
 #define LEAF_FIRMWARE_VERSION "FR-TCall.177"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: OTA-capable partitions (min_spiffs), gz-only UI, wifi from app, tariff sync"
 #else
-#define LEAF_FIRMWARE_VERSION "FR-2can.200"
-#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: TLS-fallback, mDNS retry, APN presets"
+#define LEAF_FIRMWARE_VERSION "FR-2can.201"
+#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: HTTP-via-DNS relay, mDNS retry, APN presets, Wi-Fi drop stats"
 #endif
 
 // Доступ к версии из других модулей (serverApi.cpp).
@@ -112,6 +112,39 @@ static unsigned long mdnsRetryMs = 0;
 // wifi_down_s so a "board alive but unreachable" state is visible at a glance.
 static unsigned long wifiStaDownSinceMs = 0;
 
+// Отвалы Wi-Fi считаем в NVS: раньше всё жило только в RAM и обнулялось при
+// каждом ресете, поэтому «постоянные провалы» нельзя было ни подтвердить, ни
+// измерить. Теперь число отвалов и код последней причины видны в /api/status
+// и переживают перезагрузку.
+static uint32_t wifiDropCount = 0;
+static int wifiDropReason = 0;
+static unsigned long wifiStatsSavedMs = 0;
+
+static void loadWifiStats() {
+  Preferences prefs;
+  if (!prefs.begin("leafwifi", true)) return;
+  wifiDropCount = prefs.getULong("drops", 0);
+  wifiDropReason = (int)prefs.getChar("reason", 0);
+  prefs.end();
+}
+
+static void saveWifiStats() {
+  Preferences prefs;
+  if (!prefs.begin("leafwifi", false)) return;
+  prefs.putULong("drops", wifiDropCount);
+  prefs.putChar("reason", (char)wifiDropReason);
+  prefs.end();
+}
+
+// У ESP32 одно радио: точка доступа обязана жить на канале STA. Если каналы
+// разные, драйвер прыгает между ними — клиенты AP и mDNS-мультикаст
+// (leaf.local с телефона) страдают первыми.
+static uint8_t staChannelOr1() {
+  int ch = (WiFi.status() == WL_CONNECTED) ? WiFi.channel() : 0;
+  if (ch < 1 || ch > 13) ch = 1;
+  return (uint8_t)ch;
+}
+
 // (Re)create the configuration AP. Used by setup and by the Wi-Fi recovery
 // path, which restarts the whole radio and therefore loses the AP config.
 static void startSoftAp() {
@@ -125,13 +158,14 @@ static void startSoftAp() {
   }
   bool ok;
   WiFi.setTxPower(WIFI_POWER_11dBm);
+  uint8_t ch = staChannelOr1();
   if (strlen(pass) >= 8) {
-    ok = WiFi.softAP(ssid, pass);
+    ok = WiFi.softAP(ssid, pass, ch);
   } else {
-    ok = WiFi.softAP(ssid);
+    ok = WiFi.softAP(ssid, "", ch);
   }
-  Serial.printf("softAP(%s)=%s ip=%s\n", ssid, ok ? "OK" : "FAIL",
-                WiFi.softAPIP().toString().c_str());
+  Serial.printf("softAP(%s)=%s ch=%u ip=%s\n", ssid, ok ? "OK" : "FAIL",
+                (unsigned)ch, WiFi.softAPIP().toString().c_str());
 }
 
 // The host name comes from a free-text settings field, but mDNS needs a single
@@ -773,6 +807,7 @@ void handleApiStatus() {
     "\"remote_mode\":%d,\"ui_lite\":%d,"
     "\"wifi_status\":%d,\"wifi_rssi\":%d,\"wifi_profile\":%u,\"wifi_disconnect\":%d,"
     "\"wifi_down_s\":%lu,"
+    "\"wifi_drops\":%lu,\"wifi_drop_reason\":%d,\"wifi_ch\":%d,"
     "\"ap_clients\":%u,"
     "\"trips\":%u,\"charges\":%u,\"driving\":%d,"
     "\"night_from\":%u,\"night_to\":%u,\"tariff_day\":%.2f,\"tariff_night\":%.2f,"
@@ -818,6 +853,7 @@ void handleApiStatus() {
     (int)WiFi.status(), WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0,
     (unsigned int)(currentWifiProfile + 1), lastWifiDisconnectReason,
     (unsigned long)(wifiStaDownSinceMs ? (millis() - wifiStaDownSinceMs) / 1000UL : 0UL),
+    (unsigned long)wifiDropCount, wifiDropReason, (int)staChannelOr1(),
     (unsigned)WiFi.softAPgetStationNum(),
     (unsigned)tripLogTripsCount(), (unsigned)tripLogChargesCount(),
     (evData.vehicleOn == 1 || tripLogIsDriving() || fabsf(evData.packPower) > 1.0f) ? 1 : 0,
@@ -2157,6 +2193,15 @@ static void connectWifiProfile(bool rotateProfile = false) {
   WiFi.begin(wifiProfileSsid(currentWifiProfile), wifiProfilePassword(currentWifiProfile));
 }
 
+// Принудительное переподключение Wi-Fi из консоли: без перезагрузки платы.
+// Заодно проверка восстановления, когда сеть «моргнула».
+void wifiForceReconnect() {
+  Serial.println("Wi-Fi: forced re-association");
+  WiFi.disconnect(false, false);
+  delay(400);
+  connectWifiProfile();
+}
+
 void manageWiFi() {
   if(!wifiEnabled) return;
   bool staEnabled = wifiStaEnabled();
@@ -2317,6 +2362,14 @@ void wifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
   if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
     lastWifiDisconnectReason = (int)info.wifi_sta_disconnected.reason;
     Serial.printf("  STA disconnected, reason=%d\n", (int)info.wifi_sta_disconnected.reason);
+    // Учитываем каждый отвал и пишем в NVS не чаще раза в 10 с: обработчик
+    // зовётся из задачи Wi-Fi, лишние записи во флеш там ни к чему.
+    wifiDropReason = lastWifiDisconnectReason;
+    wifiDropCount++;
+    if (wifiStatsSavedMs == 0 || millis() - wifiStatsSavedMs > 10000UL) {
+      wifiStatsSavedMs = millis();
+      saveWifiStats();
+    }
   }
 }
 
@@ -2376,6 +2429,7 @@ void setup() {
                 BOARD_NAME, (unsigned)ESP.getPsramSize(), (unsigned)ESP.getFlashChipSize());
   WiFi.onEvent(wifiEvent);
   initConfiguration();
+  loadWifiStats();
   clockRestore();
   modemInit();
 

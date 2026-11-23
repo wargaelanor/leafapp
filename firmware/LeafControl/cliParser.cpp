@@ -9,6 +9,9 @@
 #include "serverApi.h"
 #include "modemManager.h"
 
+// Из LeafControl.ino: принудительное переподключение Wi-Fi без перезагрузки.
+extern void wifiForceReconnect();
+
 // Live vehicle state, defined in LeafControl.ino (diagnostics only)
 extern float currentSOC;
 extern float cabinTemp;
@@ -281,6 +284,9 @@ void executeCommand(char* cmd) {
         delay(100);
         ESP.restart();
     } 
+    else if (strcmp(command, "wifi_reset") == 0) {
+        wifiForceReconnect();
+    }
     else if (strcmp(command, "factory-reset") == 0) {
         Serial.println("Performing factory reset...");
         factoryReset();
