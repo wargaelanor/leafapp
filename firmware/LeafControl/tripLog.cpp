@@ -50,6 +50,13 @@ static float tariffNight = 0.0f;
 static unsigned long lastTickMs = 0;
 static float lastOdo = -1.0f;
 
+// Накопленная длительность сессий в миллисекундах. Считаем её тиками, а не
+// millis()-start: иначе перезагрузка/сон посреди сессии съедает уже
+// прошедшее время, а после ребута длительность начинается с нуля.
+static uint32_t accTripMs = 0;
+static uint32_t accChgMs = 0;
+static uint32_t accClimMs = 0;
+
 static size_t tripsCount = 0;
 static size_t chargesCount = 0;
 static size_t climateCount = 0;
@@ -109,6 +116,22 @@ RTC_DATA_ATTR static float rtcTripOdoStart = 0;
 RTC_DATA_ATTR static float rtcTripOdoLast = 0;
 RTC_DATA_ATTR static float rtcTripSocStart = -1;
 RTC_DATA_ATTR static float rtcTripKwh = 0;
+RTC_DATA_ATTR static uint32_t rtcTripMs = 0;
+
+// Открытая зарядка тоже переживает перезагрузку: заряд идёт часами, и терять
+// его целиком из-за ресета (OTA, просадка питания) нельзя — иначе вместо
+// одного периода получается два обрывка. Климат — по той же схеме.
+RTC_DATA_ATTR static uint8_t rtcChgActive = 0;
+RTC_DATA_ATTR static uint32_t rtcChgStart = 0;
+RTC_DATA_ATTR static uint32_t rtcChgMs = 0;
+RTC_DATA_ATTR static float rtcChgWh = 0, rtcChgWhDay = 0, rtcChgWhNight = 0;
+RTC_DATA_ATTR static float rtcChgSocStart = -1;
+
+RTC_DATA_ATTR static uint8_t rtcClimActive = 0;
+RTC_DATA_ATTR static uint32_t rtcClimStart = 0;
+RTC_DATA_ATTR static uint32_t rtcClimMs = 0;
+RTC_DATA_ATTR static float rtcClimWh = 0, rtcClimWhDay = 0, rtcClimWhNight = 0;
+RTC_DATA_ATTR static float rtcClimSocStart = -1;
 
 static uint32_t epochNow() {
   time_t t = time(nullptr);
@@ -276,6 +299,32 @@ void tripLogInit() {
       Serial.printf("[log] restored trip %.2f km after reboot\n", km);
     }
   }
+
+  // Продолжаем зарядку, если плата перезагрузилась посреди неё: заряд идёт
+  // часами, и обрыв на ресете раньше давал два огрызка вместо одного периода.
+  if (rtcChgActive) {
+    chgActive = true;
+    chgStartEpoch = rtcChgStart;
+    accChgMs = rtcChgMs;
+    chgKwh = rtcChgWh;
+    chgKwhDay = rtcChgWhDay;
+    chgKwhNight = rtcChgWhNight;
+    chgSocStart = rtcChgSocStart;
+    chgSocEnd = -1;
+    Serial.printf("[log] continuing charge session (%.0f Wh, %lu s so far)\n",
+                  (double)chgKwh, (unsigned long)(accChgMs / 1000UL));
+  }
+  if (rtcClimActive) {
+    climActive = true;
+    climStartEpoch = rtcClimStart;
+    accClimMs = rtcClimMs;
+    climWh = rtcClimWh;
+    climWhDay = rtcClimWhDay;
+    climWhNight = rtcClimWhNight;
+    climSocStart = rtcClimSocStart;
+    climSocEnd = -1;
+    Serial.printf("[log] continuing climate session (%.0f Wh so far)\n", (double)climWh);
+  }
 }
 
 static void saveTripToRtc(bool active) {
@@ -286,6 +335,29 @@ static void saveTripToRtc(bool active) {
   rtcTripOdoLast = lastOdo;
   rtcTripSocStart = tripSocStart;
   rtcTripKwh = tripKwh;
+  rtcTripMs = accTripMs;
+}
+
+// Снимок открытых зарядки и климата в RTC (вызывается раз в тик).
+static void saveSessionsToRtc() {
+  rtcChgActive = chgActive ? 1 : 0;
+  if (chgActive) {
+    rtcChgStart = chgStartEpoch;
+    rtcChgMs = accChgMs;
+    rtcChgWh = chgKwh;
+    rtcChgWhDay = chgKwhDay;
+    rtcChgWhNight = chgKwhNight;
+    rtcChgSocStart = chgSocStart;
+  }
+  rtcClimActive = climActive ? 1 : 0;
+  if (climActive) {
+    rtcClimStart = climStartEpoch;
+    rtcClimMs = accClimMs;
+    rtcClimWh = climWh;
+    rtcClimWhDay = climWhDay;
+    rtcClimWhNight = climWhNight;
+    rtcClimSocStart = climSocStart;
+  }
 }
 
 static void finishTrip(const char* reason) {
@@ -293,14 +365,13 @@ static void finishTrip(const char* reason) {
   tripActive = false;
   saveTripToRtc(false);
   uint32_t endEpoch = epochNow();
-  unsigned long durMs = millis() - tripStartMs;
+  unsigned long durMs = accTripMs;
   float km = (lastOdo > 0 && tripOdoStart > 0) ? (lastOdo - tripOdoStart) : 0;
   if (km < 0) km = 0;
   if (tripKmSpeed > km) km = tripKmSpeed;   // короткие поездки: считаем по скорости
   tripKmSpeed = 0;
-  // Ignore noise: ни одной полной минуты и меньше 500 м — мусор
-  // (бывает при кратких пробуждениях платы без реальной поездки).
-  if (durMs < 30000UL && km < 0.1f) return;
+  // Ignore noise: совсем без километров и короче двух минут — мусор.
+  if (km < 0.05f && durMs < 120000UL) return;
 
   char line[200];
   // "w"/"wd"/"wn" are watt-hours (Wh), not kWh. The PWA stores Wh directly.
@@ -320,11 +391,17 @@ static void finishTrip(const char* reason) {
 static void finishCharge(const char* reason) {
   if (!chgActive) return;
   chgActive = false;
+  saveSessionsToRtc();
   uint32_t endEpoch = epochNow();
-  unsigned long durMs = millis() - chgStartMs;
-  // Reject phantom sessions from short current spikes (regen, contactor
-  // noise). A real charge lasts at least two minutes and stores >100 Wh.
-  if (durMs < 120000UL || chgKwh < 100.0f) return;
+  unsigned long durMs = accChgMs;
+  // Отсекаем только совсем короткие всплески тока. Настоящая зарядка — это
+  // один период от подключения кабеля до его снятия, даже если ток в середине
+  // падал (пауза таймера, добивка на 100 %): именно так её и надо записывать.
+  if (durMs < 60000UL || chgKwh < 20.0f) {
+    Serial.printf("[log] charge session dropped (%.1f Wh, %lu s)\n",
+                  chgKwh, (unsigned long)(durMs / 1000UL));
+    return;
+  }
 
   char line[200];
   // "w"/"wd"/"wn" are watt-hours (Wh), not kWh. The PWA stores Wh directly.
@@ -336,16 +413,21 @@ static void finishCharge(const char* reason) {
            (int)(chgSocEnd >= 0 ? chgSocEnd : -1), reason);
   appendRecord(CHARGES_PATH, CHARGES_LIMIT, line);
   serverApiOnRecord("charge", line);
-  Serial.printf("[log] charge %.2f kWh\n", chgKwh);
+  Serial.printf("[log] charge %.2f kWh, %lu min, %.0f%% -> %.0f%%\n",
+                chgKwh / 1000.0, (unsigned long)(durMs / 60000UL),
+                (double)chgSocStart, (double)chgSocEnd);
 }
 
 static void finishClimate(const char* reason) {
   if (!climActive) return;
   climActive = false;
+  saveSessionsToRtc();
   uint32_t endEpoch = epochNow();
-  unsigned long durMs = millis() - climStartMs;
-  // Климат — это заметная работа: минимум 5 минут и 100 Вт·ч.
-  if (durMs < 300000UL || climWh < 100.0f) {
+  unsigned long durMs = accClimMs;
+  // Климат — это заметная работа: минимум 3 минуты и 30 Вт·ч. Порог ниже
+  // прежнего (5 мин / 100 Вт·ч): короткий предпрогрев тоже должен попадать
+  // в журнал, иначе он просто исчезает.
+  if (durMs < 180000UL || climWh < 30.0f) {
     Serial.printf("[log] climate session dropped (%.1f Wh, %lu s)\n",
                   climWh, (unsigned long)(durMs / 1000UL));
     return;
@@ -493,6 +575,10 @@ void tripLogTick() {
   // start signal on every car. Neither climate power nor READY proves motion.
   bool gearFresh = udsData.gearMs && now - udsData.gearMs < 30000UL;
   bool parked = gearFresh && udsData.gear == 1;
+  // Перевод в D/R/Eco — сигнал «поездка началась», даже если машина ещё не
+  // тронулась. Так запись захватывает весь выезд с парковки, а не с 5 км/ч.
+  bool gearDriving = gearFresh && (udsData.gear == 4 || udsData.gear == 7 ||
+                                   udsData.gear == 2);
 
   if (!tripActive && epoch && !charging && speedKph > 0.5f) {
     if (!tripPending || now - pendingLastMs > 30000UL) {
@@ -509,24 +595,28 @@ void tripLogTick() {
   }
 
   if (!tripActive) {
-    // 5 km/h or 100 m of measured motion. The integer-km odometer remains a
-    // fallback when the EV speed frame is absent; do not infer from watts.
-    if (epoch && !charging && (speeding || pendingKmSpeed >= 0.1f || moved)) {
+    // Триггеры: селектор в D/R/Eco, 5 км/ч, 100 м по скорости или одометру.
+    if (epoch && !charging && !pluggedIn &&
+        (gearDriving || speeding || pendingKmSpeed >= 0.1f || moved)) {
       tripActive = true;
-      tripStartEpoch = tripPending ? tripPendEpoch : epoch;
-      tripStartMs = tripPending ? tripPendMs : now;
-      tripOdoStart = tripPending ? tripPendOdo : lastOdo;
-      tripSocStart = tripPending ? tripPendSoc : soc;
+      // Поездку, начатую селектором, отсчитываем от текущего момента: до этого
+      // машина стояла, и «хвост» в минуты нам не нужен.
+      bool usePending = !gearDriving && tripPending;
+      tripStartEpoch = usePending ? tripPendEpoch : epoch;
+      tripStartMs = usePending ? tripPendMs : now;
+      tripOdoStart = usePending ? tripPendOdo : lastOdo;
+      tripSocStart = usePending ? tripPendSoc : soc;
       tripSocEnd = soc;
       tripKwh = tripKwhDay = tripKwhNight = 0;
-      tripKmSpeed = pendingKmSpeed;
+      tripKmSpeed = usePending ? pendingKmSpeed : 0;
       tripPending = false;
       pendingKmSpeed = 0;
       tripMoveMs = now;
       tripOffSinceMs = 0;
+      accTripMs = 0;
       saveTripToRtc(true);
-      Serial.printf("[log] trip started: %.0f km, %.0f km/h\n",
-                    (double)tripOdoStart, (double)speedKph);
+      Serial.printf("[log] trip started: %.0f km, %.0f km/h, gear=%d\n",
+                    (double)tripOdoStart, (double)speedKph, (int)udsData.gear);
     } else if (tripPending && (charging || now - pendingLastMs > 30000UL)) {
       tripPending = false;
       pendingKmSpeed = 0;
@@ -534,6 +624,7 @@ void tripLogTick() {
   }
 
   if (tripActive) {
+    if (dtMs > 0 && dtMs < 30000UL) accTripMs += dtMs;
     if (dtMs > 0 && dtMs < 30000UL && speedKph > 0.5f) {
       tripKmSpeed += speedKph * ((float)dtMs / 3600000.0f);
     }
@@ -548,11 +639,12 @@ void tripLogTick() {
       if (isNight(epoch)) tripKwhNight += wh; else tripKwhDay += wh;
       rtcTripKwh = tripKwh;
     }
-    // Конец поездки: машина не в READY, не едет и не заряжается. Пять минут
-    // запаса — чтобы стоянка у магазина не закрывала поездку.
-    // Машина выключена = не READY, не едет, не заряжается и не тянет ток.
-    if (!moved && speedKph < 0.5f && !charging &&
-        (parked || (!ready && powerW < 150.0f))) {
+    // Конец поездки — когда машина выключена: селектор в P, либо нет READY,
+    // нет тяги и нет движения. Стоянки в пути (селектор не в P) поездку не
+    // делят: раньше её рвало через 3 минуты и получалось «1 км + 16 км».
+    bool carOff = (gearFresh && udsData.gear == 1) ||
+                  (!ready && powerW < 150.0f);
+    if (!moved && speedKph < 0.5f && !charging && carOff) {
       if (tripOffSinceMs == 0) tripOffSinceMs = now;
     } else {
       tripOffSinceMs = 0;
@@ -560,52 +652,92 @@ void tripLogTick() {
     // A brief bus gap or a traffic stop is NOT a trip boundary. If all EV
     // traffic vanishes, wait long enough for reconnection before closing.
     bool busLost = !charging && evCanLastFrameAgeSec() > 900UL;
-    if ((tripOffSinceMs != 0 && now - tripOffSinceMs >
-         (parked ? 60000UL : 900000UL)) || busLost) {
+    unsigned long tripGraceMs = parked ? 90000UL : 300000UL;
+    if ((tripOffSinceMs != 0 && now - tripOffSinceMs > tripGraceMs) || busLost) {
       finishTrip("off");
+    } else if (charging && accChgMs > 60000UL) {
+      // Машину подключили к зарядке, не «выключив» поездку.
+      finishTrip("charge");
     }
   }
 
   // ---- климат ------------------------------------------------------------
-  // Машина включена, стоит и тянет ток — это климат, а не поездка.
-  bool idling = ready && !moved && !speeding && !charging && !tripActive;
+  // Климат считаем по фактическому расходу, а не по флагу READY: на этой
+  // машине vehicleOn врёт, и предпрогрев на стоянке из-за него не попадал в
+  // журнал вовсе. Условие — машина стоит, не заряжается, идёт заметный ток.
+  bool parkedIdle = !moved && speedKph < 0.5f && !charging && !pluggedIn && !tripActive;
+  static uint8_t climSeen = 0, climStop = 0;
+  bool climPower = parkedIdle && powerW > 250.0f;
+  if (climPower) {
+    if (climSeen < 4) climSeen++;
+    climStop = 0;
+  } else if (climActive) {
+    if (climStop < 6) climStop++;   // 30 с запаса: короткий провал тока не рвёт
+  } else {
+    climSeen = 0;
+  }
+  bool climHolding = climActive && climStop < 6 && parkedIdle;
+  bool climateOn = (climPower && climSeen >= 4) || climHolding;
   if (!climActive) {
-    if (idling && powerW > 300.0f && epoch) {
+    if (climateOn && epoch) {
       climActive = true;
       climStartEpoch = epoch;
       climStartMs = now;
+      accClimMs = 0;
       climWh = climWhDay = climWhNight = 0;
       climSocStart = soc;
       climSocEnd = soc;
-      Serial.println("[log] climate session started");
+      Serial.printf("[log] climate session started (%.0f W)\n", (double)powerW);
     }
   } else {
+    if (dtMs > 0 && dtMs < 30000UL) accClimMs += dtMs;
     if (soc >= 0) climSocEnd = soc;
     if (wh > 0) {
       climWh += wh;
       if (isNight(epoch)) climWhNight += wh; else climWhDay += wh;
     }
-    if (!idling) finishClimate("stopped");
+    if (!climateOn) finishClimate("stopped");
   }
 
-  // ---- charges ----
+  // ---- зарядки ------------------------------------------------------------
+  // Сессия = один период от начала зарядки до снятия кабеля. Внутри ток может
+  // пропадать (пауза таймера, добивка на 100 %, короткий сбой шины) — сессию
+  // это не рвёт, иначе одна зарядка дробилась на несколько записей.
+  static unsigned long chgUnplugMs = 0;
   if (!chgActive) {
     if (charging && epoch) {
       chgActive = true;
       chgStartEpoch = epoch;
       chgStartMs = now;
+      accChgMs = 0;
       chgSocStart = soc;
       chgSocEnd = soc;
       chgKwh = chgKwhDay = chgKwhNight = 0;
+      chgUnplugMs = 0;
+      Serial.printf("[log] charge session started (%.0f%%)\n", (double)soc);
     }
   } else {
+    if (dtMs > 0 && dtMs < 30000UL) accChgMs += dtMs;
     if (soc >= 0) chgSocEnd = soc;
     if (wh > 0) {
       chgKwh += wh;
       if (isNight(epoch)) chgKwhNight += wh; else chgKwhDay += wh;
     }
-    if (!charging) finishCharge("stopped");
+    // Кабель снят = зарядка закончилась. 2 минуты запаса — чтобы моргнувший
+    // кадр 0x1DC не закрыл сессию.
+    if (pluggedIn) chgUnplugMs = 0;
+    else if (chgUnplugMs == 0) chgUnplugMs = now;
+    bool unplugged = chgUnplugMs != 0 && now - chgUnplugMs > 120000UL;
+    bool busGone = evCanLastFrameAgeSec() > 900UL;
+    // Долгая добивка на 100 %: ток почти нулевой, но кабель вставлен — час
+    // без тока считаем концом зарядки.
+    bool full = !charging && chgSocEnd >= 99.0f &&
+                lastChargingSeenMs != 0 && now - lastChargingSeenMs > 3600000UL;
+    if (unplugged || busGone) finishCharge("unplugged");
+    else if (full) finishCharge("full");
   }
+
+  saveSessionsToRtc();
 
   // Признак активной сессии для авто-записи CAN: машина отвечает по шине и
   // происходит что-то осмысленное (READY, поездка, климат, зарядка) либо течёт

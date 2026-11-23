@@ -28,8 +28,8 @@
 #define LEAF_FIRMWARE_VERSION "FR-TCall.177"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: OTA-capable partitions (min_spiffs), gz-only UI, wifi from app, tariff sync"
 #else
-#define LEAF_FIRMWARE_VERSION "FR-2can.205"
-#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: HTTP-via-DNS relay, mDNS retry, APN presets, Wi-Fi dead-link watchdog, paced profile retry"
+#define LEAF_FIRMWARE_VERSION "FR-2can.206"
+#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: single-period charges, separate climate, D-to-off trips, Wi-Fi watchdog"
 #endif
 
 // Доступ к версии из других модулей (serverApi.cpp).
