@@ -43,8 +43,8 @@ CAN_DIR = os.environ.get("LEAF_CAN_DIR", os.path.join(os.path.dirname(DB_PATH), 
 
 # Ссылка на Android-приложение (release-ассет проекта).
 APP_REV = os.environ.get("LEAF_REV", "sync-newdesign-1")
-APP_VERSION = "1.68"  # версия APK, доступная для скачивания
-APP_NOTES = "Два дизайна: полный функционал нового (графики, настройки платы, прошивка, админка) и переключение в «Ещё»"
+APP_VERSION = "1.69"  # версия APK, доступная для скачивания
+APP_NOTES = "Трёхсторонняя синхронизация истории: очистка на сервере доходит до платы и приложений, очистка на плате — до сервера; приложение читает историю сервера."
 
 APK_URL = os.environ.get(
     "LEAF_APK_URL",
