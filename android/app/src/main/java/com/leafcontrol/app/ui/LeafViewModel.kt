@@ -110,16 +110,18 @@ class LeafViewModel(app: Application) : AndroidViewModel(app) {
             val app = getApplication<Application>()
             val server = Settings.mode == "server" ||
                 (Settings.mode == "auto" && state.value.transport == "server")
-            if (server) {
-                val ts = com.leafcontrol.app.net.ServerApi.clearHistory(app, charges)
-                if (ts == null) {
-                    message.value = "Сервер не подтвердил очистку"
-                    return@launch
-                }
+            if (state.value.transport == "local" && state.value.connected) {
+                com.leafcontrol.app.net.LocalApi.clearHistory(app, charges)
+            }
+            // Even from local mode the server is cleared when credentials are
+            // configured: otherwise its cached history would resurrect later.
+            val ts = com.leafcontrol.app.net.ServerApi.clearHistory(app, charges)
+            if (ts != null) {
                 if (charges) Settings.historyClearCharge = ts
                 else Settings.historyClearTrip = ts
-            } else if (state.value.transport == "local" && state.value.connected) {
-                com.leafcontrol.app.net.LocalApi.clearHistory(app, charges)
+            } else if (server) {
+                message.value = "Сервер не подтвердил очистку"
+                return@launch
             }
             if (charges) com.leafcontrol.app.data.HistoryDb.clearCharges()
             else com.leafcontrol.app.data.HistoryDb.clearTrips()
