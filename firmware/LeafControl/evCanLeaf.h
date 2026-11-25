@@ -26,6 +26,7 @@ uint8_t evCanRxErrorCount();
 uint8_t evCanTxErrorCount();
 uint8_t evCanErrorFlags();
 uint32_t evCanLastFrameAgeSec();  // 0xFFFFFFFF = no frame yet
+bool evCanEverSeen();             // false until the first decoded EV-CAN frame
 // Raw payloads from Port A for remote decoding (returns length, 0 = none)
 uint8_t evCanRawPack(uint8_t* out);   // 0x1DB voltage/current
 uint8_t evCanRawTemp(uint8_t* out);   // 0x5C0 battery temperature

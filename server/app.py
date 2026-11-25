@@ -1444,6 +1444,32 @@ class Api(BaseHTTPRequestHandler):
                 "r": "server",
                 "kind": r["kind"],
             })
+        # Короткие огрызки поездки (5 с / 0.1 км) — не поездки, а артефакт
+        # перезапуска платы. Приклеиваем их к соседней нормальной поездке
+        # (промежуток до 30 мин), а одиночные просто не показываем.
+        if kind == "trip":
+            real = [x for x in out if x["kind"] == "trip" and
+                    x["d"] >= 120 and x["k"] >= 0.2]
+            merged = []
+            for rec in out:
+                if rec["kind"] != "trip" or (rec["d"] >= 120 and rec["k"] >= 0.2):
+                    merged.append(rec)
+                    continue
+                target, best = None, 1800
+                for other in real:
+                    gap = min(abs(other["s"] - rec["e"]), abs(rec["s"] - other["e"]))
+                    if gap < best:
+                        target, best = other, gap
+                if target is None:
+                    continue
+                target["k"] = round(target["k"] + rec["k"], 2)
+                target["d"] += rec["d"]
+                target["w"] += rec["w"]
+                target["wd"] += rec["wd"]
+                target["wn"] += rec["wn"]
+                target["s"] = min(target["s"], rec["s"])
+                target["e"] = max(target["e"], rec["e"])
+            out = merged
         self.json(200, out)
 
     def pwa_command(self, path, q):

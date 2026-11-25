@@ -286,7 +286,7 @@ void tripLogInit() {
     uint32_t endEpoch = epochNow();
     float km = (rtcTripOdoLast > 0 && rtcTripOdoStart > 0) ? (rtcTripOdoLast - rtcTripOdoStart) : 0;
     if (km < 0) km = 0;
-    if (rtcTripStart > 0 && km >= 0.05f) {
+    if (rtcTripStart > 0 && km >= 0.2f) {
       char line[200];
       snprintf(line, sizeof(line),
                "{\"s\":%lu,\"e\":%lu,\"d\":%lu,\"k\":%.2f,\"w\":%.3f,\"wd\":%.3f,\"wn\":%.3f,\"s0\":%d,\"s1\":%d,\"r\":\"restored\"}",
@@ -370,8 +370,10 @@ static void finishTrip(const char* reason) {
   if (km < 0) km = 0;
   if (tripKmSpeed > km) km = tripKmSpeed;   // короткие поездки: считаем по скорости
   tripKmSpeed = 0;
-  // Ignore noise: совсем без километров и короче двух минут — мусор.
-  if (km < 0.05f && durMs < 120000UL) return;
+  // Раньше здесь проходили «поездки» 0.13 км за 5 секунд: плата только
+  // перезагрузилась, EV-CAN ещё не пойман, а UDS уже выдавал скорость.
+  // Такие огрызки не поездка — они только дробят историю.
+  if (km < 0.2f || durMs < 120000UL) return;
 
   char line[200];
   // "w"/"wd"/"wn" are watt-hours (Wh), not kWh. The PWA stores Wh directly.
@@ -643,7 +645,8 @@ void tripLogTick() {
     // нет тяги и нет движения. Стоянки в пути (селектор не в P) поездку не
     // делят: раньше её рвало через 3 минуты и получалось «1 км + 16 км».
     bool carOff = (gearFresh && udsData.gear == 1) ||
-                  (!ready && powerW < 150.0f);
+                  (!ready && powerW < 150.0f &&
+                   !(gearFresh && udsData.gear != 1));
     if (!moved && speedKph < 0.5f && !charging && carOff) {
       if (tripOffSinceMs == 0) tripOffSinceMs = now;
     } else {
@@ -651,7 +654,13 @@ void tripLogTick() {
     }
     // A brief bus gap or a traffic stop is NOT a trip boundary. If all EV
     // traffic vanishes, wait long enough for reconnection before closing.
-    bool busLost = !charging && evCanLastFrameAgeSec() > 900UL;
+    // Crucially, "never seen since boot" is NOT a bus loss: after an OTA
+    // reboot the CAN sweep takes tens of seconds, and closing here used to
+    // produce a pile of 5-second / 0.1-km records at the start of a drive.
+    // Also never close while UDS still reports real movement.
+    uint32_t canAge = evCanLastFrameAgeSec();
+    bool busLost = !charging && speedKph < 1.0f && accTripMs > 600000UL &&
+                   (!evCanEverSeen() || canAge > 900UL);
     unsigned long tripGraceMs = parked ? 90000UL : 300000UL;
     if ((tripOffSinceMs != 0 && now - tripOffSinceMs > tripGraceMs) || busLost) {
       finishTrip("off");

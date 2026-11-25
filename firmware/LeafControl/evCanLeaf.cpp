@@ -668,6 +668,13 @@ uint32_t evCanLastFrameAgeSec() {
   return (millis() - lastEvFrameMs) / 1000UL;
 }
 
+// False when no EV-CAN frame has been decoded since boot. Without this, a
+// freshly booted board treats "bus never seen" as "bus lost for 900 s" and
+// closes a trip in the very tick it started.
+bool evCanEverSeen() {
+  return evFrameSeen;
+}
+
 // ---- скорость (0x284) ---------------------------------------------------
 void handleEvSpeed(float kph) {
   if (kph < 0.0f) kph = 0.0f;
