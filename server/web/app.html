@@ -1939,14 +1939,78 @@ async function boardCharges(){
     points: []
   })).filter(c => c.startMs > 0 && c.endMs >= c.startMs);
 }
-function tripGetAll(){
-  if(onBoard) return boardTrips().catch(()=>[]);
+function localTripRows(){
   return new Promise((res,rej)=>{
     if(!tripDB) return res([]);
     const r=tripDB.transaction(TRIP_STORE).objectStore(TRIP_STORE).getAll();
     r.onsuccess=()=>res(r.result||[]);
     r.onerror=()=>rej(r.error);
   });
+}
+// Сервер — источник правды. Локальные записи, которых на сервере нет,
+// показываем как ожидающие отправки, чтобы офлайн-поездки не исчезали.
+async function serverRows(kind){
+  if(onBoard) return null;
+  try{
+    const r=await fetch('/api/'+kind, {cache:'no-store'});
+    if(!r.ok) return null;
+    return await r.json();
+  }catch(e){ return null; }
+}
+function serverTripShape(x){
+  return { id:'s'+x.s, startMs:(+x.s||0)*1000, endMs:(+x.e||+x.s||0)*1000,
+    distKm:(+x.k||0), energyWh:(+x.w||0), maxSpd:0,
+    startSoc:(x.s0>=0?+x.s0:null), endSoc:(x.s1>=0?+x.s1:null),
+    endReason:x.r||'', kind:x.kind||'trip', points:[], synced:true };
+}
+async function tripGetAll(){
+  if(onBoard) return boardTrips().catch(()=>[]);
+  const local=await localTripRows();
+  const rows=await serverRows('trips');
+  if(!rows) return local;
+  const remote=rows.map(serverTripShape);
+  const sec=t=>Math.round((t.startMs||0)/1000);
+  const have=new Set(remote.map(sec));
+  for(const t of local){
+    if(t.endMs==null || have.has(sec(t))) continue;
+    remote.push(Object.assign({},t,{synced:false}));
+  }
+  return remote;
+}
+async function pushSession(kind, rec){
+  if(onBoard || !rec || rec.endMs==null) return;
+  const body={ kind:kind,
+    started_at:Math.round(rec.startMs/1000),
+    ended_at:Math.round(rec.endMs/1000),
+    duration_s:Math.max(0,Math.round((rec.endMs-rec.startMs)/1000)),
+    distance_km:rec.distKm||0,
+    energy_kwh:(rec.energyWh||0)/1000,
+    soc_start:(rec.startSoc!=null?rec.startSoc:-1),
+    soc_end:(rec.endSoc!=null?rec.endSoc:-1) };
+  try{
+    await fetch('/api/session',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(body)});
+  }catch(e){}
+}
+let historyStateChecked=0;
+async function checkRemoteHistoryClear(){
+  if(onBoard || Date.now()-historyStateChecked<30000) return;
+  historyStateChecked=Date.now();
+  try{
+    const r=await fetch('/api/history-state',{cache:'no-store'});
+    if(!r.ok) return;
+    const d=await r.json(), clears=d.clears||{};
+    const t=Math.max(+(clears.trip||0),+(clears.climate||0));
+    const c=+(clears.charge||0);
+    if(t>+(localStorage.getItem('leaf_clear_trip')||0)){
+      await tripClearAll();
+      localStorage.setItem('leaf_clear_trip',String(t));
+    }
+    if(c>+(localStorage.getItem('leaf_clear_charge')||0)){
+      await chgClearAll();
+      localStorage.setItem('leaf_clear_charge',String(c));
+    }
+  }catch(e){}
 }
 // History is kept in the phone's browser storage, so it must not grow forever.
 // Points are dropped when a trip closes; the list itself is capped here.
@@ -1964,7 +2028,7 @@ function tripDelete(ids){
 }
 async function tripPrune(){
   if(onBoard) return;
-  const all=await tripGetAll();
+  const all=await localTripRows();
   const done=all.filter(t=>t.endMs!=null).sort((a,b)=>b.startMs-a.startMs);
   if(done.length<=TRIP_KEEP) return;
   await tripDelete(done.slice(TRIP_KEEP).map(t=>t.id));
@@ -2100,6 +2164,7 @@ function tripEnd(now, reason){
   // hundreds of them). Keeping only the summary keeps history small forever.
   trip.points=[];
   tripPut(trip);
+  pushSession('trip', trip);
   trip=null;
   refreshTripsScreen();
   tripPrune();
@@ -2202,6 +2267,7 @@ function fmtDur(sec){
   return sec+' с';
 }
 async function refreshTripsScreen(){
+  checkRemoteHistoryClear();
   const banner=$('trip-active-banner');
   if(banner) banner.classList.toggle('show', !!trip);
   if(!tripDB) return;
@@ -2256,6 +2322,16 @@ async function clearTrips(){
       if(!r.ok) throw new Error('http '+r.status);
     }catch(e){ toast('Плата не подтвердила очистку'); return; }
   } else {
+    // Сервер удалит свою историю и поставит команду плате; приложения
+    // узнают о clear через /api/history-state.
+    try{
+      const r=await fetch('/api/history/clear',{method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({scope:'trips'})});
+      if(!r.ok) throw new Error('http '+r.status);
+      const d=await r.json();
+      if(d.cleared_at) localStorage.setItem('leaf_clear_trip',String(d.cleared_at));
+    }catch(e){ toast('Сервер не подтвердил очистку'); return; }
     await tripClearAll();
   }
   refreshTripsScreen();
@@ -2286,14 +2362,34 @@ function chgPut(rec){
     tx.onerror=()=>rej(tx.error);
   });
 }
-function chgGetAll(){
-  if(onBoard) return boardCharges().catch(()=>[]);
+function serverChargeShape(x){
+  return { id:'s'+x.s, startMs:(+x.s||0)*1000, endMs:(+x.e||+x.s||0)*1000,
+    energyWh:(+x.w||0), whDay:(x.wd!=null?+x.wd:undefined),
+    whNight:(x.wn!=null?+x.wn:undefined), maxV:null,
+    startSoc:(x.s0>=0?+x.s0:null), endSoc:(x.s1>=0?+x.s1:null),
+    endReason:x.r||'', points:[], synced:true };
+}
+function localChargeRows(){
   return new Promise((res,rej)=>{
     if(!chgDB) return res([]);
     const r=chgDB.transaction(CHG_STORE).objectStore(CHG_STORE).getAll();
     r.onsuccess=()=>res(r.result||[]);
     r.onerror=()=>rej(r.error);
   });
+}
+async function chgGetAll(){
+  if(onBoard) return boardCharges().catch(()=>[]);
+  const local=await localChargeRows();
+  const rows=await serverRows('charges');
+  if(!rows) return local;
+  const remote=rows.map(serverChargeShape);
+  const sec=c=>Math.round((c.startMs||0)/1000);
+  const have=new Set(remote.map(sec));
+  for(const c of local){
+    if(c.endMs==null || have.has(sec(c))) continue;
+    remote.push(Object.assign({},c,{synced:false}));
+  }
+  return remote;
 }
 const CHG_KEEP=300;
 const CHG_MAX_POINTS=4000;
@@ -2309,7 +2405,7 @@ function chgDelete(ids){
 }
 async function chgPrune(){
   if(onBoard) return;
-  const all=await chgGetAll();
+  const all=await localChargeRows();
   const done=all.filter(c=>c.endMs!=null).sort((a,b)=>b.startMs-a.startMs);
   if(done.length<=CHG_KEEP) return;
   await chgDelete(done.slice(CHG_KEEP).map(c=>c.id));
@@ -2361,6 +2457,7 @@ function chargeEnd(now, reason){
   if(durSec<30 && (sum.energyWh||0)<0.01){ const id=chg.id; chg=null; chgDelete([id]); return; }
   chg.points=[];   // the summary is what the list shows
   chgPut(chg);
+  pushSession('charge', chg);
   chg=null;
   refreshChargesScreen();
   chgPrune();
@@ -2403,6 +2500,7 @@ async function chargeCleanupOrphans(){
   if(changed) refreshChargesScreen();
 }
 async function refreshChargesScreen(){
+  checkRemoteHistoryClear();
   const banner=$('charge-active-banner');
   if(banner) banner.classList.toggle('show', !!chg);
   if(!chgDB) return;
@@ -2445,6 +2543,14 @@ async function clearCharges(){
       if(!r.ok) throw new Error('http '+r.status);
     }catch(e){ toast('Плата не подтвердила очистку'); return; }
   } else {
+    try{
+      const r=await fetch('/api/history/clear',{method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({scope:'charges'})});
+      if(!r.ok) throw new Error('http '+r.status);
+      const d=await r.json();
+      if(d.cleared_at) localStorage.setItem('leaf_clear_charge',String(d.cleared_at));
+    }catch(e){ toast('Сервер не подтвердил очистку'); return; }
     await chgClearAll();
   }
   refreshChargesScreen();

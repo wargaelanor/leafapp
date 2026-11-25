@@ -1,6 +1,7 @@
 #include "tripLog.h"
 
 extern void serverApiOnRecord(const char* kind, const char* line);
+extern void serverApiClearRecords(const char* scope);
 extern void serverApiHistSample(float soc, float kw, float batt, float spd);
 #include "boardConfig.h"
 #if defined(LEAF_BOARD_TCALL) && (LEAF_BOARD_TCALL)
@@ -815,16 +816,31 @@ static void sendJsonLines(const char* path) {
 void tripLogSendTrips() { sendJsonLines(TRIPS_PATH); }
 void tripLogSendCharges() { sendJsonLines(CHARGES_PATH); }
 
-void tripLogClearTrips() {
-  tripActive = false;
-  HISTFS.remove(TRIPS_PATH);
-  tripsCount = 0;
+void tripLogClearKind(const char* scope) {
+  bool trips = !strcmp(scope, "trips") || !strcmp(scope, "all");
+  bool charges = !strcmp(scope, "charges") || !strcmp(scope, "all");
+  if (trips) {
+    tripActive = false;
+    climActive = false;
+    saveTripToRtc(false);
+    saveSessionsToRtc();
+    HISTFS.remove(TRIPS_PATH);
+    HISTFS.remove(CLIMATE_PATH);
+    tripsCount = climateCount = 0;
+    replayOffset[0] = replayOffset[2] = 0;
+  }
+  if (charges) {
+    chgActive = false;
+    saveSessionsToRtc();
+    HISTFS.remove(CHARGES_PATH);
+    chargesCount = 0;
+    replayOffset[1] = 0;
+  }
+  replayKind = 0;
+  serverApiClearRecords(scope);
 }
-void tripLogClearCharges() {
-  chgActive = false;
-  HISTFS.remove(CHARGES_PATH);
-  chargesCount = 0;
-}
+void tripLogClearTrips() { tripLogClearKind("trips"); }
+void tripLogClearCharges() { tripLogClearKind("charges"); }
 
 void tripLogSetNightWindow(uint8_t fromHour, uint8_t toHour) {
   tripLogSetTariff(tariffDay, tariffNight, fromHour, toHour);

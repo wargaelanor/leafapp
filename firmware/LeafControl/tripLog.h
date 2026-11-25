@@ -28,6 +28,9 @@ void tripLogSendTrips();     // stream the newest records as a JSON array
 void tripLogSendCharges();
 void tripLogClearTrips();
 void tripLogClearCharges();
+// "trips" (including climate), "charges" or "all" — local files, RTC state and
+// the upload queue are cleared together.
+void tripLogClearKind(const char* scope);
 
 // Day/night tariff window used when the board splits energy. Default 00:00-07:00.
 void tripLogSetNightWindow(uint8_t fromHour, uint8_t toHour);

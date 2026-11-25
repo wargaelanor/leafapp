@@ -60,6 +60,15 @@ object Settings {
         get() = p.getLong("server_cookie_ts", 0L)
         set(v) = p.edit().putLong("server_cookie_ts", v).apply()
 
+    /** Last history clear seen on the server; older local rows must stay gone. */
+    var historyClearTrip: Long
+        get() = p.getLong("history_clear_trip", 0L)
+        set(v) = p.edit().putLong("history_clear_trip", v).apply()
+
+    var historyClearCharge: Long
+        get() = p.getLong("history_clear_charge", 0L)
+        set(v) = p.edit().putLong("history_clear_charge", v).apply()
+
     var monitorEnabled: Boolean
         get() = p.getBoolean("monitor", true)
         set(v) = p.edit().putBoolean("monitor", v).apply()

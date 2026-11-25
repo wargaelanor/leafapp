@@ -50,5 +50,9 @@ void serverApiSetCommandHandler(ServerCommandHandler handler);
 // Запись завершённой поездки/зарядки ("trip"/"charge", JSON-строка платы).
 // Вызывается из tripLog; ставит запись в очередь отправки.
 void serverApiOnRecord(const char* kind, const char* line);
+// Drop not-yet-uploaded records after a history clear ("trips"/"charges"/"all").
+void serverApiClearRecords(const char* scope);
+// Tell the server that the board cleared its own history, so phones follow.
+void serverApiNotifyHistoryClear(const char* scope);
 
 #endif

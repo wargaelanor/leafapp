@@ -317,8 +317,11 @@ class LeafMonitorService : Service() {
     }
 
     private suspend fun syncHistory(server: Boolean) {
-        val t = if (server) ServerApi.trips(this) else LocalApi.trips(this)
-        val c = if (server) ServerApi.charges(this) else LocalApi.charges(this)
+        if (server) LeafRepo.applyRemoteClears(this)
+        val t = (if (server) ServerApi.trips(this) else LocalApi.trips(this))
+            .filter { it.startMs / 1000L > Settings.historyClearTrip }
+        val c = (if (server) ServerApi.charges(this) else LocalApi.charges(this))
+            .filter { it.startMs / 1000L > Settings.historyClearCharge }
         if (t.isNotEmpty() || c.isNotEmpty()) {
             t.forEach { HistoryDb.upsertTrip(it) }
             c.forEach { HistoryDb.upsertCharge(it) }
@@ -448,20 +451,23 @@ class LeafMonitorService : Service() {
                 if ((dur >= 60_000L || chargeWh >= 20.0) &&
                     !HistoryDb.hasBoardChargeNear(chargeStart, now)
                 ) {
-                    HistoryDb.upsertCharge(
-                        Charge(
-                            startMs = chargeStart,
-                            endMs = now,
-                            energyWh = chargeWh,
-                            whDay = chargeWhDay,
-                            whNight = chargeWhNight,
-                            startSoc = chargeSocStart,
-                            endSoc = s.soc.takeIf { it >= 0 }?.toInt(),
-                            source = "phone",
-                            reason = "stopped",
-                        )
+                    val rec = Charge(
+                        startMs = chargeStart,
+                        endMs = now,
+                        energyWh = chargeWh,
+                        whDay = chargeWhDay,
+                        whNight = chargeWhNight,
+                        startSoc = chargeSocStart,
+                        endSoc = s.soc.takeIf { it >= 0 }?.toInt(),
+                        source = "phone",
+                        reason = "stopped",
                     )
-                    scope.launch { LeafRepo.loadHistory() }
+                    HistoryDb.upsertCharge(rec)
+                    scope.launch {
+                        ServerApi.putSession(this@LeafMonitorService, "charge",
+                            rec.startMs, rec.endMs, 0.0, rec.energyWh, rec.startSoc, rec.endSoc)
+                        LeafRepo.loadHistory()
+                    }
                 }
                 chargeStart = 0L
             }
@@ -491,21 +497,24 @@ class LeafMonitorService : Service() {
                     if ((tripDist >= 0.05 || tripWh >= 10.0) &&
                         !HistoryDb.hasBoardTripNear(tripStart, now)
                     ) {
-                        HistoryDb.upsertTrip(
-                            Trip(
-                                startMs = tripStart,
-                                endMs = now,
-                                distKm = tripDist,
-                                energyWh = tripWh,
-                                whDay = tripWhDay,
-                                whNight = tripWhNight,
-                                startSoc = tripSocStart,
-                                endSoc = s.soc.takeIf { it >= 0 }?.toInt(),
-                                source = "phone",
-                                reason = if (s.on == 0) "off" else "idle",
-                            )
+                        val rec = Trip(
+                            startMs = tripStart,
+                            endMs = now,
+                            distKm = tripDist,
+                            energyWh = tripWh,
+                            whDay = tripWhDay,
+                            whNight = tripWhNight,
+                            startSoc = tripSocStart,
+                            endSoc = s.soc.takeIf { it >= 0 }?.toInt(),
+                            source = "phone",
+                            reason = if (s.on == 0) "off" else "idle",
                         )
-                        scope.launch { LeafRepo.loadHistory() }
+                        HistoryDb.upsertTrip(rec)
+                        scope.launch {
+                            ServerApi.putSession(this@LeafMonitorService, "trip",
+                                rec.startMs, rec.endMs, rec.distKm, rec.energyWh, rec.startSoc, rec.endSoc)
+                            LeafRepo.loadHistory()
+                        }
                         if (Settings.notifyTripEnd) {
                             Notifications.event(
                                 this@LeafMonitorService,

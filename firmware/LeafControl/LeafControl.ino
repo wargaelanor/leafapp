@@ -28,7 +28,7 @@
 #define LEAF_FIRMWARE_VERSION "FR-TCall.177"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: OTA-capable partitions (min_spiffs), gz-only UI, wifi from app, tariff sync"
 #else
-#define LEAF_FIRMWARE_VERSION "FR-2can.207"
+#define LEAF_FIRMWARE_VERSION "FR-2can.208"
 #define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: single-period charges, separate climate, D-to-off trips, Wi-Fi watchdog"
 #endif
 
@@ -967,6 +967,7 @@ void handleTripsClear() {
   }
   noteUserActivity();
   tripLogClearTrips();
+  serverApiNotifyHistoryClear("trips");
   server.send(200, "application/json", "{\"ok\":true}");
 }
 
@@ -977,6 +978,7 @@ void handleChargesClear() {
   }
   noteUserActivity();
   tripLogClearCharges();
+  serverApiNotifyHistoryClear("charges");
   server.send(200, "application/json", "{\"ok\":true}");
 }
 
@@ -2423,7 +2425,19 @@ void wifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
 // РЎРµСЂРІРµСЂ РїСЂРёСЃС‹Р»Р°РµС‚ РёРјСЏ РєРѕРјР°РЅРґС‹ Рё Р°СЂРіСѓРјРµРЅС‚С‹; РёСЃРїРѕР»РЅСЏРµРј С‚Рµ Р¶Рµ РїРѕСЃР»РµРґРѕРІР°С‚РµР»СЊРЅРѕСЃС‚Рё,
 // С‡С‚Рѕ Рё Р»РѕРєР°Р»СЊРЅС‹Рµ РєРЅРѕРїРєРё РІРµР±-РёРЅС‚РµСЂС„РµР№СЃР°.
 static void handleServerCommand(const char* name, const char* argsJson) {
-  if (!strcmp(name, "clim_on")) {
+  if (!strcmp(name, "history_clear")) {
+    // Сервер — источник правды: очистка истории приходит сюда even if the
+    // board was offline when the user cleared it.
+    char scope[16] = "all";
+    const char* p = strstr(argsJson, "\"scope\"");
+    if (p) {
+      const char* q = strchr(p, ':');
+      if (q && strstr(q, "trips")) snprintf(scope, sizeof(scope), "trips");
+      else if (q && strstr(q, "charges")) snprintf(scope, sizeof(scope), "charges");
+    }
+    tripLogClearKind(scope);
+    Serial.printf("[srv] history cleared by server: %s\n", scope);
+  } else if (!strcmp(name, "clim_on")) {
     int minutes = 20;
     const char* p = strstr(argsJson, "\"minutes\":");
     if (p) minutes = atoi(p + 10);

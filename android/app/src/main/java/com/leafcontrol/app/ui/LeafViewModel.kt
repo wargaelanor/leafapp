@@ -108,7 +108,17 @@ class LeafViewModel(app: Application) : AndroidViewModel(app) {
     fun clearHistory(charges: Boolean) {
         viewModelScope.launch {
             val app = getApplication<Application>()
-            if (state.value.transport == "local" && state.value.connected) {
+            val server = Settings.mode == "server" ||
+                (Settings.mode == "auto" && state.value.transport == "server")
+            if (server) {
+                val ts = com.leafcontrol.app.net.ServerApi.clearHistory(app, charges)
+                if (ts == null) {
+                    message.value = "Сервер не подтвердил очистку"
+                    return@launch
+                }
+                if (charges) Settings.historyClearCharge = ts
+                else Settings.historyClearTrip = ts
+            } else if (state.value.transport == "local" && state.value.connected) {
                 com.leafcontrol.app.net.LocalApi.clearHistory(app, charges)
             }
             if (charges) com.leafcontrol.app.data.HistoryDb.clearCharges()

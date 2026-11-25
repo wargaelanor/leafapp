@@ -79,13 +79,46 @@ object LeafRepo {
         cache(state.value)
     }
 
+    /** Apply clears made on the server before any history is read back. */
+    suspend fun applyRemoteClears(context: Context) {
+        val clears = ServerApi.historyClears(context)
+        if (clears.isEmpty()) return
+        val tripClear = maxOf(clears["trip"] ?: 0L, clears["climate"] ?: 0L)
+        val chargeClear = clears["charge"] ?: 0L
+        var changed = false
+        withContext(Dispatchers.IO) {
+            if (tripClear > Settings.historyClearTrip) {
+                HistoryDb.clearTrips()
+                Settings.historyClearTrip = tripClear
+                changed = true
+            }
+            if (chargeClear > Settings.historyClearCharge) {
+                HistoryDb.clearCharges()
+                Settings.historyClearCharge = chargeClear
+                changed = true
+            }
+        }
+        if (changed) loadHistory()
+    }
+
+    private fun tripAfterClear(t: Trip): Boolean {
+        val started = t.startMs / 1000L
+        return started > Settings.historyClearTrip
+    }
+
+    private fun chargeAfterClear(c: Charge): Boolean =
+        c.startMs / 1000L > Settings.historyClearCharge
+
     suspend fun refreshHistory(context: Context) {
+        applyRemoteClears(context)
         val server = Settings.mode == "server" ||
             (Settings.mode == "auto" && state.value.transport == "server")
         val local = if (server) ServerApi.status(context) else LocalApi.status(context)
         if (local != null) setLocal(local)
-        val t = if (server) ServerApi.trips(context) else LocalApi.trips(context)
-        val c = if (server) ServerApi.charges(context) else LocalApi.charges(context)
+        val t = (if (server) ServerApi.trips(context) else LocalApi.trips(context))
+            .filter { tripAfterClear(it) }
+        val c = (if (server) ServerApi.charges(context) else LocalApi.charges(context))
+            .filter { chargeAfterClear(it) }
         if (t.isNotEmpty() || c.isNotEmpty()) {
             withContext(Dispatchers.IO) {
                 t.forEach { HistoryDb.upsertTrip(it) }

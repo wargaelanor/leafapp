@@ -1581,6 +1581,67 @@ void serverApiOnRecord(const char* kind, const char* line) {
 
 // РџР»Р°С‚Р° С…СЂР°РЅРёС‚ СЃРІРѕРё Р·Р°РїРёСЃРё РєР°Рє {"s":start,"e":end,"d":СЃРµРє,"k":РєРј,"w":Wh,"s0":..,"s1":..}
 // РЎРµСЂРІРµСЂ Р¶РґС‘С‚ {kind,started_at,ended_at,duration_s,distance_km,energy_kwh,soc_start,soc_end}
+void serverApiClearRecords(const char* scope) {
+  bool trips = !strcmp(scope, "trips") || !strcmp(scope, "all");
+  bool charges = !strcmp(scope, "charges") || !strcmp(scope, "all");
+  if (!trips && !charges) return;
+  uint8_t keep = 0;
+  for (uint8_t i = 0; i < recCount; ++i) {
+    uint8_t idx = (recHead + i) % REC_QUEUE;
+    bool drop = (strcmp(recKind[idx], "climate") == 0) ? trips
+              : (strcmp(recKind[idx], "charge") == 0) ? charges : trips;
+    if (drop) continue;
+    if (keep != i) {
+      snprintf(recQueue[(recHead + keep) % REC_QUEUE], sizeof(recQueue[0]), "%s", recQueue[idx]);
+      snprintf(recKind[(recHead + keep) % REC_QUEUE], sizeof(recKind[0]), "%s", recKind[idx]);
+    }
+    keep++;
+  }
+  recCount = keep;
+}
+
+// A board-side clear must reach the server even if Wi-Fi is down at that
+// moment. Keep the scope in NVS and retry from the network task until acked.
+static void rememberPendingClear(const char* scope) {
+  Preferences p;
+  if (!p.begin("leafclear", false)) return;
+  String next = scope ? scope : "all";
+  String old = p.getString("scope", "");
+  if (old == "all" || next == "all" || (!old.isEmpty() && old != next)) next = "all";
+  p.putString("scope", next);
+  p.end();
+}
+static String pendingClearScope() {
+  Preferences p;
+  if (!p.begin("leafclear", true)) return String();
+  String s = p.getString("scope", "");
+  p.end();
+  return s;
+}
+static void forgetPendingClear() {
+  Preferences p;
+  if (!p.begin("leafclear", false)) return;
+  p.remove("scope");
+  p.end();
+}
+
+void serverApiNotifyHistoryClear(const char* scope) {
+  if (!registered || !cfgToken[0]) {
+    rememberPendingClear(scope);
+    return;
+  }
+  char body[64];
+  snprintf(body, sizeof(body), "{\"scope\":\"%s\"}", scope);
+  String resp;
+  if (postJson("/api/device/history-clear", body, resp)) {
+    forgetPendingClear();
+    Serial.printf("[srv] cleared server history: %s\n", scope);
+  } else {
+    rememberPendingClear(scope);
+    Serial.printf("[srv] server history clear failed: %s\n", scope);
+  }
+}
+
 static bool sendOneRecord() {
   char diskLine[220], diskKind[8];
   bool disk = tripLogNextReplay(diskKind, sizeof(diskKind), diskLine, sizeof(diskLine));
@@ -1723,6 +1784,14 @@ static void serverNetOnce() {
     // Drain a few records per tick instead of one (bounded so a large
     // backlog cannot starve telemetry for minutes on the slow modem link).
     for (int n = 0; n < 4 && sendOneRecord(); n++) {}
+  }
+
+  // A clear made while offline is retried until the server confirms it.
+  static unsigned long lastClearRetryMs = 0;
+  if (registered && cfgToken[0] && now - lastClearRetryMs >= 30000UL) {
+    lastClearRetryMs = now;
+    String scope = pendingClearScope();
+    if (scope.length()) serverApiNotifyHistoryClear(scope.c_str());
   }
 
   // Раз в минуту (и сразу после неудачной синхронизации) отправляем короткий

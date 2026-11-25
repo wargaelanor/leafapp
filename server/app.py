@@ -129,6 +129,14 @@ CREATE TABLE IF NOT EXISTS dev_sessions (
   meta TEXT
 );
 CREATE INDEX IF NOT EXISTS ds_dev ON dev_sessions(device_id, ended_at);
+-- Метки очистки истории. Запись с started_at <= cleared_at не должна
+-- вернуться на сервер из очереди платы или из офлайн-кэша приложения.
+CREATE TABLE IF NOT EXISTS history_clears (
+  device_id INTEGER NOT NULL,
+  kind TEXT NOT NULL,
+  cleared_at INTEGER NOT NULL,
+  PRIMARY KEY(device_id, kind)
+);
 CREATE TABLE IF NOT EXISTS commands (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   device_id INTEGER NOT NULL,
@@ -705,6 +713,8 @@ class Api(BaseHTTPRequestHandler):
             return self.device_canlog(q)
         if path == "/api/device/session" and method == "POST":
             return self.device_session()
+        if path == "/api/device/history-clear" and method == "POST":
+            return self.device_history_clear()
         if path == "/api/device/cmd" and method == "GET":
             return self.device_cmd_poll(q)
         if path == "/api/device/ack" and method == "POST":
@@ -738,7 +748,31 @@ class Api(BaseHTTPRequestHandler):
         if path in ("/api/trips", "/api/charges") and method == "GET":
             return self.pwa_history(path, q)
         if path in ("/api/trips/clear", "/api/charges/clear") and method == "POST":
-            return self.json(200, {"ok": True})
+            u = self.require_user()
+            if not u:
+                return
+            dev = self.owned_device(u, str((self.body() or {}).get("device", ""))) \
+                or self.pwa_pick_device(u)
+            if not dev:
+                return self.err(404, "device not found")
+            scope = "charges" if path.endswith("charges/clear") else "trips"
+            ts = self.clear_history(dev, scope)
+            return self.json(200, {"ok": True, "cleared_at": ts})
+        if path == "/api/history/clear" and method == "POST":
+            u = self.require_user()
+            if not u:
+                return
+            b = self.body() or {}
+            dev = self.owned_device(u, str(b.get("device", ""))) or self.pwa_pick_device(u)
+            if not dev:
+                return self.err(404, "device not found")
+            scope = str(b.get("scope") or "all")
+            if scope not in ("trips", "charges", "all"):
+                return self.err(400, "bad scope")
+            ts = self.clear_history(dev, scope)
+            return self.json(200, {"ok": True, "cleared_at": ts})
+        if path == "/api/session" and method == "POST":
+            return self.put_session()
         if path == "/api/tariff":
             b = self.body()
             dev, uid = None, 0
@@ -800,6 +834,8 @@ class Api(BaseHTTPRequestHandler):
             return self.get_hist(q)
         if path == "/api/sessions" and method == "GET":
             return self.get_sessions(q)
+        if path == "/api/history-state" and method == "GET":
+            return self.history_state(q)
         if path == "/api/session" and method == "GET":
             return self.get_session(q)
         if path == "/api/cmd" and method == "POST":
@@ -1266,6 +1302,11 @@ class Api(BaseHTTPRequestHandler):
         if not now() - 365 * 86400 <= started_at <= now() + 300:
             return self.err(400, "bad started_at")
         with db_lock, db() as c:
+            # Очищенная история не должна вернуться из очереди платы.
+            cl = c.execute("SELECT cleared_at FROM history_clears WHERE device_id=? AND kind=?",
+                           (dev["id"], kind)).fetchone()
+            if cl and started_at <= cl["cleared_at"]:
+                return self.json(200, {"ok": True, "skipped": True})
             # Повторная отправка после офлайна: та же запись не должна
             # задваиваться в истории.
             dup = c.execute(
@@ -1283,6 +1324,97 @@ class Api(BaseHTTPRequestHandler):
             )
             sid = cur.lastrowid
             log_event(c, dev["id"], f"session_{kind}", {"id": sid, "kwh": d.get("energy_kwh")})
+        self.json(200, {"ok": True, "session_id": sid})
+
+    def history_state(self, q):
+        u = self.require_user()
+        if not u:
+            return
+        dev = self.owned_device(u, str(q.get("device", ""))) or self.pwa_pick_device(u)
+        if not dev:
+            return self.err(404, "device not found")
+        with db_lock, db() as c:
+            rows = c.execute("SELECT kind,cleared_at FROM history_clears WHERE device_id=?",
+                             (dev["id"],)).fetchall()
+        self.json(200, {"ok": True, "clears": {r["kind"]: r["cleared_at"] for r in rows}})
+
+    def clear_history(self, dev, scope, board_triggered=False):
+        """Clear one history scope on the server and tell the other two sides.
+
+        The server is the authority: a clear writes a marker so records that
+        are still queued on the board (or cached offline in an app) cannot
+        resurrect the deleted history. A durable command makes the board clear
+        its own files even if it is offline at the moment of the clear.
+        """
+        kinds = {"trips": ("trip", "climate"),
+                 "charges": ("charge",),
+                 "all": ("trip", "climate", "charge")}.get(scope, ("trip", "climate"))
+        ts = now()
+        with db_lock, db() as c:
+            for kind in kinds:
+                c.execute("DELETE FROM dev_sessions WHERE device_id=? AND kind=?",
+                          (dev["id"], kind))
+                c.execute("INSERT OR REPLACE INTO history_clears(device_id,kind,cleared_at)"
+                          " VALUES(?,?,?)", (dev["id"], kind, ts))
+            if not board_triggered:
+                c.execute("INSERT INTO commands(device_id,user_id,name,args,status,created_at)"
+                          " VALUES(?,?,?,?,?,?)",
+                          (dev["id"], None, "history_clear",
+                           json.dumps({"scope": scope}), "queued", ts))
+            log_event(c, dev["id"], "history_clear",
+                      {"scope": scope, "by_board": board_triggered})
+        return ts
+
+    def device_history_clear(self):
+        dev = self.device()
+        if not dev:
+            return self.err(401, "bad device token")
+        b = self.body() or {}
+        scope = str(b.get("scope") or "all")
+        if scope not in ("trips", "charges", "all"):
+            return self.err(400, "bad scope")
+        ts = self.clear_history(dev, scope, board_triggered=True)
+        self.json(200, {"ok": True, "cleared_at": ts})
+
+    def put_session(self):
+        """A phone-created session joins the same history as board sessions."""
+        u = self.require_user()
+        if not u:
+            return
+        b = self.body() or {}
+        dev = self.owned_device(u, str(b.get("device", ""))) or self.pwa_pick_device(u)
+        if not dev:
+            return self.err(404, "device not found")
+        kind = b.get("kind")
+        if kind not in ("trip", "charge", "climate"):
+            return self.err(400, "kind must be trip|charge|climate")
+        try:
+            started = int(b.get("started_at"))
+        except (ValueError, TypeError):
+            return self.err(400, "started_at required")
+        if not now() - 365 * 86400 <= started <= now() + 300:
+            return self.err(400, "bad started_at")
+        with db_lock, db() as c:
+            cl = c.execute("SELECT cleared_at FROM history_clears WHERE device_id=? AND kind=?",
+                           (dev["id"], kind)).fetchone()
+            if cl and started <= cl["cleared_at"]:
+                return self.json(200, {"ok": True, "skipped": True})
+            # A phone and the board start the same session up to a minute apart;
+            # exact matching would keep both copies in the shared history.
+            dup = c.execute(
+                "SELECT id FROM dev_sessions WHERE device_id=? AND kind=? "
+                "AND ABS(started_at-?)<=120 ORDER BY ABS(started_at-?) LIMIT 1",
+                (dev["id"], kind, started, started),
+            ).fetchone()
+            if dup:
+                return self.json(200, {"ok": True, "session_id": dup["id"], "duplicate": True})
+            cur = c.execute(
+                "INSERT INTO dev_sessions(device_id,kind,started_at,ended_at,duration_s,distance_km,"
+                "energy_kwh,soc_start,soc_end,meta) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                (dev["id"], kind, started, b.get("ended_at"), b.get("duration_s"),
+                 b.get("distance_km"), b.get("energy_kwh"), b.get("soc_start"),
+                 b.get("soc_end"), json.dumps(b, ensure_ascii=False)))
+            sid = cur.lastrowid
         self.json(200, {"ok": True, "session_id": sid})
 
     def device_cmd_poll(self, q: dict):

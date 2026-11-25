@@ -368,6 +368,83 @@ object ServerApi {
         }
     }
 
+    private fun post(context: Context, path: String, body: String): String? {
+        try {
+            client.newCall(request(path, "POST", body)).execute().use { r ->
+                if (r.code == 401) {
+                    Settings.serverCookie = ""
+                    if (!login(context, force = true)) return null
+                    client.newCall(request(path, "POST", body)).execute().use { r2 ->
+                        return if (r2.isSuccessful) r2.body?.string() else null
+                    }
+                }
+                return if (r.isSuccessful) r.body?.string() else null
+            }
+        } catch (_: Exception) {
+            return null
+        }
+    }
+
+    /** Clear markers from the server, used to suppress resurrected local rows. */
+    suspend fun historyClears(context: Context): Map<String, Long> = withContext(Dispatchers.IO) {
+        if (!configured()) return@withContext emptyMap()
+        if (Settings.serverCookie.isEmpty() && !login(context)) return@withContext emptyMap()
+        val path = "/api/history-state" +
+            if (Settings.serverDevice > 0) "?device=${Settings.serverDevice}" else ""
+        val body = get(context, path) ?: return@withContext emptyMap()
+        val obj = runCatching { JSONObject(body).optJSONObject("clears") }.getOrNull()
+            ?: return@withContext emptyMap()
+        val out = HashMap<String, Long>()
+        val keys = obj.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            out[key] = obj.optLong(key, 0L)
+        }
+        out
+    }
+
+    /** Clear server history and queue the matching clear command for the board. */
+    suspend fun clearHistory(context: Context, charges: Boolean): Long? = withContext(Dispatchers.IO) {
+        if (!configured()) return@withContext null
+        if (Settings.serverCookie.isEmpty() && !login(context)) return@withContext null
+        val body = JSONObject()
+            .put("scope", if (charges) "charges" else "trips")
+        if (Settings.serverDevice > 0) body.put("device", Settings.serverDevice)
+        val resp = post(context, "/api/history/clear", body.toString()) ?: return@withContext null
+        val ts = runCatching { JSONObject(resp).optLong("cleared_at", 0L) }.getOrDefault(0L)
+        if (ts > 0L) ts else null
+    }
+
+    /** A session recorded on the phone joins the shared board/server history. */
+    suspend fun putSession(
+        context: Context,
+        kind: String,
+        startMs: Long,
+        endMs: Long,
+        distanceKm: Double,
+        energyWh: Double,
+        socStart: Int?,
+        socEnd: Int?,
+    ): Boolean = withContext(Dispatchers.IO) {
+        if (!configured()) return@withContext false
+        val started = startMs / 1000L
+        val cutoff = if (kind == "charge") Settings.historyClearCharge
+                     else maxOf(Settings.historyClearTrip, Settings.historyClearCharge)
+        if (started <= cutoff) return@withContext true
+        if (Settings.serverCookie.isEmpty() && !login(context)) return@withContext false
+        val body = JSONObject()
+            .put("kind", kind)
+            .put("started_at", started)
+            .put("ended_at", endMs / 1000L)
+            .put("duration_s", maxOf(0L, (endMs - startMs) / 1000L))
+            .put("distance_km", distanceKm)
+            .put("energy_kwh", energyWh / 1000.0)
+            .put("soc_start", socStart ?: -1)
+            .put("soc_end", socEnd ?: -1)
+        if (Settings.serverDevice > 0) body.put("device", Settings.serverDevice)
+        post(context, "/api/session", body.toString()) != null
+    }
+
     /** Login check for the settings screen: returns a short status text. */
     suspend fun probe(context: Context): String = withContext(Dispatchers.IO) {
         if (!configured()) return@withContext "не задан адрес или логин"
