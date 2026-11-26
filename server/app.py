@@ -1726,6 +1726,28 @@ class Api(BaseHTTPRequestHandler):
                 "AND payload LIKE '%\"soh\"%' ORDER BY ts",
                 (d["id"], since),
             ).fetchall()
+            # Монотонные счётчики платы: разница первого и последнего значения
+            # за период даёт пробег по одометру и трафик SIM за этот период.
+            odo_first = c.execute(
+                "SELECT json_extract(payload,'$.odo') v FROM samples WHERE device_id=? AND ts>=? "
+                "AND json_type(payload,'$.odo') IN ('integer','real') ORDER BY ts LIMIT 1",
+                (d["id"], since),
+            ).fetchone()
+            odo_last = c.execute(
+                "SELECT json_extract(payload,'$.odo') v FROM samples WHERE device_id=? AND ts>=? "
+                "AND json_type(payload,'$.odo') IN ('integer','real') ORDER BY ts DESC LIMIT 1",
+                (d["id"], since),
+            ).fetchone()
+            sim_first = c.execute(
+                "SELECT json_extract(payload,'$.sim_kb') v FROM samples WHERE device_id=? AND ts>=? "
+                "AND json_type(payload,'$.sim_kb') IN ('integer','real') ORDER BY ts LIMIT 1",
+                (d["id"], since),
+            ).fetchone()
+            sim_last = c.execute(
+                "SELECT json_extract(payload,'$.sim_kb') v FROM samples WHERE device_id=? AND ts>=? "
+                "AND json_type(payload,'$.sim_kb') IN ('integer','real') ORDER BY ts DESC LIMIT 1",
+                (d["id"], since),
+            ).fetchone()
             cfg = self.settings_all(c)
             maint = c.execute(
                 "SELECT * FROM maintenance WHERE device_id=? AND done_at IS NULL ORDER BY due_km",
@@ -1754,6 +1776,17 @@ class Api(BaseHTTPRequestHandler):
             v = p.get("soh")
             if isinstance(v, (int, float)) and v > 0:
                 soh.append({"ts": r["ts"], "soh": round(float(v), 2)})
+
+        try:
+            distance_km = max(0.0, float(odo_last["v"]) - float(odo_first["v"])) \
+                if odo_first and odo_last and odo_first["v"] is not None and odo_last["v"] is not None else None
+        except (TypeError, ValueError):
+            distance_km = None
+        try:
+            sim_mb = max(0.0, float(sim_last["v"]) - float(sim_first["v"])) / 1024.0 \
+                if sim_first and sim_last and sim_first["v"] is not None and sim_last["v"] is not None else None
+        except (TypeError, ValueError):
+            sim_mb = None
 
         # Complete charge -> subsequent trips -> next charge. No extrapolation
         # across missing SOC measurements or the unfinished latest cycle.
@@ -1784,6 +1817,9 @@ class Api(BaseHTTPRequestHandler):
             "days": days,
             "trips": {"count": trips["n"], "km": round(km, 1), "kwh": round(kwh, 2)},
             "charges": {"count": charges["n"], "kwh": round(ch_kwh, 2)},
+            "distance_km": round(distance_km, 1) if distance_km is not None else None,
+            "sim_mb": round(sim_mb, 1) if sim_mb is not None else None,
+            "soh_current": soh[-1]["soh"] if soh else None,
             "climate": {"count": climate["n"], "kwh": round(float(climate["kwh"] or 0), 2),
                         "hours": round(float(climate["secs"] or 0) / 3600.0, 2)},
             "per_day": [{"date": r["d"], "km": round(float(r["km"] or 0), 2),

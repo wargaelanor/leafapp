@@ -21,6 +21,7 @@
 #include "tripLog.h"
 #include "vehicleProfile.h"
 #include "modemProbe.h"
+#include "simTraffic.h"
 #include "boardConfig.h"
 #include <Preferences.h>
 
@@ -28,8 +29,8 @@
 #define LEAF_FIRMWARE_VERSION "FR-TCall.177"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: OTA-capable partitions (min_spiffs), gz-only UI, wifi from app, tariff sync"
 #else
-#define LEAF_FIRMWARE_VERSION "FR-2can.208"
-#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: single-period charges, separate climate, D-to-off trips, Wi-Fi watchdog"
+#define LEAF_FIRMWARE_VERSION "FR-2can.210"
+#define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: trips/charges stats, SIM traffic limit, Wi-Fi watchdog, RSSI"
 #endif
 
 // Доступ к версии из других модулей (serverApi.cpp).
@@ -96,6 +97,9 @@ static unsigned long developerSessionSeenMs = 0;
 static const unsigned long DEVELOPER_SESSION_MS = 15UL * 60UL * 1000UL;
 static uint8_t currentWifiProfile = 0;
 static volatile int lastWifiDisconnectReason = 0;
+// Последний измеренный уровень сигнала STA. Нужен, чтобы в логе отвала
+// видеть RSSI в момент потери связи, а не только код причины.
+static volatile int lastWifiRssiDbm = 0;
 // Set once NTP was started after the first successful Wi-Fi connection.
 static bool timeSyncStarted = false;
 // Last time someone opened a page or sent a command. Used to stop a forgotten
@@ -779,7 +783,8 @@ void handleApiStatus() {
   float gLat = 0, gLon = 0, gAlt = 0, gSpd = 0;
   uint32_t gAge = 0;
   bool gpsValid = modemGpsFix(&gLat, &gLon, &gAlt, &gSpd, &gAge);
-  char json[2800];
+  SimTrafficInfo simInfo = simTrafficInfo();
+  char json[3200];
   char h1db[26], h5bc[26], h7bb[26], h79a[26], h5c0[26], h1dba[26];
   jsonHexPayload(0x1DB, h1db, sizeof(h1db));
   jsonHexPayload(0x5BC, h5bc, sizeof(h5bc));
@@ -811,6 +816,8 @@ void handleApiStatus() {
     "\"wifi_drops\":%lu,\"wifi_drop_reason\":%d,\"wifi_ch\":%d,"
     "\"ap_clients\":%u,"
     "\"trips\":%u,\"charges\":%u,\"driving\":%d,"
+    "\"sim_day_mb\":%.2f,\"sim_week_mb\":%.2f,\"sim_month_mb\":%.2f,"
+    "\"sim_total_mb\":%.2f,\"sim_limit_mb\":%d,\"sim_blocked\":%d,"
     "\"night_from\":%u,\"night_to\":%u,\"tariff_day\":%.2f,\"tariff_night\":%.2f,"
     "\"sleep_on\":%d,\"sleep_after_h\":%d,\"wake_fast_min\":%d,\"idle_s\":%lu,"
     "\"charge_limit\":%d,\"mitm_sent\":%lu,\"mitm_armed\":%u,"
@@ -858,6 +865,8 @@ void handleApiStatus() {
     (unsigned)WiFi.softAPgetStationNum(),
     (unsigned)tripLogTripsCount(), (unsigned)tripLogChargesCount(),
     (evData.vehicleOn == 1 || tripLogIsDriving() || fabsf(evData.packPower) > 1.0f) ? 1 : 0,
+    simInfo.dayMb, simInfo.weekMb, simInfo.monthMb, simInfo.totalMb,
+    getSimTrafficLimitMb(), simInfo.blocked ? 1 : 0,
     (unsigned)tripLogNightFrom(), (unsigned)tripLogNightTo(),
     tripLogTariffDay(), tripLogTariffNight(),
     getSleepEnabled() ? 1 : 0, getSleepAfterHours(), getWakeFastMinutes(),
@@ -1442,6 +1451,11 @@ void handleSettingsSave() {
   setModemType(0);
   int pwr = server.arg("modem_pwrkey").toInt();
   if (pwr >= 0 && pwr <= 48) setModemPwrKey(pwr);
+  // 0 = без лимита, иначе 1..10240 МБ в месяц.
+  if (server.hasArg("sim_limit_mb")) {
+    int simMb = server.arg("sim_limit_mb").toInt();
+    if (setSimTrafficLimitMb(simMb) == ConfigStatus::OK) simTrafficRefresh();
+  }
   setModem7670Gps(server.hasArg("modem7670_gps"));
   setModemCallEnabled(server.hasArg("modem_call_enable"));
   for (uint8_t i = 0; i < 5; i++) {
@@ -1646,6 +1660,9 @@ void handleApiConfigGet() {
   out += ",\"modem800_apn\":\""; out += getModem800Apn();
   out += "\",\"modem800_user\":\""; out += getModem800User();
   out += "\",\"modem800_pass_set\":"; out += strlen(getModem800Pass()) > 0 ? "true" : "false";
+  out += ",\"sim_limit_mb\":"; out += String(getSimTrafficLimitMb());
+  out += ",\"sim_month_mb\":"; out += String(simTrafficInfo().monthMb, 2);
+  out += ",\"sim_blocked\":"; out += simTrafficBlocked() ? "true" : "false";
   out += "}";
   // the endpoint still returns 200. An odd quote count means malformed вЂ”
   // answer with a small valid object instead of poisoning the app.
@@ -1736,6 +1753,9 @@ void handleApiConfigSave() {
   if (jsonStr(body, "modem800_apn", s)) { s.trim(); setModem800Apn(s.c_str()); }
   if (jsonStr(body, "modem800_user", s)) { s.trim(); if (s.length() > 0) setModem800User(s.c_str()); }
   if (jsonStr(body, "modem800_pass", s) && s.length() > 0) setModem800Pass(s.c_str());
+  if (jsonInt(body, "sim_limit_mb", n) && n >= 0 && n <= 10240) {
+    if (setSimTrafficLimitMb((int)n) == ConfigStatus::OK) simTrafficRefresh();
+  }
 
   // Wi-Fi сети (1..3): пустые SSID/пароли ничего не меняют.
   if (jsonStr(body, "ssid", s)) { s.trim(); if (s.length() > 0) setWifiSSID(s.c_str()); }
@@ -2377,6 +2397,7 @@ void manageWiFi() {
   // молчит, поэтому плата пропадает из сети до перезагрузки. Здесь следим за
   // фактическими успешными ответами сервера по Wi-Fi.
   if (WiFi.status() == WL_CONNECTED) {
+    lastWifiRssiDbm = WiFi.RSSI();
     static unsigned long lastKickMs = 0;
     static uint8_t deadSteps = 0;
     unsigned long idle = serverWifiIdleMs();
@@ -2409,7 +2430,8 @@ void wifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
   Serial.printf("[WiFi-event] event=%d\n", (int)event);
   if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
     lastWifiDisconnectReason = (int)info.wifi_sta_disconnected.reason;
-    Serial.printf("  STA disconnected, reason=%d\n", (int)info.wifi_sta_disconnected.reason);
+    Serial.printf("  STA disconnected, reason=%d, last RSSI=%d dBm\n",
+                  (int)info.wifi_sta_disconnected.reason, (int)lastWifiRssiDbm);
     // Учитываем каждый отвал и пишем в NVS не чаще раза в 10 с: обработчик
     // зовётся из задачи Wi-Fi, лишние записи во флеш там ни к чему.
     wifiDropReason = lastWifiDisconnectReason;
@@ -2491,6 +2513,7 @@ void setup() {
   initConfiguration();
   loadWifiStats();
   clockRestore();
+  simTrafficInit();
   modemInit();
 
   // Имя платы в сети (DHCP hostname). Без этого телефон/роутер показывает
@@ -2769,6 +2792,7 @@ void loop() {
   server.handleClient();
   if (captivePortalActive) dnsServer.processNextRequest();
   modemTick();
+  simTrafficTick();
   if (wifiEnabled && WiFi.status() == WL_CONNECTED) {
     if (!arduinoOtaBegun) setupArduinoOTA();
     if (arduinoOtaBegun) ArduinoOTA.handle();

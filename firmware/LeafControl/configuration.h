@@ -115,6 +115,10 @@ ConfigStatus setModem7670Pass(const char* value);
 bool getModem7670Gps();
 ConfigStatus setModem7670Gps(bool value);
 
+// Лимит трафика SIM в МБ за календарный месяц (0 = без лимита).
+int getSimTrafficLimitMb();
+ConfigStatus setSimTrafficLimitMb(int value);
+
 // Управление климатом входящим звонком. RI закреплён на GPIO37.
 bool getModemCallEnabled();
 ConfigStatus setModemCallEnabled(bool value);

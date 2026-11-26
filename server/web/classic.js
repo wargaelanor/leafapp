@@ -61,6 +61,13 @@
 
   function addTab() {
     const bar = $('.tabbar');
+    // Поездки и зарядки больше не отдельные вкладки — они внутри «Статистики».
+    if (bar) {
+      ['trips', 'charges'].forEach(k => {
+        const dead = bar.querySelector('[data-screen="' + k + '"]');
+        if (dead) dead.remove();
+      });
+    }
     if (!bar || bar.querySelector('[data-screen="stats"]')) return;
     const more = bar.querySelector('[data-screen="more"]');
     const tab = document.createElement('div');
@@ -76,41 +83,49 @@
 
   function addScreen() {
     const screens = $('#screens');
-    if (!screens || $('#screen-stats')) return;
-    const sec = document.createElement('section');
-    sec.className = 'screen';
-    sec.id = 'screen-stats';
-    sec.innerHTML = `
-      <div class="card" style="margin-top:8px">
-        <div class="card-header"><div class="accent-line"></div>
-          <div style="font-size:16px">Статистика</div></div>
-        <div id="st-period" style="display:flex;gap:6px;margin:4px 0 12px"></div>
-        <div id="st-totals"></div>
-      </div>
-      <div class="card">
-        <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">Экономия</div></div>
-        <div id="st-savings"></div>
-        <div id="st-settings" style="margin-top:10px"></div>
-      </div>
-      <div class="card">
-        <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">SOH, %</div></div>
-        <div id="st-soh"></div>
-      </div>
-      <div class="card">
-        <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">Пробег по дням</div></div>
-        <div id="st-days"></div>
-      </div>
-      <div class="card">
-        <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">Обслуживание</div></div>
-        <div id="st-maint"></div>
-        <div id="st-maint-form" style="margin-top:10px"></div>
-      </div>`;
-    const more = $('#screen-more');
-    screens.insertBefore(sec, more || null);
+    if (!screens) return;
+    let sec = $('#screen-stats');
+    if (!sec) {
+      sec = document.createElement('section');
+      sec.className = 'screen';
+      sec.id = 'screen-stats';
+      screens.insertBefore(sec, $('#screen-more') || null);
+    }
+    if (sec.dataset.merged) return;
+    sec.dataset.merged = '1';
+    const style = document.createElement('style');
+    style.textContent = '.lc-stat-tabs{display:flex;gap:6px;margin:8px 16px 0}'
+      + '.lc-stat-tabs button{flex:1;border:1px solid var(--line);background:var(--surface);'
+      + 'color:var(--text-2);border-radius:8px;padding:9px 4px;font:inherit;font-size:12.5px;cursor:pointer}'
+      + '.lc-stat-tabs button.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}'
+      + '#screen-stats > .screen{padding-bottom:0}';
+    document.head.appendChild(style);
+    const main = document.createElement('section');
+    main.className = 'screen active';
+    main.id = 'screen-stats-main';
+    main.innerHTML = sec.innerHTML;
+    sec.innerHTML = '';
+    const tabs = document.createElement('div');
+    tabs.className = 'lc-stat-tabs';
+    tabs.innerHTML = '<button type="button" data-sub="charges">Зарядки</button>'
+      + '<button type="button" data-sub="trips">Поездки</button>'
+      + '<button type="button" data-sub="stats" class="on">Статистика</button>';
+    sec.appendChild(tabs);
+    sec.appendChild(main);
+    ['trips', 'charges'].forEach(k => {
+      const old = $('#screen-' + k);
+      if (old) { old.classList.remove('active'); sec.appendChild(old); }
+    });
+    tabs.querySelectorAll('button').forEach(b => b.addEventListener('click', e => {
+      e.stopPropagation();
+      setStatSub(b.dataset.sub);
+    }));
+    window.setStatSub = setStatSub;
   }
 
   let statsCache = null;
-  let statsDays = 0;
+  let statsDays = 1;
+  let statSub = 'stats';
 
   function showStats() {
     // скрыть остальные экраны и подсветить свою вкладку
@@ -119,7 +134,33 @@
     if (sec) sec.classList.add('active');
     $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.screen === 'stats'));
     const sc = $('#screens'); if (sc) sc.scrollTop = 0;
-    loadStats();
+    setStatSub(statSub);
+  }
+
+  function setStatSub(sub) {
+    statSub = ['charges', 'trips', 'stats'].indexOf(sub) >= 0 ? sub : 'stats';
+    const ids = { charges: 'screen-charges', trips: 'screen-trips', stats: 'screen-stats-main' };
+    Object.keys(ids).forEach(k => {
+      const el = $('#' + ids[k]);
+      if (el) el.classList.toggle('active', k === statSub);
+    });
+    $$('.lc-stat-tabs button').forEach(b => b.classList.toggle('on', b.dataset.sub === statSub));
+    if (statSub === 'trips' && typeof window.refreshTripsScreen === 'function') window.refreshTripsScreen();
+    if (statSub === 'charges' && typeof window.refreshChargesScreen === 'function') window.refreshChargesScreen();
+    if (statSub === 'stats') loadStats();
+    const sc = $('#screens'); if (sc) sc.scrollTop = 0;
+  }
+  const origGo = window.go;
+  if (typeof origGo === 'function' && !origGo.__lcStatsWrapped) {
+    window.go = function (name) {
+      if (name === 'trips' || name === 'charges') {
+        showStats();
+        setStatSub(name);
+        return;
+      }
+      return origGo.apply(this, arguments);
+    };
+    window.go.__lcStatsWrapped = true;
   }
 
   async function loadStats() {
@@ -439,7 +480,7 @@
 
   function renderStats(d) {
     // периоды
-    const periods = [[0, 'Всё время'], [30, '30 дней'], [7, '7 дней']];
+    const periods = [[1, '24 часа'], [7, 'неделя'], [30, 'месяц'], [0, 'всё время']];
     $('#st-period').innerHTML = periods.map(([v, t]) =>
       `<button class="dur-btns" style="flex:0 0 auto;width:auto;padding:6px 10px;border-radius:14px;border:1px solid var(--line);background:${v === statsDays ? 'var(--accent)' : 'var(--surface)'};color:${v === statsDays ? '#fff' : 'var(--text)'}" data-days="${v}">${t}</button>`
     ).join('');
@@ -451,11 +492,14 @@
     // итоги
     const rows = [
       ['Поездок', d.trips.count],
-      ['Пробег', fmt(d.trips.km, 1) + ' км'],
+      ['Пробег по поездкам, км', fmt(d.trips.km, 1)],
       ['Расход', fmt(d.trips.kwh, 2) + ' кВт·ч'],
       ['км на кВт·ч', fmt(d.consumption_km_per_kwh, 2)],
       ['Зарядок', d.charges.count],
       ['Заряжено', fmt(d.charges.kwh, 2) + ' кВт·ч'],
+      ['Расстояние (одометр), км', (d.distance_km === null || d.distance_km === undefined) ? '—' : fmt(d.distance_km, 1)],
+      ['SOH, %', (d.soh_current === null || d.soh_current === undefined) ? '—' : fmt(d.soh_current, 0)],
+      ['Трафик SIM, МБ', (d.sim_mb === null || d.sim_mb === undefined) ? '—' : fmt(d.sim_mb, 1)],
     ];
     // Климат считаем отдельно от поездок: стоянка с включённой машиной.
     if (d.climate && d.climate.count > 0) {
@@ -463,7 +507,8 @@
       rows.push(['Климат, время', fmt(d.climate.hours, 1) + ' ч']);
     }
     $('#st-totals').innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">` +
-      rows.map(([k, v]) => `<div><div style="font-size:12px;color:var(--muted)">${k}</div><div style="font-size:18px">${v}</div></div>`).join('') + `</div>`;
+      rows.map(([k, v]) => `<div${k === 'Трафик SIM, МБ' ? ' style="color:var(--accent);font-weight:600"' : ''}><div style="font-size:12px;color:var(--muted)">${k}</div><div style="font-size:18px">${v}</div></div>`).join('') + `</div>` +
+      `<div style="font-size:11px;color:var(--muted);margin-top:8px">Трафик SIM оценён по HTTP-запросам модема; лимит задаётся в настройках платы.</div>`;
 
     // экономия
     const c = d.cost || {};
@@ -933,6 +978,7 @@
         textField('apn', 'APN (точка доступа)', 'internet.beeline.ru', cfg.apn) +
         textField('apn_user', 'Логин APN', 'обычно не нужен', cfg.apn_user) +
         textField('apn_pass', 'Пароль APN', 'не менять', '', 'password') +
+        numField('sim_limit_mb', 'Лимит трафика SIM, МБ/мес', '0 — без лимита, 2048 = 2 ГБ') +
         '<div style="font-size:11px;color:var(--muted)">пароль не отображается; пустое поле — не менять</div>') +
       card('Плата в сети', 'Имя, под которым плата видна в домашней сети.',
         textField('host_name', 'Имя в сети (DHCP/mDNS)', 'leaf', cfg.host_name || 'leaf') +

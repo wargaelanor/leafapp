@@ -259,6 +259,14 @@ html[data-theme="dark"] .dur-btns button.on{color:#08121a}
 .diag-grid .d-cell{background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:9px 11px}
 .diag-grid .d-cell b{display:block;font-size:14px;color:var(--text);font-weight:600;word-break:break-word}
 .diag-grid .d-cell span{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+.wifi-signal{display:inline-flex;align-items:center;gap:6px;margin-top:3px;font-size:11.5px;color:var(--muted);cursor:default}
+.wifi-bars{display:inline-flex;align-items:flex-end;gap:2px;height:13px}
+.wifi-bars i{width:3px;background:var(--line);border-radius:1px}
+.wifi-bars i:nth-child(1){height:4px}.wifi-bars i:nth-child(2){height:7px}.wifi-bars i:nth-child(3){height:10px}.wifi-bars i:nth-child(4){height:13px}
+.wifi-bars i.on{background:var(--accent)}
+.wifi-signal.warn .wifi-bars i.on{background:#ff9500}
+.wifi-signal.bad .wifi-bars i.on{background:#ff3b30}
+.wifi-hint{margin:10px 0 0;font-size:11.5px;line-height:1.45;color:var(--muted)}
 .diag-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
 .diag-actions .pill-btn{font-size:12px;padding:8px 12px}
 .diag-modem{margin:12px 0 0;padding:10px 12px;background:#0f1115;color:#d7e0ea;border-radius:8px;
@@ -363,6 +371,22 @@ body.demo .demo-banner{display:block}
 .trip-clear:active{background:rgba(255,59,48,.12)}
 .trip-clear.export{color:var(--accent);border-color:var(--accent);margin-top:0}
 .trip-clear.export:active{background:var(--accent-soft)}
+/* Статистика: внутренние вкладки и сводные показатели */
+.st-tabs{display:flex;gap:6px;margin:10px 16px 4px}
+.st-tabs button{flex:1;border:1px solid var(--line);background:var(--surface);color:var(--text-2);border-radius:8px;
+  padding:9px 4px;font:inherit;font-size:12.5px;cursor:pointer}
+.st-tabs button.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+html[data-theme="dark"] .st-tabs button.on{color:#08121a}
+.st-sub{display:block}
+.st-sub.hide{display:none}
+.st-period{display:flex;gap:6px;flex-wrap:wrap;margin:12px 16px 4px}
+.st-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:10px 16px}
+.st-grid .cell{background:var(--surface);border-radius:8px;padding:12px;box-shadow:var(--card-shadow)}
+.st-grid .lbl{font-size:11px;color:var(--muted)}
+.st-grid .num{font-size:19px;font-weight:600;margin-top:3px}
+.st-grid .cell.sim{background:var(--accent-soft);border:1px solid var(--accent)}
+.st-grid .cell.sim .num{color:var(--accent)}
+.st-note{font-size:11.5px;color:var(--muted);margin:4px 16px 18px;line-height:1.4}
 /* --- Car status picture -------------------------------------------------
    Base photo always visible. Optional real overlays are separate files next
    to index.html: car-lights.png, car-cable.png, car-wheel1..4.png. They must
@@ -445,6 +469,10 @@ body.demo .demo-banner{display:block}
             <div class="car-layer spin-wheels"><span class="wheel w1"></span><span class="wheel w2"></span></div>
           </div>
           <div class="name">Nissan Leaf</div>
+          <div class="wifi-signal off" id="wifi-signal" title="Уровень сигнала Wi-Fi">
+            <span class="wifi-bars" id="wifi-bars"><i></i><i></i><i></i><i></i></span>
+            <span id="wifi-signal-text">Wi-Fi: нет данных</span>
+          </div>
         </div>
       </div>
       <div class="card">
@@ -502,12 +530,12 @@ body.demo .demo-banner{display:block}
         <div class="ft"><div class="ft-title">Уведомления ЭЗ</div><div class="ft-sub">Завершение зарядки и др.</div></div>
         <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
       </div>
-      <div class="feature-card" onclick="go('charges')">
+      <div class="feature-card" onclick="go('stats');setStatSub('charges')">
         <div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13.63.51L4.24 13.11c-.6.85 0 2.06 1.03 2.06h4.66l-1.63 8.12c-.24 1.33 1.45 2.12 2.3 1.03l9.39-12.6c.6-.85 0-2.06-1.03-2.06h-4.66l1.63-8.12c.24-1.33-1.45-2.12-2.3-1.03z"/></svg></div>
         <div class="ft"><div class="ft-title">История зарядок</div><div class="ft-sub" id="f-charges-sub">Сеансы и статистика</div></div>
         <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
       </div>
-      <div class="feature-card" onclick="go('trips')">
+      <div class="feature-card" onclick="go('stats');setStatSub('trips')">
         <div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3.5 18.5l5.57-5.57 3.54 3.53L20.5 8.07V16h-2V10.5L9.6 17.43l-3.54-3.53L4 16.09l-.5 2.41zM2 20h20v2H2v-2z"/></svg></div>
         <div class="ft"><div class="ft-title">Поездки</div><div class="ft-sub" id="f-trips-sub">Статистика и история</div></div>
         <div class="chev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></div>
@@ -669,41 +697,54 @@ body.demo .demo-banner{display:block}
       <div style="height:16px"></div>
     </section>
 
-    <!-- ЗАРЯДКИ -->
-    <section class="screen" id="screen-charges">
-      <div class="trip-summary">
-        <div class="cell"><div class="num" id="cs-total">0</div><div class="lbl">Сеансов</div></div>
-        <div class="cell"><div class="num" id="cs-kwh">0</div><div class="lbl">кВт·ч</div></div>
-        <div class="cell"><div class="num" id="cs-hours">0</div><div class="lbl">часов</div></div>
-        <div class="cell" onclick="openTariff()" title="Нажмите, чтобы задать тариф"><div class="num" id="cs-rub">—</div><div class="lbl">₽</div></div>
+    <!-- СТАТИСТИКА: зарядки + поездки + сводка -->
+    <section class="screen" id="screen-stats">
+      <div class="st-tabs" id="st-tabs">
+        <button data-sub="charges">Зарядки</button>
+        <button data-sub="trips">Поездки</button>
+        <button data-sub="stats" class="on">Статистика</button>
       </div>
-      <div class="trip-active-banner" id="charge-active-banner"><i></i><span>Идёт зарядка…</span></div>
-      <div class="trip-list" id="charge-list"></div>
-      <div class="trip-empty" id="charge-empty">Плата записывает зарядку сама. Сеанс появится в списке после отключения кабеля.</div>
-      <button class="trip-clear" id="charge-clear" style="display:none" onclick="clearCharges()">Очистить историю</button>
-      <button class="trip-clear export" onclick="exportChargesCsv()">Экспорт CSV</button>
-      <div style="height:16px"></div>
-    </section>
 
-    <!-- ПОЕЗДКИ -->
-    <section class="screen" id="screen-trips">
-      <div class="trip-summary">
-        <div class="cell"><div class="num" id="ts-total">0</div><div class="lbl">Поездок</div></div>
-        <div class="cell"><div class="num" id="ts-km">0</div><div class="lbl">км всего</div></div>
-        <div class="cell"><div class="num" id="ts-kwh">0</div><div class="lbl">кВт·ч</div></div>
-        <div class="cell" onclick="openTariff()" title="Нажмите, чтобы задать тариф"><div class="num" id="ts-rub">—</div><div class="lbl">₽</div></div>
+      <div class="st-sub hide" id="sub-charges">
+        <div class="trip-summary">
+          <div class="cell"><div class="num" id="cs-total">0</div><div class="lbl">Сеансов</div></div>
+          <div class="cell"><div class="num" id="cs-kwh">0</div><div class="lbl">кВт·ч</div></div>
+          <div class="cell"><div class="num" id="cs-hours">0</div><div class="lbl">часов</div></div>
+          <div class="cell" onclick="openTariff()" title="Нажмите, чтобы задать тариф"><div class="num" id="cs-rub">—</div><div class="lbl">₽</div></div>
+        </div>
+        <div class="trip-active-banner" id="charge-active-banner"><i></i><span>Идёт зарядка…</span></div>
+        <div class="trip-list" id="charge-list"></div>
+        <div class="trip-empty" id="charge-empty">Плата записывает зарядку сама. Сеанс появится в списке после отключения кабеля.</div>
+        <button class="trip-clear" id="charge-clear" style="display:none" onclick="clearCharges()">Очистить историю</button>
+        <button class="trip-clear export" onclick="exportChargesCsv()">Экспорт CSV</button>
+        <div style="height:16px"></div>
       </div>
-      <div class="trip-active-banner" id="trip-active-banner"><i></i><span>Идёт поездка…</span></div>
-      <div class="trip-toggle" id="trip-toggle" onclick="toggleTracks()">
-        <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 20l-6-2V4l6 2m0 14l6-2m-6 2V6m6 12l6 2V6l-6-2m0 14V4M9 6l6-2"/></svg></div>
-        <span class="lbl">Записывать трек поездок</span>
-        <span class="sw"><i></i></span>
+
+      <div class="st-sub hide" id="sub-trips">
+        <div class="trip-summary">
+          <div class="cell"><div class="num" id="ts-total">0</div><div class="lbl">Поездок</div></div>
+          <div class="cell"><div class="num" id="ts-km">0</div><div class="lbl">км всего</div></div>
+          <div class="cell"><div class="num" id="ts-kwh">0</div><div class="lbl">кВт·ч</div></div>
+          <div class="cell" onclick="openTariff()" title="Нажмите, чтобы задать тариф"><div class="num" id="ts-rub">—</div><div class="lbl">₽</div></div>
+        </div>
+        <div class="trip-active-banner" id="trip-active-banner"><i></i><span>Идёт поездка…</span></div>
+        <div class="trip-toggle" id="trip-toggle" onclick="toggleTracks()">
+          <div class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 20l-6-2V4l6 2m0 14l6-2m-6 2V6m6 12l6 2V6l-6-2m0 14V4M9 6l6-2"/></svg></div>
+          <span class="lbl">Записывать трек поездок</span>
+          <span class="sw"><i></i></span>
+        </div>
+        <div class="trip-list" id="trip-list"></div>
+        <div class="trip-empty" id="trip-empty">Плата записывает поездку сама, как только машина начинает двигаться. Первая запись появится после поездки.</div>
+        <button class="trip-clear" id="trip-clear" style="display:none" onclick="clearTrips()">Очистить историю</button>
+        <button class="trip-clear export" onclick="exportTripsCsv()">Экспорт CSV</button>
+        <div style="height:16px"></div>
       </div>
-      <div class="trip-list" id="trip-list"></div>
-      <div class="trip-empty" id="trip-empty">Плата записывает поездку сама, как только машина начинает двигаться. Первая запись появится после поездки.</div>
-      <button class="trip-clear" id="trip-clear" style="display:none" onclick="clearTrips()">Очистить историю</button>
-      <button class="trip-clear export" onclick="exportTripsCsv()">Экспорт CSV</button>
-      <div style="height:16px"></div>
+
+      <div class="st-sub" id="sub-stats">
+        <div class="st-period dur-btns" id="st-period" style="justify-content:flex-start"></div>
+        <div class="st-grid" id="st-grid"></div>
+        <div class="st-note" id="st-note"></div>
+      </div>
     </section>
 
     <!-- ЕЩЁ -->
@@ -770,13 +811,9 @@ body.demo .demo-banner{display:block}
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
       <span>Состояние</span>
     </div>
-    <div class="tab" data-screen="charges">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 3h9a1 1 0 011 1v5H5V4a1 1 0 011-1z"/><path d="M5 9h11v9a2 2 0 01-2 2H7a2 2 0 01-2-2V9z"/><path d="M16 12h2a2 2 0 012 2v3a1 1 0 01-1 1h-3"/></svg>
-      <span>Зарядки</span>
-    </div>
-    <div class="tab" data-screen="trips">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 19V5m0 14l4-4 4 3 4-6 4 4"/></svg>
-      <span>Поездки</span>
+    <div class="tab" data-screen="stats">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+      <span>Статистика</span>
     </div>
     <div class="tab" data-screen="more">
       <svg viewBox="0 0 25 5" fill="currentColor"><circle cx="2.5" cy="2.5" r="2.5"/><circle cx="12.5" cy="2.5" r="2.5"/><circle cx="22.5" cy="2.5" r="2.5"/></svg>
@@ -864,6 +901,7 @@ body.demo .demo-banner{display:block}
         <button class="about-close" type="button" aria-label="Закрыть" onclick="closeDiag()">×</button>
       </div>
       <div class="diag-grid" id="diag-grid"></div>
+      <p class="wifi-hint">Ниже −70 dBm сигнал считается слабым — возможны переподключения. Причина отвала 300 означает сторож прошивки, а не отвал точки доступа.</p>
       <div class="diag-actions">
         <button class="pill-btn" type="button" onclick="diagWake()">Разбудить и снять BMS</button>
         <button class="pill-btn" type="button" onclick="diagVin()">Проба VIN</button>
@@ -1114,13 +1152,88 @@ function holdButton(el, run, visual, holdMs){
   el.addEventListener('blur',()=>end(true));
 }
 function go(name){
+  // Поездки и зарядки теперь внутренние вкладки «Статистики».
+  if(name==='trips'||name==='charges') name='stats';
   document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('active',s.id==='screen-'+name));
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.screen===name));
   $('screens').scrollTop=0;
-  if(name==='trips') refreshTripsScreen();
-  if(name==='charges') refreshChargesScreen();
+  if(name==='stats') setStatSub(statSub);
 }
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>go(t.dataset.screen)));
+
+// ---------- Статистика: внутренние вкладки и периоды ----------
+let statSub='stats';
+let statDays=1;
+const STAT_PERIODS=[[1,'24 часа'],[7,'неделя'],[30,'месяц'],[0,'всё время']];
+const statNum=(v,d)=> (v===null||v===undefined||!isFinite(v)) ? '—' : Number(v).toFixed(d).replace('.',',');
+
+function setStatSub(sub){
+  statSub = ['charges','trips','stats'].indexOf(sub)>=0 ? sub : 'stats';
+  ['charges','trips','stats'].forEach(k=>{
+    const el=$('sub-'+k);
+    if(el) el.classList.toggle('hide', k!==statSub);
+    const b=document.querySelector('#st-tabs button[data-sub="'+k+'"]');
+    if(b) b.classList.toggle('on', k===statSub);
+  });
+  const sc=$('screens'); if(sc) sc.scrollTop=0;
+  if(statSub==='trips' && typeof refreshTripsScreen==='function') refreshTripsScreen();
+  if(statSub==='charges' && typeof refreshChargesScreen==='function') refreshChargesScreen();
+  if(statSub==='stats') refreshStatsScreen();
+}
+document.querySelectorAll('#st-tabs button').forEach(b=>b.addEventListener('click',()=>setStatSub(b.dataset.sub)));
+
+function renderStatPeriods(){
+  const box=$('st-period');
+  if(!box) return;
+  box.innerHTML=STAT_PERIODS.map(([v,t])=>
+    '<button type="button" data-days="'+v+'" class="'+(v===statDays?'on':'')+'">'+t+'</button>').join('');
+  box.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{
+    statDays=Number(b.dataset.days);
+    renderStatPeriods();
+    refreshStatsScreen();
+  }));
+}
+
+async function refreshStatsScreen(){
+  const grid=$('st-grid'), note=$('st-note');
+  if(!grid) return;
+  grid.innerHTML='<div class="cell"><div class="lbl">Загрузка…</div></div>';
+  try{
+    const [trips, charges, res] = await Promise.all([
+      boardTrips(), boardCharges(), fetch('/api/status',{cache:'no-store'})
+    ]);
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const st=await res.json();
+    const since = statDays>0 ? Date.now()-statDays*86400000 : 0;
+    const inPeriod = arr => arr.filter(x => x && x.endMs && x.endMs>=since);
+    const tt=inPeriod(trips), cc=inPeriod(charges);
+    const km=tt.reduce((a,x)=>a+(Number(x.distKm)||0),0);
+    const wh=tt.reduce((a,x)=>a+(Number(x.energyWh)||0),0);
+    const chWh=cc.reduce((a,x)=>a+(Number(x.energyWh)||0),0);
+    const eff = wh>0 ? km/(wh/1000) : 0;
+    const simKey={1:'sim_day_mb',7:'sim_week_mb',30:'sim_month_mb',0:'sim_total_mb'}[statDays];
+    const sim=st[simKey];
+    const cell=(lbl,val,cls)=>'<div class="cell'+(cls?' '+cls:'')+'"><div class="lbl">'+lbl+'</div><div class="num">'+val+'</div></div>';
+    grid.innerHTML =
+      cell('Поездок', String(tt.length)) +
+      cell('Зарядок', String(cc.length)) +
+      cell('Пробег, км', statNum(km,1)) +
+      cell('Потрачено, кВт·ч', statNum(wh/1000,2)) +
+      cell('Заряжено, кВт·ч', statNum(chWh/1000,2)) +
+      cell('Расстояние (одометр), км', statNum(st.odo,0)) +
+      cell('Км на кВт·ч', statNum(eff,2)) +
+      cell('SOH, %', statNum(st.soh,0)) +
+      cell('Трафик SIM, МБ', statNum(sim,1), 'sim');
+    const limit=Number(st.sim_limit_mb)||0;
+    note.textContent='Трафик SIM считается по HTTP-запросам модема (приблизительно).'
+      + (limit>0 ? ' Лимит: '+statNum(limit,0)+' МБ в месяц.' : ' Лимит не задан.')
+      + (st.sim_blocked ? ' Лимит достигнут — HTTP через SIM отключён до нового месяца.' : '');
+  }catch(e){
+    grid.innerHTML='<div class="cell"><div class="lbl">Нет данных</div><div class="num">—</div></div>';
+    if(note) note.textContent=e.message||'Не удалось получить данные';
+  }
+}
+renderStatPeriods();
 
 // ---------- refresh from anywhere ----------
 // Single entry point: the app-bar icon next to the connection badge, visible
@@ -1291,6 +1404,16 @@ function renderNow(){
   $('s-vin').textContent = S.vin || '—';
   $('f-status-sub').textContent = soc!=null ? 'Батарея '+soc.toFixed(0)+'%' : 'Батарея, климат, двери';
 
+  // Wi-Fi signal is always visible on the garage screen so a bad link can be
+  // spotted before it turns into a disconnect/reconnect pair.
+  const wq = wifiQuality(S.wifiRssi);
+  const ws = $('wifi-signal');
+  if(ws){
+    ws.className = 'wifi-signal ' + wq.cls;
+    $('wifi-bars').innerHTML = [1,2,3,4].map(n => '<i'+(n<=wq.bars?' class="on"':'')+'></i>').join('');
+    $('wifi-signal-text').textContent = 'Wi-Fi: ' + (wq.bars ? (S.wifiRssi+' dBm · '+wq.label) : 'нет данных');
+  }
+
   $('seq-banner').classList.toggle('show', !!S.seq);
   updateGpsRow();
 }
@@ -1343,6 +1466,11 @@ async function pollLocal(){
     S.fage=(j.fage===undefined)?-1:j.fage;
     S.odo=j.odo||0; S.vin=j.vin||''; S.hvacTimer=j.hvac_timer||0;
     S.epoch=(j.epoch===undefined)?0:j.epoch;   // board clock, 0 until NTP syncs
+    S.wifiRssi=(j.wifi_rssi===undefined)?null:j.wifi_rssi;
+    S.wifiStatus=(j.wifi_status===undefined)?-1:j.wifi_status;
+    S.wifiDrops=(j.wifi_drops===undefined)?0:j.wifi_drops;
+    S.wifiDropReason=(j.wifi_drop_reason===undefined)?0:j.wifi_drop_reason;
+    S.wifiDownS=(j.wifi_down_s===undefined)?0:j.wifi_down_s;
     S.tariffDay=(j.tariff_day===undefined)?null:j.tariff_day;
     S.tariffNight=(j.tariff_night===undefined)?null:j.tariff_night;
     S.nightFrom=(j.night_from===undefined)?null:j.night_from;
@@ -2501,6 +2629,20 @@ function diagUptime(sec){
   const h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60);
   return h ? (h+' ч '+m+' мин') : (m ? (m+' мин') : (sec+' с'));
 }
+// Wi-Fi signal quality: dBm plus a human-readable grade. Zero means the STA
+// link is down (/api/status reports 0 when not connected), not "0 dBm".
+function wifiQuality(dbm){
+  if(dbm===undefined||dbm===null||dbm===0||!isFinite(dbm)||dbm<-900)
+    return {bars:0,label:'нет подключения',cls:'off'};
+  if(dbm>=-60) return {bars:4,label:'отличный',cls:''};
+  if(dbm>=-70) return {bars:3,label:'хороший',cls:''};
+  if(dbm>=-80) return {bars:2,label:'слабый',cls:'warn'};
+  return {bars:1,label:'очень слабый',cls:'bad'};
+}
+function wifiSignalText(dbm){
+  const q=wifiQuality(dbm);
+  return q.bars ? (dbm+' dBm · '+q.label) : 'нет подключения';
+}
 function linkText(l){
   if(!l) return '—';
   if(l.mode !== 'server') return 'выключен: режим «без подключения»';
@@ -2525,7 +2667,7 @@ async function diagRender(){
       ['Перезагрузка', diagResetText(j.reset_reason, j.software_restart)],
       ['Память', Math.round((j.free_heap||0)/1024) + ' КБ'],
       ['PSRAM', j.psram ? (Math.round((j.psram_free||0)/1024) + ' из ' + Math.round(j.psram/1024) + ' КБ') : 'нет'],
-      ['Wi-Fi', t(j.wifi_rssi,' dBm')],
+      ['Wi-Fi', wifiSignalText(j.wifi_rssi)],
       ['Часы платы', j.epoch ? new Date(j.epoch*1000).toLocaleTimeString('ru-RU') : 'не синхронизированы'],
       ['Интерфейс', j.ui_lite ? 'лёгкий' : 'полный'],
       ['CAN B', (j.fb||0)+' кадров · TX '+t(j.btec)+' / RX '+t(j.brec)],
@@ -2535,7 +2677,8 @@ async function diagRender(){
       ['Режим', l ? (l.mode === 'server' ? 'сервер' : 'без подключения') : (['без подключения','сервер'][j.remote_mode] || '—')],
       ['Сервер', l ? linkText(l) : '—'],
       ['Модем', l ? (l.modem + (l.modem_en ? '' : ' · выключен') + (l.apn ? ' · ' + l.apn : ' · APN не задан')) : (j.modem || '—')],
-      ['Wi-Fi (канал)', j.wifi_rssi ? (j.wifi_rssi + ' dBm') : (l && l.wifi ? l.rssi + ' dBm' : 'нет')],
+      ['Wi-Fi (отвалы)', (j.wifi_drops||0) + ' · причина ' + (j.wifi_drop_reason||0) + (j.wifi_down_s ? ' · без связи '+j.wifi_down_s+' с' : '')],
+      ['Wi-Fi (канал)', (j.wifi_rssi ? wifiSignalText(j.wifi_rssi) : (l && l.wifi ? wifiSignalText(l.rssi) : 'нет'))],
     ];
     $('diag-grid').innerHTML = rows.map(rr =>
       '<div class="d-cell"><b>'+rr[1]+'</b><span>'+rr[0]+'</span></div>').join('');

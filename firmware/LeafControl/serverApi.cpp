@@ -17,6 +17,7 @@
 #include "vehicleProfile.h"
 #include "modemManager.h"
 #include "modemHw.h"
+#include "simTraffic.h"
 #include <Update.h>
 #include <esp_ota_ops.h>
 #include "configuration.h"
@@ -740,12 +741,13 @@ static String stateJson() {
   time_t tnow = time(nullptr);
   uint32_t ts = (tnow > 1600000000) ? (uint32_t)tnow : 0;
 
-  char body[560];
+  char body[640];
   snprintf(body, sizeof(body),
            "{\"ts\":%lu,\"soc\":%.1f,\"odo\":%.0f,\"cabin\":%.1f,\"amb\":%.1f,"
            "\"batt\":%.1f,\"pack_v\":%.1f,\"pack_kw\":%.2f,\"v12\":%.1f,"
            "\"hvac\":%d,\"charging\":%d,\"locked\":%d,\"doors\":%d,\"soh\":%d,\"spd\":%.1f,"
-           "\"bus_age_s\":%lu,\"profile\":\"%s\",\"profile_mode\":\"%s\"}",
+           "\"bus_age_s\":%lu,\"profile\":\"%s\",\"profile_mode\":\"%s\","
+           "\"sim_kb\":%lu,\"sim_limit_mb\":%d,\"sim_blocked\":%d}",
            (unsigned long)ts,
            soc >= 0 ? soc : -1.0,
            (double)evData.odometerKm,
@@ -755,7 +757,8 @@ static String stateJson() {
            (lockState == 1) ? 1 : 0,
            (doorFL || doorFR || doorRL || doorRR || doorTrunk) ? 1 : 0,
             evData.soh, (double)evSpeedKph(),
-           (unsigned long)busAgeSeconds(), leafProfileName(), leafProfileModeName());
+           (unsigned long)busAgeSeconds(), leafProfileName(), leafProfileModeName(),
+           (unsigned long)simTrafficTotalKb(), getSimTrafficLimitMb(), simTrafficBlocked() ? 1 : 0);
 
   return String(body);
 }
@@ -905,6 +908,13 @@ static void applyConfig(const char* argsJson) {
   else if (!strcmp(key, "vehicle_profile")) setVehicleProfile(ival);
   else if (!strcmp(key, "tz_offset")) setTzOffset(ival);
   else if (!strcmp(key, "modem")) setModemEnable(bval);
+  else if (!strcmp(key, "sim_limit_mb")) {
+    if (setSimTrafficLimitMb(ival) != ConfigStatus::OK) {
+      Serial.printf("[srv] sim_limit_mb %d rejected\n", ival);
+      return;
+    }
+    simTrafficRefresh();
+  }
   else if (!strcmp(key, "tariff_day") || !strcmp(key, "tariff_night") ||
            !strcmp(key, "night_from") || !strcmp(key, "night_to")) {
     // Тариф приходит с сервера (сохранённый в приложении) — применяем и

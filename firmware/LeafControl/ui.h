@@ -6,6 +6,7 @@
 #include <WebServer.h>
 #include "vehicleTypes.h"
 #include "configuration.h"
+#include "simTraffic.h"
 
 // Escape a string for use inside an HTML attribute value
 static String htmlEscapeAttr(const char* s) {
@@ -293,6 +294,19 @@ void sendSettingsPage(WebServer& server, const char* saveResult) {
   server.sendContent(String(getModemPwrKey()));
   server.sendContent(F(
     "'>\n"
+    "<label for='sim_limit_mb'>Лимит трафика SIM, МБ в месяц (0 — без лимита)</label>\n"
+    "<input type='number' id='sim_limit_mb' name='sim_limit_mb' min='0' max='10240' step='1' value='"
+  ));
+  server.sendContent(String(getSimTrafficLimitMb()));
+  {
+    SimTrafficInfo simInfo = simTrafficInfo();
+    server.sendContent(F("'>\n<div class='hint'>Сейчас за месяц: "));
+    server.sendContent(String(simInfo.monthMb, 1));
+    server.sendContent(F(" МБ"));
+    if (simInfo.blocked) server.sendContent(F(" · лимит достигнут, HTTP через SIM выключен"));
+    server.sendContent(F("</div>\n"));
+  }
+  server.sendContent(F(
     "<button type='submit' class='btn btn-save'>Сохранить и перезагрузить</button>\n"
     "</div></details>\n"
     "<details class='section' data-section='power'><summary>Экономия энергии</summary><div class='section-body'>\n"

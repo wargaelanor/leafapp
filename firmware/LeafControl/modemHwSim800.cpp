@@ -1,6 +1,7 @@
 #include "modemHw.h"
 #include "modemPins.h"
 #include "callAudio.h"
+#include "simTraffic.h"
 #include <Client.h>
 #if LEAF_BOARD_TCALL
 #include <Wire.h>
@@ -333,6 +334,20 @@ static volatile bool httpBusy = false;
 bool hwHttp(int method, const char* url, const char* body, String& response, int& code) {
   code = 0;
   response = "";
+  // Месячный лимит трафика: полностью запрещаем HTTP через SIM, но оставляем
+  // настройку включённой — после смены месяца модем заработает сам.
+  if (simTrafficBlocked()) {
+    static bool logged = false;
+    if (!logged) {
+      Serial.println("[http] SIM traffic limit reached, HTTP disabled");
+      logged = true;
+    }
+    code = -9;
+    return false;
+  } else {
+    static bool logged = false;
+    logged = false;
+  }
   // Один HTTP-запрос за раз: иначе синхронизация и ручная проверка мешают
   // друг другу на одном UART.
   if (httpBusy) { Serial.println("[http] busy"); return false; }
@@ -416,8 +431,13 @@ bool hwHttp(int method, const char* url, const char* body, String& response, int
     int okPos = all.lastIndexOf("OK");
     if (okPos >= 0) all = all.substring(0, okPos);
     all.trim();
-    (void)declared;
     response = all;
+    // Учитываем реальные байты HTTP: URL и тело запроса плюс размер ответа,
+    // который сообщил SIM800 в +HTTPACTION. 512 Б — оценка заголовков.
+    size_t respBytes = declared > 0 ? (size_t)declared : response.length();
+    size_t reqBytes = url ? strlen(url) : 0;
+    if (method == 1 && body) reqBytes += strlen(body);
+    simTrafficAdd((uint32_t)(reqBytes + respBytes + 512U));
     ok = (code >= 200 && code < 400);
   } while (false);
 

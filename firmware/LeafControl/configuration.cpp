@@ -142,6 +142,8 @@ static ConfigInt        conf_wake_slow_min("wake_slow_min", 15);
 static ConfigBool       conf_modem_enable("modem_enable", false);
 static ConfigInt        conf_modem_type("modem_type", 0); // 0=SIM800, 1=A7670
 static ConfigInt        conf_modem_pwrkey("modem_pwrkey", 0); // GPIO, 0=not managed
+// Месячный лимит трафика SIM, МБ. 0 = не ограничивать.
+static ConfigInt        conf_sim_limit_mb("sim_limit_mb", 0);
 static ConfigInt        conf_tz_offset("tz_offset", 3 * 3600); // UTC offset sec, default +3h Moscow
 static ConfigString<64> conf_modem800_apn("modem800_apn", "");
 static ConfigString<64> conf_modem800_user("modem800_user", "");
@@ -198,6 +200,7 @@ void initConfiguration() {
     conf_tz_offset.load();
     conf_modem_type.load();
     conf_modem_pwrkey.load();
+    conf_sim_limit_mb.load();
     conf_modem800_apn.load();
     conf_modem800_user.load();
     conf_modem800_pass.load();
@@ -355,6 +358,13 @@ int getModemPwrKey() { return conf_modem_pwrkey.get(); }
 ConfigStatus setModemPwrKey(int value) {
     if (value < 0 || value > 48) return ConfigStatus::ERROR_PORT_RANGE;
     return conf_modem_pwrkey.set(value);
+}
+
+int getSimTrafficLimitMb() { return conf_sim_limit_mb.get(); }
+ConfigStatus setSimTrafficLimitMb(int value) {
+    // 0 = без лимита; иначе 1..10240 МБ (10 ГБ).
+    if (value < 0 || value > 10240) return ConfigStatus::ERROR_PORT_RANGE;
+    return conf_sim_limit_mb.set(value);
 }
 
 const char* getModem800Apn() { return conf_modem800_apn.get(); }
