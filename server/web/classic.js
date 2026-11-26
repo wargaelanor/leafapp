@@ -1826,7 +1826,7 @@
 (function () {
   try {
     if (localStorage.getItem('leafDesign') === 'new' && location.pathname !== '/classic.html') {
-      location.replace('/');
+      location.replace('/radius');
       return;
     }
     const boot = setInterval(() => {
@@ -1840,12 +1840,12 @@
       row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;' +
         'padding:16px;margin:0 16px;background:var(--surface);border-bottom:1px solid var(--line);' +
         'color:var(--text);font-size:15px;cursor:pointer';
-      row.innerHTML = '<div><div>Дизайн интерфейса</div>' +
-        '<div style="font-size:12px;color:var(--muted);margin-top:2px">новый — карточки и группы</div></div>' +
+      row.innerHTML = '<div><div>Новый дизайн (бета)</div>' +
+        '<div style="font-size:12px;color:var(--muted);margin-top:2px">RADIUS — машина, веер команд, статистика</div></div>' +
         '<div style="color:var(--muted);font-size:20px">›</div>';
       row.addEventListener('click', () => {
         localStorage.setItem('leafDesign', 'new');
-        location.href = '/';
+        location.href = '/radius';
       });
       const logout = box.querySelector('[data-lc-logout]');
       if (logout) box.insertBefore(row, logout); else box.appendChild(row);

@@ -1362,9 +1362,9 @@
       car.appendChild(r);
     }
     if (!car.querySelector('[data-lc-newdesign]')) {
-      const r = moreRow('Новый интерфейс', 'дашборд v2 — машина, быстрые действия', MORE_ICONS.eye || MORE_ICONS.gear, function () {
-        try { localStorage.setItem('leafdesign', 'new'); } catch (e) {}
-        location.href = '/new';
+      const r = moreRow('RADIUS (бета)', 'новый дизайн — машина, веер команд, статистика', MORE_ICONS.eye || MORE_ICONS.gear, function () {
+        try { localStorage.setItem('leafdesign', 'radius'); } catch (e) {}
+        location.href = '/radius';
       });
       r.setAttribute('data-lc-newdesign', '1');
       car.appendChild(r);

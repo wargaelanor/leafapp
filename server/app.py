@@ -850,6 +850,11 @@ class Api(BaseHTTPRequestHandler):
                 if self.user():
                     return self.serve_static("new.html")
                 return self._send(302, b"", "text/plain", {"Location": "/login"})
+            if path in ("/radius", "/radius.html"):
+                # RADIUS (бета): новый основной интерфейс поверх серверного API.
+                if self.user():
+                    return self.serve_static("radius.html")
+                return self._send(302, b"", "text/plain", {"Location": "/login"})
             if path in ("/classic", "/classic.html"):
                 if self.user():
                     return self.serve_static("classic.html")

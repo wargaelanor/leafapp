@@ -12,10 +12,11 @@
     var m = location.search.match(/[?&]theme=(dark|light)\b/);
     if (m) document.documentElement.setAttribute('data-theme', m[1]);
   })();
-  // Two designs: when the new one is chosen, / redirects to /new.
+  // RADIUS beta is the default design. /classic (or ?design=classic) keeps the old one.
   try {
-    if (localStorage.getItem('leafdesign') === 'new' && !/[?&]design=classic\b/.test(location.search)) {
-      location.replace('/new');
+    var chosen = localStorage.getItem('leafdesign') || localStorage.getItem('leafDesign');
+    if (chosen !== 'classic' && !/[?&]design=classic\b/.test(location.search)) {
+      location.replace('/radius');
     }
   } catch (e) { /* storage may be unavailable */ }
 </script>

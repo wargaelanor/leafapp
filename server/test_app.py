@@ -144,7 +144,9 @@ class ApiContractTests(unittest.TestCase):
             uid = c.execute("SELECT id FROM users WHERE username='design-user'").fetchone()[0]
             c.execute("INSERT INTO sessions(token,user_id,created_at,expires_at) VALUES(?,?,?,?)",
                       ("design-cookie", uid, t, t + 600))
-        for path, marker in (("/", b"redesign.css"), ("/classic", b"class=\"tabbar\""),
+        for path, marker in (("/", b"redesign.css"), ("/radius", b"class=\"beta\""),
+                             ("/radius.html", b"class=\"beta\""),
+                             ("/classic", b"class=\"tabbar\""),
                              ("/classic.html", b"class=\"tabbar\"")):
             conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port)
             conn.request("GET", path, headers={"Cookie": "leaf_session=design-cookie"})
