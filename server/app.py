@@ -254,11 +254,15 @@ def sessions_overlap(a, b, tol=120):
 
 
 def canonical_sessions(rows):
-    """Hide phone/board duplicates without deleting stored history.
+    """Hide duplicates and phantom sessions without deleting stored history.
 
     Overlapping sessions of the same kind form one event. A board record wins
     on equal terms; a longer phone record wins over short board fragments
     when the old detector split a drive into several "charge" pieces.
+
+    The old charge detector treated regeneration as a plugged-in charger. Such
+    records overlap a trip and show no SOC growth (often a SOC drop), so they
+    are hidden from history and statistics.
     """
     rows = [dict(r) for r in rows]
     parent = list(range(len(rows)))
@@ -290,8 +294,26 @@ def canonical_sessions(rows):
         return dur + km * 60.0 + (0.0 if is_phone_session(row) else 1800.0)
 
     out = [max(group, key=score) for group in groups.values()]
-    out.sort(key=lambda r: session_bounds(r)[1], reverse=True)
-    return out
+
+    def num(value):
+        try:
+            return float(value or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    trip_rows = [r for r in out if r["kind"] == "trip"]
+    kept = []
+    for row in out:
+        if row["kind"] == "charge":
+            soc0, soc1 = num(row.get("soc_start")), num(row.get("soc_end"))
+            soc_gain = (soc1 - soc0) if soc0 >= 0 and soc1 >= 0 else 0.0
+            overlaps_trip = any(sessions_overlap(row, trip, tol=60) for trip in trip_rows)
+            if (overlaps_trip and soc_gain <= 0.5) or (num(row.get("energy_kwh")) <= 0 and soc_gain <= 0):
+                continue
+        kept.append(row)
+
+    kept.sort(key=lambda r: session_bounds(r)[1], reverse=True)
+    return kept
 
 
 def init_db() -> None:
