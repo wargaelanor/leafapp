@@ -373,8 +373,8 @@ html[data-theme="light"] .car img{filter:drop-shadow(0 26px 30px rgba(20,30,40,.
 .beta{display:inline-block;padding:1px 5px;border-radius:5px;background:var(--acc-dim);color:var(--acc);font-weight:800;letter-spacing:.06em}
 .devchip{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:7px 12px;border-radius:99px;background:var(--glass);border:1px solid var(--line);font-size:11.5px;color:var(--ink2)}
 .devchip:hover{border-color:var(--acc);color:var(--acc)}
-.periods{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
-.periods button{padding:6px 11px;border-radius:99px;border:1px solid var(--line);background:var(--glass);font-size:11px;color:var(--ink2)}
+.periods{display:flex;gap:6px;margin-bottom:12px}
+.periods button{flex:1 1 0;min-width:0;padding:6px 4px;border-radius:99px;border:1px solid var(--line);background:var(--glass);font-size:11px;color:var(--ink2)}
 .periods button:hover{border-color:var(--line2)}
 .periods button.on{background:var(--acc);border-color:var(--acc);color:var(--acc-ink);font-weight:700}
 .scard .hint{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.45}
@@ -633,7 +633,7 @@ input:focus,select:focus{outline:2px solid var(--acc-dim);border-color:var(--acc
         <div class="scard">
           <div class="top-row"><b class="t">Тёмная тема</b><button class="chip" id="sTheme">переключить</button></div>
           <div class="meta"><span>по умолчанию тёмная · светлая по кнопке</span></div>
-          <div class="rowbtns"><a href="/classic">Классический интерфейс</a><a href="/admin">Админка</a></div>
+          <div class="rowbtns"><a href="/classic">Классический</a><a href="/new">Дашборд v2</a><a href="/admin" id="sysAdminLink">Админка</a><a href="/app.apk">APK</a><button id="sysLogout">Выйти</button></div>
         </div>
       </div>
       <div class="ssec">

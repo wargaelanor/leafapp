@@ -2454,7 +2454,7 @@ class Api(BaseHTTPRequestHandler):
         u = self.require_user()
         if not u:
             return
-        dev = self.owned_device(u, q.get("device", "0"))
+        dev = self.owned_device(u, q.get("device", "0")) or self.pwa_pick_device(u)
         if not dev:
             return self.err(404, "device not found")
         days = min(int(q.get("days", "30")), 365)

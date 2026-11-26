@@ -325,20 +325,46 @@
   }
 
   async function loadFirmwareList() {
+    let latest = null;
     try {
       const j = await api('/api/admin/firmware');
       DATA.fw = j.items || [];
     } catch (e) { DATA.fw = []; }
+    const installed = DATA.status && DATA.status.fw || '';
+    const board = /tcall/i.test(installed) ? 'tcall' : 't2can';
+    try { latest = await api('/api/fw/latest?board=' + board); } catch (e) { /* тихо */ }
     const box = $('#sysFw');
     if (!box) return;
-    const installed = DATA.status && DATA.status.fw;
+    const isAdmin = DATA.devices && DATA.devices.role === 'admin';
+    let actions = '<div class="hint">Обновление доступно администратору в админке.</div>';
+    if (latest && latest.ok && latest.url) {
+      actions = '<div class="rowbtns"><a href="' + esc(latest.url) + '" download>Скачать ' +
+        esc(latest.name) + '</a>' +
+        (isAdmin ? '<button id="fwOta">Установить по воздуху</button>' : '') +
+        '<a href="/ota">Страница OTA</a></div>';
+    }
     box.innerHTML = card('Установлено', null, kv([
       ['Прошивка', esc(installed || '—')],
       ['Описание', esc((DATA.status && DATA.status.fw_desc) || '—')],
-      ['Плата', esc((DATA.status && DATA.status.device_name) || '—')]
-    ])) + '<div class="hint">Доступные файлы: ' +
-      (DATA.fw.length ? DATA.fw.map((x) => esc(x.name)).join(', ') : 'нет') +
-      '. Обновление — в админке или через /api/admin/firmware/update.</div>';
+      ['Плата', esc((DATA.status && DATA.status.device_name) || '—')],
+      ['Доступна', esc(latest && latest.ok ? latest.name : '—')]
+    ])) + card('Файлы на сервере', null, DATA.fw.length ? DATA.fw.map((x) =>
+      '<div class="kv"><span><a href="' + esc(x.url || ('/fw/' + x.name)) +
+      '" target="_blank" rel="noopener">' + esc(x.name) + '</a></span><b>' +
+      f1((Number(x.size) || 0) / 1048576, 2) + ' МБ</b></div>').join('') :
+      '<div class="hint">Файлов нет</div>') + actions;
+    const ota = $('#fwOta');
+    if (ota && latest && latest.file) {
+      ota.onclick = async () => {
+        if (!confirm('Прошить плату файлом ' + latest.file + '? Плата скачает файл с сервера и перезагрузится.')) return;
+        try {
+          await api('/api/admin/firmware/update', {
+            device: DATA.status && DATA.status.device_id, file: latest.file
+          });
+          toast('Команда прошивки отправлена');
+        } catch (e) { toast(e.message); }
+      };
+    }
   }
 
   /* ---------- рендер: поездки ---------- */
@@ -347,12 +373,19 @@
     const t = st.trips || {};
     const list = DATA.sessions.filter((r) => r.kind === 'trip');
     $('#tripsTitle').textContent = 'поездки · ' + (t.count || list.length) + ' · ' + f1(t.km || 0, 0) + ' км';
+    const gps = DATA.status && DATA.status.gps;
+    const gpsLinks = (gps && gps.lat !== undefined && gps.lon !== undefined)
+      ? '<div class="rowbtns"><a href="https://yandex.ru/maps/?pt=' + Number(gps.lon) + ',' +
+        Number(gps.lat) + '&z=16" target="_blank" rel="noopener">Я.Карты</a>' +
+        '<a href="https://maps.google.com/?q=' + Number(gps.lat) + ',' + Number(gps.lon) +
+        '" target="_blank" rel="noopener">G-Maps</a></div>'
+      : '';
     $('#tripsTotals').innerHTML = kv([
       ['Поездок', esc(t.count || list.length)],
       ['Пробег', f1(t.km || 0) + ' км'],
       ['Энергия', f1(t.kwh || 0) + ' кВт·ч'],
       ['Расход', (st.consumption_km_per_kwh ? f1(st.consumption_km_per_kwh) + ' км/кВт·ч' : '—')]
-    ]);
+    ]) + gpsLinks;
     $('#tripsChart').innerHTML = chart(st.per_day || [], 'km', 'kwh');
     $('#tripsList').innerHTML = list.length ? list.slice(0, 40).map((r) =>
       card((day(r.started_at) || 'поездка') + ' · ' + clock(r.started_at) + ' → ' + clock(r.ended_at),
@@ -401,7 +434,7 @@
         ['Сейчас', f1(S.soc, 0) + '%'],
         ['Лимит', (S.chargeLimit ? S.chargeLimit + '%' : 'выключен')],
         ['Мощность', (S.charging ? f1(Math.abs(S.power)) + ' кВт' : '—')],
-        ['Tariff', esc((DATA.status && DATA.status.tariff_night !== undefined ? DATA.status.tariff_night : '—')) + ' ₽/кВт·ч ночь']
+        ['Тариф ночь', esc((DATA.settings && DATA.settings.tariff_night) || '—') + ' ₽/кВт·ч']
       ]));
     $('#chargeList').innerHTML = list.length ? list.slice(0, 40).map((r) =>
       card(day(r.started_at) + ' · ' + clock(r.started_at) + ' → ' + clock(r.ended_at),
@@ -412,11 +445,14 @@
         bar((Number(r.soc_end) || 0) - (Number(r.soc_start) || 0)))
     ).join('') : '<div class="scard hint">Зарядок за период нет</div>';
     const cost = st.cost || {};
-    $('#chargeTariff').innerHTML = card('Расходы и экономия', st.settings && st.settings.currency, kv([
+    const cur = esc(cost.currency || (st.settings && st.settings.currency) || '₽');
+    $('#chargeTariff').innerHTML = card('Расходы и экономия', cur, kv([
       ['Зарядки', (c.count || 0) + ' · ' + f1(c.kwh || 0) + ' кВт·ч'],
-      ['Электроэнергия', f1(cost.electric || 0) + ' ' + esc(cost.currency || '')],
-      ['Бензин', f1(cost.petrol || 0) + ' ' + esc(cost.currency || '')],
-      ['Экономия', f1(cost.saved || 0) + ' ' + esc(cost.currency || '')]
+      ['Электроэнергия', f1(cost.electric || 0) + ' ' + cur],
+      ['Бензин', f1(cost.petrol || 0) + ' ' + cur],
+      ['Экономия', f1(cost.saved || 0) + ' ' + cur],
+      ['Тариф день/ночь', esc((DATA.settings && DATA.settings.tariff_day) || '—') + ' / ' +
+        esc((DATA.settings && DATA.settings.tariff_night) || '—') + ' ' + cur + '/кВт·ч']
     ]));
   }
 
@@ -459,9 +495,13 @@
   /* ---------- рендер: система ---------- */
   function renderSys() {
     const j = DATA.status || {};
+    const role = DATA.devices && DATA.devices.role;
+    const adminLink = $('#sysAdminLink');
+    if (adminLink) adminLink.style.display = role === 'admin' ? '' : 'none';
     $('#sysInfo').innerHTML = kv([
       ['Машина', esc(j.device_name || '—')],
       ['Модель', esc(j.device || '—')],
+      ['Роль', esc(role || '—')],
       ['Прошивка', esc(j.fw || '—')],
       ['VIN', esc(j.vin || '—')],
       ['Пробег', (j.odo ? int(j.odo) + ' км' : '—')],
@@ -550,8 +590,15 @@
     $('#setSave').onclick = async () => {
       const body = {};
       $$('#sysTariff [data-set]').forEach((el) => { if (el.value !== '') body[el.dataset.set] = Number(el.value); });
-      try { await api('/api/settings', body); toast('Тарифы сохранены'); loadMeta(); }
-      catch (e) { toast(e.message); }
+      try {
+        // Тарифы ночного окна живут на плате, остальное — только на сервере.
+        for (const key of ['tariff_day', 'tariff_night', 'night_from', 'night_to']) {
+          if (body[key] !== undefined) await api('/api/config', { key, value: body[key] });
+        }
+        await api('/api/settings', body);
+        toast('Тарифы сохранены — на плате применятся при следующей связи');
+        loadMeta();
+      } catch (e) { toast(e.message); }
     };
   }
 
@@ -560,9 +607,18 @@
     const rows = st.maintenance || [];
     $('#sysMaint').innerHTML = (rows.length ? rows.map((x) =>
       '<div class="kv"><span>' + esc(x.title || 'обслуживание') + '</span><b>' +
-      (x.due_km ? int(x.due_km) + ' км' : '—') + '</b></div>').join('') :
+      (x.due_km ? int(x.due_km) + ' км' : '—') +
+      ' <button data-maint-done="' + esc(x.id) + '" style="border:0;background:none;color:var(--acc);cursor:pointer">выполнено</button></b></div>').join('') :
       '<div class="hint">Напоминаний нет</div>') +
       '<div class="rowbtns"><button id="maintAdd">Добавить</button></div>';
+    $$('#sysMaint [data-maint-done]').forEach((b) => {
+      b.onclick = async () => {
+        try {
+          await api('/api/maintenance/done', { id: Number(b.dataset.maintDone) });
+          toast('Отмечено выполненным'); loadPeriod(period);
+        } catch (e) { toast(e.message); }
+      };
+    });
     $('#maintAdd').onclick = async () => {
       const title = prompt('Название обслуживания');
       if (!title) return;
@@ -684,6 +740,10 @@
     });
     $('#btnRefresh').addEventListener('click', () => { pollNow(); loadPeriod(period); toast('Данные обновлены'); });
     $('#btnDevice').addEventListener('click', deviceModal);
+    $('#sysLogout').addEventListener('click', async () => {
+      try { await api('/api/auth/logout', {}); } catch (e) { /* всё равно уходим */ }
+      location.href = '/login';
+    });
     $('#core').addEventListener('click', () =>
       $('#dock').classList.contains('open') ? closeDock() : openDock());
     $('#veil').addEventListener('click', closeDock);
@@ -762,10 +822,12 @@
 
     fitDock();
     window.addEventListener('resize', fitDock);
-    pollNow();
-    loadMeta();
-    loadPeriod(period);
-    loadFirmwareList();
+    // Сначала статус: он даёт device_id для всех остальных запросов.
+    pollNow().then(async () => {
+      await loadMeta();
+      await loadPeriod(period);
+      await loadFirmwareList();
+    });
     setInterval(() => { loadPeriod(period); loadMeta(); }, 60000);
   }
 
