@@ -29,7 +29,7 @@
 #define LEAF_FIRMWARE_VERSION "FR-TCall.177"
 #define LEAF_FIRMWARE_DESCRIPTION "T-Call: OTA-capable partitions (min_spiffs), gz-only UI, wifi from app, tariff sync"
 #else
-#define LEAF_FIRMWARE_VERSION "FR-2can.212"
+#define LEAF_FIRMWARE_VERSION "FR-2can.213"
 #define LEAF_FIRMWARE_DESCRIPTION "T-2CAN: stats tabs/periods, SIM limit, Wi-Fi watchdog, trip/charge fix"
 #endif
 

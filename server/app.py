@@ -467,25 +467,33 @@ def movement_windows(c, device_id, since=0, until=None):
 
 
 def trim_trips_with_samples(c, rows, device_id, since=0, until=None):
+    """A recorded trip must not outlive the last movement by minutes.
+
+    The phone keeps uploading stationary samples after the car is switched
+    off, so its session often ends 5-15 minutes too late. Trim the displayed
+    end to the last speed sample. A separate short drive that starts after a
+    long stop is kept as its own stored trip, never swallowed again.
+    """
     windows = movement_windows(c, device_id, since, until)
-    out = []
-    for row in rows:
-        row = dict(row)
-        if row["kind"] == "trip" and row["started_at"]:
-            start, end = session_bounds(row)
-            inside = [w for w in windows if w[1] >= start - 300 and w[0] <= end + 300]
-            if len(inside) >= 2 and any(
-                    inside[i + 1][0] - inside[i][1] > TRIP_GAP_S
-                    for i in range(len(inside) - 1)):
-                main = max(inside, key=lambda w: w[1] - w[0])
-                new_end = min(end, main[1] + 120)
-                if new_end < end - 300:
-                    row["ended_at"] = new_end
-                    row["duration_s"] = max(1, new_end - start)
-                    meta = session_meta(row)
-                    meta["bounds_trimmed_to_samples"] = True
-                    row["meta"] = json.dumps(meta, ensure_ascii=False)
-        out.append(row)
+    out = [dict(r) for r in rows]
+    trips = [r for r in out if r["kind"] == "trip" and r["started_at"]]
+    for row in trips:
+        start, end = session_bounds(row)
+        inside = [w for w in windows if w[1] >= start - 300 and w[0] <= end + 300]
+        if not inside:
+            continue
+        main = max(inside, key=lambda w: w[1] - w[0])
+        new_end = min(end, main[1] + 60)
+        later = [session_bounds(t)[0] for t in trips if t is not row and
+                 main[1] <= session_bounds(t)[0] <= end + 300]
+        if later:
+            new_end = min(new_end, min(later) - 120)
+        if new_end < end:
+            row["ended_at"] = new_end
+            row["duration_s"] = max(1, new_end - start)
+            meta = session_meta(row)
+            meta["bounds_trimmed_to_samples"] = True
+            row["meta"] = json.dumps(meta, ensure_ascii=False)
     return out
 
 

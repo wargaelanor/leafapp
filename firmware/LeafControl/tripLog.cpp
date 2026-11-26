@@ -525,7 +525,6 @@ void tripLogTick() {
   bool speeding = speedKph >= 5.0f;
 
   bool gearFresh = udsData.gearMs && now - udsData.gearMs < 30000UL;
-  bool parked = gearFresh && udsData.gear == 1;
   bool gearDriving = gearFresh && (udsData.gear == 4 || udsData.gear == 7 ||
                                    udsData.gear == 2);
   bool moving = odoMoving || speeding || gearDriving;
@@ -665,7 +664,10 @@ void tripLogTick() {
     uint32_t canAge = evCanLastFrameAgeSec();
     bool busLost = !charging && speedKph < 1.0f && accTripMs > 600000UL &&
                    (!evCanEverSeen() || canAge > 900UL);
-    unsigned long tripGraceMs = parked ? 90000UL : 300000UL;
+    // Once the car reports off (selector in P, or no READY and no traction),
+    // the drive is over. The old 5-minute grace kept counting a parked car.
+    // A short confirmation only protects against one dropped CAN frame.
+    unsigned long tripGraceMs = 10000UL;
     if ((tripOffSinceMs != 0 && now - tripOffSinceMs > tripGraceMs) || busLost) {
       finishTrip("off");
     } else if (charging && accChgMs > 60000UL) {
