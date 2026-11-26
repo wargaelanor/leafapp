@@ -59,6 +59,48 @@
   /* ---------- 2. вкладка "Статистика" ---------- */
   const TAB_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>';
 
+  const STATS_HTML = `
+      <div class="card" style="margin-top:8px">
+        <div class="card-header"><div class="accent-line"></div>
+          <div style="font-size:16px">Статистика</div></div>
+        <div id="st-period" style="display:flex;gap:6px;margin:4px 0 12px"></div>
+        <div id="st-totals"></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">Экономия</div></div>
+        <div id="st-savings"></div>
+        <div id="st-settings" style="margin-top:10px"></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">SOH, %</div></div>
+        <div id="st-soh"></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">Пробег по дням</div></div>
+        <div id="st-days"></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">Расход по дням, км/кВт·ч</div></div>
+        <div id="st-efficiency"></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">Расход и средняя температура за день</div></div>
+        <div id="st-temperature"></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">Разряд после зарядки</div></div>
+        <div id="st-discharge"></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">Данные батареи и SIM</div></div>
+        <div style="font-size:12px;color:var(--muted)">SOH и трафик SIM приходят с платы. Расчёт ёмкости по напряжению на стоянке пока недоступен.</div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">Обслуживание</div></div>
+        <div id="st-maint"></div>
+        <div id="st-maint-form" style="margin-top:10px"></div>
+      </div>`;
+
   function addTab() {
     const bar = $('.tabbar');
     // Поездки и зарядки больше не отдельные вкладки — они внутри «Статистики».
@@ -103,7 +145,7 @@
     const main = document.createElement('section');
     main.className = 'screen active';
     main.id = 'screen-stats-main';
-    main.innerHTML = sec.innerHTML;
+    main.innerHTML = STATS_HTML;
     sec.innerHTML = '';
     const tabs = document.createElement('div');
     tabs.className = 'lc-stat-tabs';
@@ -1247,7 +1289,6 @@
 
   const MORE_ICONS = {
     plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
-    bolt: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>',
     gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>',
     chart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 19h16M7 15V9m5 6V5m5 10v-4"/></svg>',
     down: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>',
@@ -1301,20 +1342,6 @@
       `<span class="pill">${online ? 'плата на связи' : 'плата офлайн'}</span>`;
   }
 
-  const toggleCarProfile = async () => {
-    try {
-      const c = await api('/api/config');
-      const cur = Number((c.config || {}).vehicle_profile || 0);
-      const names = ['авто', 'ZE1 (2018+)', 'AZE0/ZE0 (2011–2017)'];
-      const next = (cur + 1) % 3;
-      const ok = confirm('Сейчас: ' + names[cur] + '\nПереключить на: ' + names[next] +
-        '?\n\nПлата применит при следующей связи (до 30 секунд).');
-      if (!ok) return;
-      await api('/api/config', { key: 'vehicle_profile', value: next });
-      toast('Профиль: ' + names[next]);
-    } catch (e) { alert(e.message); }
-  };
-
   function addMoreRows() {
     const car = $('#more-car');
     const data = $('#more-data');
@@ -1325,11 +1352,6 @@
     if (!car.querySelector('[data-lc-claim]')) {
       const r = moreRow('Добавить машину', 'привязать плату по коду', MORE_ICONS.plus, showClaim);
       r.setAttribute('data-lc-claim', '1');
-      car.appendChild(r);
-    }
-    if (!car.querySelector('[data-lc-profile]')) {
-      const r = moreRow('Профиль машины', 'ZE1 / AZE0 — переключить', MORE_ICONS.bolt, toggleCarProfile);
-      r.setAttribute('data-lc-profile', '1');
       car.appendChild(r);
     }
     if (!car.querySelector('[data-lc-settings]')) {
