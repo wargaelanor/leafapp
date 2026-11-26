@@ -157,6 +157,15 @@ class ApiContractTests(unittest.TestCase):
             self.assertNotIn("Дизайн интерфейса".encode("utf-8"), body)
             conn.close()
 
+        conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port)
+        conn.request("GET", "/", headers={"Cookie": "leaf_session=design-cookie"})
+        response = conn.getresponse()
+        body = response.read()
+        self.assertEqual(response.status, 200)
+        self.assertIn(b"location.replace(target === 'radius' ? '/radius' : '/classic')", body)
+        self.assertIn(b"var target = forced ? forced[1] : ((chosen === 'radius' || chosen === 'new') ? 'radius' : 'classic');", body)
+        conn.close()
+
     def test_device_sync_hist_session_and_admin(self):
         status, enrolled, _ = self.request("POST", "/api/device/enroll", {
             "serial": "test-serial", "login": "test-board", "fw": "176"})

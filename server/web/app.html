@@ -12,12 +12,13 @@
     var m = location.search.match(/[?&]theme=(dark|light)\b/);
     if (m) document.documentElement.setAttribute('data-theme', m[1]);
   })();
-  // RADIUS beta is the default design. /classic (or ?design=classic) keeps the old one.
+  // Классический дизайн — по умолчанию. RADIUS (бета) открывается только по
+  // сохранённому выбору или через ?design=radius; /classic — явный старый вид.
   try {
+    var forced = location.search.match(/[?&]design=(classic|radius)\b/);
     var chosen = localStorage.getItem('leafdesign') || localStorage.getItem('leafDesign');
-    if (chosen !== 'classic' && !/[?&]design=classic\b/.test(location.search)) {
-      location.replace('/radius');
-    }
+    var target = forced ? forced[1] : ((chosen === 'radius' || chosen === 'new') ? 'radius' : 'classic');
+    location.replace(target === 'radius' ? '/radius' : '/classic');
   } catch (e) { /* storage may be unavailable */ }
 </script>
 <link rel="manifest" href="manifest.webmanifest">

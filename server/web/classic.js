@@ -1825,9 +1825,11 @@
 /* ---------- переключатель дизайна (добавлено к классической версии) ---------- */
 (function () {
   try {
-    if (localStorage.getItem('leafDesign') === 'new' && location.pathname !== '/classic.html') {
-      location.replace('/radius');
-      return;
+    // Явный переход на /classic делает классический интерфейс сохранённым выбором:
+    // главная больше не уведёт на RADIUS, даже если он выбирался раньше.
+    if (/\/classic(\.html)?$/.test(location.pathname)) {
+      localStorage.setItem('leafdesign', 'classic');
+      localStorage.setItem('leafDesign', 'classic');
     }
     const boot = setInterval(() => {
       const anchor = document.querySelector('.more-item');
