@@ -273,9 +273,10 @@ static void handleEvFrame(uint32_t id, uint8_t len, const uint8_t* data) {
     if (soh > 0 && soh <= 100) handleEvSOH(soh);
   } else if (id == 0x1DC && len >= 4) {
     // LB charge/discharge limits (OVMS xnl). The CHARGE limit (d[2..3],
-    // /10 A) is > 0 exactly while a charger is connected/negotiating and 0
-    // while driving - the honest "plugged in" signal on EV-CAN, immune to
-    // the vehicleOn flag (which stays 1 during a charge on this car).
+    // /10 A) is a battery acceptance limit, not a cable signal: it stays
+    // positive during regeneration while driving. It is only a weak hint
+    // and is trusted for charging solely when the car is stationary and
+    // pack current is negative (see tripLog.cpp).
     uint16_t limRaw = (uint16_t)(((data[2] & 0x0F) << 6) | (data[3] >> 2));
     evChargeLimitA = limRaw / 10.0f;
     evChargeLimitSeen = true;

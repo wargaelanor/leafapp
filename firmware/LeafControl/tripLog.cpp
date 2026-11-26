@@ -507,16 +507,38 @@ void tripLogTick() {
   float i = evData.packCurrent;
   bool dataOk = evData.packDataValid && evData.packVoltageValid;
   bool odoMoving = (odo > 0 && lastOdo > 0 && odo > lastOdo + 0.02f);
-  // The CAR-CAN can be asleep during a charge, and the vehicleOn flag is
-  // useless here: this car reports "on" (8) while charging too, which used
-  // to block the detector for the whole session. The honest plugged-in
-  // signal lives on EV-CAN itself: 0x1DC's charge current limit is > 0
-  // exactly while a charger is connected and 0 while driving, so regen
-  // phantom charges stay impossible even with a frozen odometer.
+
+  // Compute motion/selector before charging detection. 0x1DC is a battery
+  // acceptance limit, not a cable signal: it is positive during regen too.
+  // A charge is only credible when the car is stationary and the pack is
+  // being fed (negative current), with either a fresh charger frame or a
+  // fresh EV-CAN limit as a hint.
+  float powerW = (dataOk && v > 0) ? fabsf(v * i) : 0.0f;
+  float powerKw = (dataOk && v > 0) ? (v * i) / 1000.0f : 0.0f;
+  bool ready = (evData.vehicleOn == 1);
+
+  float speedKph = evSpeedKph();
+  if (speedKph < 0.5f && udsData.speedMs && now - udsData.speedMs < 30000UL &&
+      udsData.speed >= 0.0f && udsData.speed <= 250.0f) {
+    speedKph = udsData.speed;
+  }
+  bool speeding = speedKph >= 5.0f;
+
+  bool gearFresh = udsData.gearMs && now - udsData.gearMs < 30000UL;
+  bool parked = gearFresh && udsData.gear == 1;
+  bool gearDriving = gearFresh && (udsData.gear == 4 || udsData.gear == 7 ||
+                                   udsData.gear == 2);
+  bool moving = odoMoving || speeding || gearDriving;
+  bool stationary = !moving;
+
   float chargeLim = evCanChargeLimitAmps();
-  bool pluggedIn = (chargeLim > 0.0f && evCanLastFrameAgeSec() < 30UL);
-  bool evChargeRaw = dataOk && v > 100.0f && i < -0.5f &&
-                     pluggedIn && !odoMoving;
+  bool evCanFresh = evCanLastFrameAgeSec() < 30UL;
+  bool evPlugHint = (chargeLim > 0.0f && evCanFresh);
+  // isChargingNow comes from the CAR-CAN 0x390 charger frame. It can stay
+  // set when the gateway sleeps, so ignore it while the car is moving.
+  bool chargerFrame = isChargingNow && stationary;
+  bool evChargeRaw = dataOk && v > 100.0f && i < -0.5f && stationary &&
+                     (evPlugHint || chargerFrame);
   static uint8_t evSeen = 0;
   static uint8_t evStop = 0;
   if (evChargeRaw) {
@@ -529,7 +551,7 @@ void tripLogTick() {
   }
   bool evHolding = chgActive && evStop < 3;
   bool evCharging = (evChargeRaw && evSeen >= 3) || evHolding;
-  bool charging = isChargingNow || evCharging;
+  bool charging = chargerFrame || evCharging;
   // Гистерезис: пропадание одного кадра 0x390 (шлюз дремлет) не рвёт сессию.
   // 90 с после последнего признака зарядки — безопасно для 12 В и графиков.
   static uint32_t lastChargingSeenMs = 0;
@@ -563,25 +585,6 @@ void tripLogTick() {
   // Поездка начинается после 100 м хода и заканчивается только когда машина
   // выключена. Остановки в пути (с включённой машиной) её больше не делят:
   // раньше поездку рвало через 3 минуты стоянки, отсюда «1 км + 16 км».
-  bool ready = (evData.vehicleOn == 1);
-  float powerW = (dataOk && v > 0) ? fabsf(v * i) : 0.0f;
-  float powerKw = (dataOk && v > 0) ? (v * i) / 1000.0f : 0.0f;
-
-  float speedKph = evSpeedKph();
-  if (speedKph < 0.5f && udsData.speedMs && now - udsData.speedMs < 30000UL &&
-      udsData.speed >= 0.0f && udsData.speed <= 250.0f) {
-    speedKph = udsData.speed;
-  }
-  bool speeding = speedKph >= 5.0f;   // поехали (5 км/ч), даже если не набежал километр
-
-  // A selector reading is useful for ending a trip, but is not a verified
-  // start signal on every car. Neither climate power nor READY proves motion.
-  bool gearFresh = udsData.gearMs && now - udsData.gearMs < 30000UL;
-  bool parked = gearFresh && udsData.gear == 1;
-  // Перевод в D/R/Eco — сигнал «поездка началась», даже если машина ещё не
-  // тронулась. Так запись захватывает весь выезд с парковки, а не с 5 км/ч.
-  bool gearDriving = gearFresh && (udsData.gear == 4 || udsData.gear == 7 ||
-                                   udsData.gear == 2);
 
   if (!tripActive && epoch && !charging && speedKph > 0.5f) {
     if (!tripPending || now - pendingLastMs > 30000UL) {
@@ -599,7 +602,7 @@ void tripLogTick() {
 
   if (!tripActive) {
     // Триггеры: селектор в D/R/Eco, 5 км/ч, 100 м по скорости или одометру.
-    if (epoch && !charging && !pluggedIn &&
+    if (epoch && !charging && !evChargeRaw &&
         (gearDriving || speeding || pendingKmSpeed >= 0.1f || moved)) {
       tripActive = true;
       // Поездку, начатую селектором, отсчитываем от текущего момента: до этого
@@ -675,7 +678,8 @@ void tripLogTick() {
   // Климат считаем по фактическому расходу, а не по флагу READY: на этой
   // машине vehicleOn врёт, и предпрогрев на стоянке из-за него не попадал в
   // журнал вовсе. Условие — машина стоит, не заряжается, идёт заметный ток.
-  bool parkedIdle = !moved && speedKph < 0.5f && !charging && !pluggedIn && !tripActive;
+  bool parkedIdle = !moved && speedKph < 0.5f && !charging && !evChargeRaw &&
+                    !tripActive;
   static uint8_t climSeen = 0, climStop = 0;
   bool climPower = parkedIdle && powerW > 250.0f;
   if (climPower) {
@@ -726,6 +730,10 @@ void tripLogTick() {
       chgUnplugMs = 0;
       Serial.printf("[log] charge session started (%.0f%%)\n", (double)soc);
     }
+  } else if (moving) {
+    // A car cannot charge while moving. This also kills a phantom session
+    // started by regeneration during a drive instead of splitting that drive.
+    finishCharge("moving");
   } else {
     if (dtMs > 0 && dtMs < 30000UL) accChgMs += dtMs;
     if (soc >= 0) chgSocEnd = soc;
@@ -733,9 +741,9 @@ void tripLogTick() {
       chgKwh += wh;
       if (isNight(epoch)) chgKwhNight += wh; else chgKwhDay += wh;
     }
-    // Кабель снят = зарядка закончилась. 2 минуты запаса — чтобы моргнувший
-    // кадр 0x1DC не закрыл сессию.
-    if (pluggedIn) chgUnplugMs = 0;
+    // Cable hint: a fresh 0x1DC limit or the charger frame while stationary.
+    // 0x1DC alone is never enough - it is positive during regen too.
+    if (evPlugHint || chargerFrame) chgUnplugMs = 0;
     else if (chgUnplugMs == 0) chgUnplugMs = now;
     bool unplugged = chgUnplugMs != 0 && now - chgUnplugMs > 120000UL;
     bool busGone = evCanLastFrameAgeSec() > 900UL;

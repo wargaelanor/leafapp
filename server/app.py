@@ -227,10 +227,94 @@ def db():
         conn.close()
 
 
+def session_meta(row):
+    try:
+        return json.loads(row["meta"] or "{}")
+    except (ValueError, TypeError, KeyError):
+        return {}
+
+
+def is_phone_session(row):
+    # Phone uploads carry their device id in meta; board records do not.
+    return session_meta(row).get("device") is not None
+
+
+def session_bounds(row):
+    start = int(row["started_at"] or 0)
+    end = int(row["ended_at"] or start)
+    if end < start:
+        end = start
+    return start, end
+
+
+def sessions_overlap(a, b, tol=120):
+    a0, a1 = session_bounds(a)
+    b0, b1 = session_bounds(b)
+    return a0 <= b1 + tol and b0 <= a1 + tol
+
+
+def canonical_sessions(rows):
+    """Hide phone/board duplicates without deleting stored history.
+
+    Overlapping sessions of the same kind form one event. A board record wins
+    on equal terms; a longer phone record wins over short board fragments
+    when the old detector split a drive into several "charge" pieces.
+    """
+    rows = [dict(r) for r in rows]
+    parent = list(range(len(rows)))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    def union(i, j):
+        ri, rj = find(i), find(j)
+        if ri != rj:
+            parent[max(ri, rj)] = min(ri, rj)
+
+    for i in range(len(rows)):
+        for j in range(i + 1, len(rows)):
+            if rows[i]["kind"] == rows[j]["kind"] and sessions_overlap(rows[i], rows[j]):
+                union(i, j)
+
+    groups = {}
+    for i, row in enumerate(rows):
+        groups.setdefault(find(i), []).append(row)
+
+    def score(row):
+        start, end = session_bounds(row)
+        dur = int(row["duration_s"] or 0) or max(0, end - start)
+        km = float(row["distance_km"] or 0)
+        return dur + km * 60.0 + (0.0 if is_phone_session(row) else 1800.0)
+
+    out = [max(group, key=score) for group in groups.values()]
+    out.sort(key=lambda r: session_bounds(r)[1], reverse=True)
+    return out
+
+
 def init_db() -> None:
     os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
     with db_lock, db() as c:
         c.executescript(SCHEMA)
+        # Older phone clients sent watts in a field the server stores as kWh.
+        # Repair those rows once; the marker prevents a second multiplication.
+        if not c.execute("SELECT 1 FROM app_settings WHERE key='phone_energy_units_fixed'").fetchone():
+            for r in c.execute("SELECT id,energy_kwh,meta FROM dev_sessions").fetchall():
+                meta = session_meta(r)
+                if meta.get("device") is None or "energy_units" in meta:
+                    continue
+                try:
+                    value = float(r["energy_kwh"] or 0)
+                except (TypeError, ValueError):
+                    continue
+                if value > 0:
+                    meta["energy_units"] = "kwh_legacy_fixed"
+                    c.execute("UPDATE dev_sessions SET energy_kwh=?, meta=? WHERE id=?",
+                              (value * 1000.0, json.dumps(meta, ensure_ascii=False), r["id"]))
+            c.execute("INSERT OR REPLACE INTO app_settings(key,value) VALUES(?,?)",
+                      ("phone_energy_units_fixed", "1"))
         cols = [r[1] for r in c.execute("PRAGMA table_info(devices)").fetchall()]
         if "config_json" not in cols:
             c.execute("ALTER TABLE devices ADD COLUMN config_json TEXT")
@@ -1382,6 +1466,17 @@ class Api(BaseHTTPRequestHandler):
         if not u:
             return
         b = self.body() or {}
+        payload = dict(b)
+        # Phone clients before the energy-unit fix sent watts as kWh. Normalise
+        # at ingest so new rows match the repaired history.
+        if b.get("device") and "energy_units" not in payload:
+            try:
+                value = float(payload.get("energy_kwh") or 0)
+            except (TypeError, ValueError):
+                value = 0.0
+            if value > 0:
+                payload["energy_kwh"] = value * 1000.0
+                payload["energy_units"] = "kwh_legacy_fixed"
         dev = self.owned_device(u, str(b.get("device", ""))) or self.pwa_pick_device(u)
         if not dev:
             return self.err(404, "device not found")
@@ -1411,9 +1506,9 @@ class Api(BaseHTTPRequestHandler):
             cur = c.execute(
                 "INSERT INTO dev_sessions(device_id,kind,started_at,ended_at,duration_s,distance_km,"
                 "energy_kwh,soc_start,soc_end,meta) VALUES(?,?,?,?,?,?,?,?,?,?)",
-                (dev["id"], kind, started, b.get("ended_at"), b.get("duration_s"),
-                 b.get("distance_km"), b.get("energy_kwh"), b.get("soc_start"),
-                 b.get("soc_end"), json.dumps(b, ensure_ascii=False)))
+                (dev["id"], kind, started, payload.get("ended_at"), payload.get("duration_s"),
+                 payload.get("distance_km"), payload.get("energy_kwh"), payload.get("soc_start"),
+                 payload.get("soc_end"), json.dumps(payload, ensure_ascii=False)))
             sid = cur.lastrowid
         self.json(200, {"ok": True, "session_id": sid})
 
@@ -1556,12 +1651,12 @@ class Api(BaseHTTPRequestHandler):
         kind = "trip" if path.endswith("trips") else "charge"
         with db_lock, db() as c:
             rows = c.execute(
-                "SELECT * FROM dev_sessions WHERE device_id=? AND (kind=? OR (?='trip' AND kind='climate')) "
-                "ORDER BY COALESCE(ended_at,started_at) DESC LIMIT 200",
-                (d["id"], kind, kind),
+                "SELECT * FROM dev_sessions WHERE device_id=? AND kind=? "
+                "ORDER BY COALESCE(ended_at,started_at) DESC LIMIT 500",
+                (d["id"], kind),
             ).fetchall()
         out = []
-        for r in rows:
+        for r in canonical_sessions(rows):
             wh = (r["energy_kwh"] or 0) * 1000.0
             out.append({
                 "s": r["started_at"] or 0,
@@ -1682,29 +1777,43 @@ class Api(BaseHTTPRequestHandler):
         days = int(q.get("days", "0"))
         since = now() - days * 86400 if days > 0 else 0
         with db_lock, db() as c:
-            trips = c.execute(
-                "SELECT COUNT(*) n, COALESCE(SUM(distance_km),0) km, COALESCE(SUM(energy_kwh),0) kwh "
-                "FROM dev_sessions WHERE device_id=? AND kind='trip' AND COALESCE(ended_at,0)>=?",
-                (d["id"], since),
-            ).fetchone()
-            charges = c.execute(
-                "SELECT COUNT(*) n, COALESCE(SUM(energy_kwh),0) kwh "
-                "FROM dev_sessions WHERE device_id=? AND kind='charge' AND COALESCE(ended_at,0)>=?",
-                (d["id"], since),
-            ).fetchone()
-            climate = c.execute(
-                "SELECT COUNT(*) n, COALESCE(SUM(energy_kwh),0) kwh, "
-                "COALESCE(SUM(duration_s),0) secs "
-                "FROM dev_sessions WHERE device_id=? AND kind='climate' AND COALESCE(ended_at,0)>=?",
-                (d["id"], since),
-            ).fetchone()
-            per_day = c.execute(
-                "SELECT date(COALESCE(ended_at,started_at),'unixepoch','localtime') d, "
-                "COALESCE(SUM(distance_km),0) km, COALESCE(SUM(energy_kwh),0) kwh "
-                "FROM dev_sessions WHERE device_id=? AND kind='trip' AND COALESCE(ended_at,0)>=? "
-                "GROUP BY d ORDER BY d",
-                (d["id"], since),
+            all_rows = c.execute(
+                "SELECT * FROM dev_sessions WHERE device_id=? "
+                "ORDER BY COALESCE(ended_at,started_at) DESC LIMIT 2000",
+                (d["id"],),
             ).fetchall()
+            canonical = canonical_sessions(all_rows)
+            in_range = [r for r in canonical
+                        if int(r["ended_at"] or r["started_at"] or 0) >= since]
+
+            def rows_of(kind):
+                return [r for r in in_range if r["kind"] == kind]
+
+            trip_rows = rows_of("trip")
+            charge_rows = rows_of("charge")
+            climate_rows = rows_of("climate")
+            trips = {
+                "n": len(trip_rows),
+                "km": sum(float(r["distance_km"] or 0) for r in trip_rows),
+                "kwh": sum(float(r["energy_kwh"] or 0) for r in trip_rows),
+            }
+            charges = {
+                "n": len(charge_rows),
+                "kwh": sum(float(r["energy_kwh"] or 0) for r in charge_rows),
+            }
+            climate = {
+                "n": len(climate_rows),
+                "kwh": sum(float(r["energy_kwh"] or 0) for r in climate_rows),
+                "secs": sum(int(r["duration_s"] or 0) for r in climate_rows),
+            }
+            per_day_map = {}
+            for r in trip_rows:
+                ts = int(r["ended_at"] or r["started_at"] or 0)
+                day = datetime.fromtimestamp(ts).date().isoformat()
+                agg = per_day_map.setdefault(day, {"km": 0.0, "kwh": 0.0})
+                agg["km"] += float(r["distance_km"] or 0)
+                agg["kwh"] += float(r["energy_kwh"] or 0)
+            per_day = [dict(d=day, **agg) for day, agg in sorted(per_day_map.items())]
             # Device sync stores outdoor temperature in samples. Aggregate on
             # the server instead of sending thousands of raw readings to UI.
             ambient_days = c.execute(
@@ -1715,12 +1824,12 @@ class Api(BaseHTTPRequestHandler):
                 "GROUP BY d ORDER BY d",
                 (d["id"], max(since, now() - 90 * 86400)),
             ).fetchall()
-            cycle_rows = c.execute(
-                "SELECT kind, COALESCE(ended_at,started_at) ts, distance_km, soc_start, soc_end "
-                "FROM dev_sessions WHERE device_id=? AND kind IN ('trip','charge') "
-                "AND COALESCE(ended_at,started_at) IS NOT NULL "
-                "ORDER BY COALESCE(ended_at,started_at) DESC LIMIT 500", (d["id"],)
-            ).fetchall()
+            cycle_rows = []
+            for r in canonical:
+                if r["kind"] in ("trip", "charge") and (r["ended_at"] or r["started_at"]):
+                    item = dict(r)
+                    item["ts"] = int(r["ended_at"] or r["started_at"])
+                    cycle_rows.append(item)
             soh_rows = c.execute(
                 "SELECT ts, payload FROM samples WHERE device_id=? AND ts>=? "
                 "AND payload LIKE '%\"soh\"%' ORDER BY ts",
@@ -1872,7 +1981,7 @@ class Api(BaseHTTPRequestHandler):
                 "SELECT * FROM dev_sessions WHERE device_id=? AND"
                 " COALESCE(ended_at,started_at)>=? ORDER BY COALESCE(started_at,ended_at)",
                 (dev["id"], since)).fetchall()
-        sessions = [dict(r) for r in rows]
+        sessions = canonical_sessions(rows)
         data = build_workbook(dev, sessions, days, self.samples_between, now())
         name = "leaf-%s-%s.xlsx" % (dev["login"], datetime.now().strftime("%Y%m%d"))
         self._send(200, data,
@@ -2133,10 +2242,10 @@ class Api(BaseHTTPRequestHandler):
         with db_lock, db() as c:
             rows = c.execute(
                 "SELECT * FROM dev_sessions WHERE device_id=? AND COALESCE(ended_at,started_at)>=?"
-                " ORDER BY COALESCE(ended_at,started_at) DESC LIMIT 500",
+                " ORDER BY COALESCE(ended_at,started_at) DESC LIMIT 1000",
                 (dev["id"], since),
             ).fetchall()
-        self.json(200, {"sessions": [dict(r) for r in rows]})
+        self.json(200, {"sessions": canonical_sessions(rows)})
 
     def get_session(self, q: dict):
         u = self.require_user()
