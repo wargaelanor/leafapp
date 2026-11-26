@@ -308,12 +308,192 @@ def canonical_sessions(rows):
             soc0, soc1 = num(row.get("soc_start")), num(row.get("soc_end"))
             soc_gain = (soc1 - soc0) if soc0 >= 0 and soc1 >= 0 else 0.0
             overlaps_trip = any(sessions_overlap(row, trip, tol=60) for trip in trip_rows)
-            if (overlaps_trip and soc_gain <= 0.5) or (num(row.get("energy_kwh")) <= 0 and soc_gain <= 0):
+            energy = num(row.get("energy_kwh"))
+            if ((overlaps_trip and soc_gain <= 0.5) or
+                    (energy <= 0 and soc_gain <= 0) or
+                    # A Leaf cannot add several percent of SOC with <0.2 kWh.
+                    (energy <= 0.2 and soc_gain <= 5)):
                 continue
         kept.append(row)
 
     kept.sort(key=lambda r: session_bounds(r)[1], reverse=True)
     return kept
+
+
+# The board used to miss slow timer charges (no usable plug signal), so the
+# sessions table has a hole while the samples table still holds the whole
+# charge. Rebuild those sessions from stationary negative-power samples instead
+# of inventing a record or deleting the incomplete ones.
+CHARGE_GAP_S = 1800       # bridge a sleeping gateway / a brief charger pause
+CHARGE_ENERGY_GAP_S = 120 # never integrate a long silent gap as full power
+CHARGE_MIN_S = 600        # ignore short regen/helper bursts
+
+
+def charge_runs_from_samples(points):
+    """Return charge rows from [(ts, kw, soc), ...]; kw=None marks a stationary sample with no charge current."""
+    def new_run(ts, kw, soc):
+        return {
+            "start": ts, "last": ts, "last_charge": ts, "kwh": 0.0,
+            "soc_start": soc, "soc_high": soc,
+            "kw": kw,
+        }
+
+    runs = []
+    cur = None
+    for ts, kw, soc in points:
+        charging = kw is not None and kw <= -0.25
+        if cur is None:
+            if charging:
+                cur = new_run(ts, kw, soc)
+            continue
+        gap = ts - cur["last_charge"]
+        if gap < 0:
+            continue
+        if not charging:
+            # A stationary sample with SOC but no current: the charge just
+            # finished. Extend the end by at most 15 min after real current.
+            if gap <= 900 and soc is not None:
+                cur["last"] = ts
+                cur["soc_high"] = max(cur["soc_high"] or soc, soc)
+            continue
+        # Two sample sources can disagree by ~8 % SOC. Only a much larger drop
+        # means the charger really restarted with a new low battery.
+        soc_drop = (soc is not None and cur["soc_high"] is not None and
+                    soc < cur["soc_high"] - 12.0)
+        if gap > CHARGE_GAP_S or soc_drop:
+            runs.append(cur)
+            cur = new_run(ts, kw, soc)
+            continue
+        cur["kwh"] += abs(kw) * min(gap, CHARGE_ENERGY_GAP_S) / 3600.0
+        cur["last"] = ts
+        cur["last_charge"] = ts
+        if soc is not None:
+            if cur["soc_start"] is None:
+                cur["soc_start"] = soc
+            cur["soc_high"] = max(cur["soc_high"] or soc, soc)
+
+    if cur:
+        runs.append(cur)
+
+    out = []
+    for idx, run in enumerate(runs):
+        duration = run["last"] - run["start"]
+        if duration < CHARGE_MIN_S:
+            continue
+        out.append({
+            "id": -100000 - idx,
+            "kind": "charge",
+            "started_at": run["start"],
+            "ended_at": run["last"],
+            "duration_s": duration,
+            "distance_km": 0.0,
+            "energy_kwh": round(run["kwh"], 4),
+            "soc_start": -1 if run["soc_start"] is None else run["soc_start"],
+            "soc_end": -1 if run["soc_high"] is None else run["soc_high"],
+            "meta": json.dumps({"kind": "charge", "source": "samples_reconstructed"},
+                               ensure_ascii=False),
+        })
+    return out
+
+
+def reconstructed_charge_rows(c, device_id, since=0, until=None):
+    until = until if until is not None else now() + 300
+    # Newest first: when the sample table is capped we must keep recent history,
+    # not the oldest 300k rows.
+    rows = c.execute(
+        "SELECT ts,payload FROM samples WHERE device_id=? AND ts BETWEEN ? AND ?"
+        " ORDER BY ts DESC LIMIT 300000",
+        (device_id, since, until),
+    ).fetchall()
+    rows.reverse()
+    points = []
+    for r in rows:
+        try:
+            p = json.loads(r["payload"])
+            kw = float(p.get("pack_kw"))
+            spd = float(p.get("spd"))
+        except (ValueError, TypeError, AttributeError):
+            continue
+        if spd > 1.0:
+            continue
+        try:
+            soc = float(p.get("soc"))
+        except (ValueError, TypeError):
+            soc = None
+        if soc is not None and soc < 0:
+            soc = None
+        if kw <= -0.25:
+            points.append((r["ts"], kw, soc))
+        elif soc is not None:
+            points.append((r["ts"], None, soc))
+    return charge_runs_from_samples(points)
+
+
+# A phone trip can keep recording while the car is parked, swallowing a real
+# short drive that followed a long stop. Use the speed samples to trim such a
+# trip's *displayed* end to the last movement; the stored row is untouched.
+TRIP_GAP_S = 600
+
+
+def movement_windows(c, device_id, since=0, until=None):
+    """Returns [(start, end), ...] of drives seen in the speed samples."""
+    until = until if until is not None else now() + 300
+    rows = c.execute(
+        "SELECT ts,payload FROM samples WHERE device_id=? AND ts BETWEEN ? AND ?"
+        " ORDER BY ts DESC LIMIT 300000",
+        (device_id, since, until),
+    ).fetchall()
+    rows.reverse()
+    out = []
+    cur = None
+    for r in rows:
+        try:
+            spd = float(json.loads(r["payload"]).get("spd") or 0)
+        except (ValueError, TypeError, AttributeError):
+            continue
+        if spd > 1.0:
+            if cur is None or r["ts"] - cur[1] > TRIP_GAP_S:
+                if cur:
+                    out.append(cur)
+                cur = [r["ts"], r["ts"]]
+            else:
+                cur[1] = r["ts"]
+        elif cur is not None and r["ts"] - cur[1] > TRIP_GAP_S:
+            out.append(cur)
+            cur = None
+    if cur:
+        out.append(cur)
+    return out
+
+
+def trim_trips_with_samples(c, rows, device_id, since=0, until=None):
+    windows = movement_windows(c, device_id, since, until)
+    out = []
+    for row in rows:
+        row = dict(row)
+        if row["kind"] == "trip" and row["started_at"]:
+            start, end = session_bounds(row)
+            inside = [w for w in windows if w[1] >= start - 300 and w[0] <= end + 300]
+            if len(inside) >= 2 and any(
+                    inside[i + 1][0] - inside[i][1] > TRIP_GAP_S
+                    for i in range(len(inside) - 1)):
+                main = max(inside, key=lambda w: w[1] - w[0])
+                new_end = min(end, main[1] + 120)
+                if new_end < end - 300:
+                    row["ended_at"] = new_end
+                    row["duration_s"] = max(1, new_end - start)
+                    meta = session_meta(row)
+                    meta["bounds_trimmed_to_samples"] = True
+                    row["meta"] = json.dumps(meta, ensure_ascii=False)
+        out.append(row)
+    return out
+
+
+def augment_rows_with_samples(c, rows, device_id, since=0, until=None):
+    """Add evidence-based rows for holes left by the old board detector."""
+    until = until if until is not None else now() + 300
+    rows = trim_trips_with_samples(c, rows, device_id, since, until)
+    return reconstructed_charge_rows(c, device_id, since, until) + rows
 
 
 def init_db() -> None:
@@ -1677,6 +1857,9 @@ class Api(BaseHTTPRequestHandler):
                 "ORDER BY COALESCE(ended_at,started_at) DESC LIMIT 500",
                 (d["id"], kind),
             ).fetchall()
+            rows = augment_rows_with_samples(c, rows, d["id"],
+                                             now() - 365 * 86400, now() + 300)
+            rows = [r for r in rows if r["kind"] == kind]
         out = []
         for r in canonical_sessions(rows):
             wh = (r["energy_kwh"] or 0) * 1000.0
@@ -1804,6 +1987,7 @@ class Api(BaseHTTPRequestHandler):
                 "ORDER BY COALESCE(ended_at,started_at) DESC LIMIT 2000",
                 (d["id"],),
             ).fetchall()
+            all_rows = augment_rows_with_samples(c, all_rows, d["id"], since, now() + 300)
             canonical = canonical_sessions(all_rows)
             in_range = [r for r in canonical
                         if int(r["ended_at"] or r["started_at"] or 0) >= since]
@@ -2003,6 +2187,7 @@ class Api(BaseHTTPRequestHandler):
                 "SELECT * FROM dev_sessions WHERE device_id=? AND"
                 " COALESCE(ended_at,started_at)>=? ORDER BY COALESCE(started_at,ended_at)",
                 (dev["id"], since)).fetchall()
+            rows = augment_rows_with_samples(c, rows, dev["id"], since, now() + 300)
         sessions = canonical_sessions(rows)
         data = build_workbook(dev, sessions, days, self.samples_between, now())
         name = "leaf-%s-%s.xlsx" % (dev["login"], datetime.now().strftime("%Y%m%d"))
@@ -2267,6 +2452,7 @@ class Api(BaseHTTPRequestHandler):
                 " ORDER BY COALESCE(ended_at,started_at) DESC LIMIT 1000",
                 (dev["id"], since),
             ).fetchall()
+            rows = augment_rows_with_samples(c, rows, dev["id"], since, now() + 300)
         self.json(200, {"sessions": canonical_sessions(rows)})
 
     def get_session(self, q: dict):
