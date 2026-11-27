@@ -187,6 +187,34 @@ class ApiContractTests(unittest.TestCase):
         self.assertTrue(all(e["kind"] == "device_online" and e["device_id"] == did
                             for e in result["events"]))
 
+    def test_admin_connectivity_view(self):
+        t = app.now()
+        with app.db_lock, app.db() as c:
+            uid = c.execute(
+                "INSERT INTO users(username,pass_hash,role,created_at) VALUES(?,?,?,?)",
+                ("conn-view-admin", app.hash_password("test-password"), "admin", t),
+            ).lastrowid
+            c.execute("INSERT INTO sessions(token,user_id,created_at,expires_at) VALUES(?,?,?,?)",
+                      ("conn-view-cookie", uid, t, t + 600))
+        auth = {"Cookie": "leaf_session=conn-view-cookie"}
+        conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port)
+        conn.request("GET", "/admin", headers=auth)
+        response = conn.getresponse()
+        body = response.read()
+        self.assertEqual(response.status, 200)
+        self.assertIn(b'id="connBody"', body)
+        self.assertIn(b'id="connKind"', body)
+        conn.close()
+        for path in ("/classic.js", "/custom.js"):
+            conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port)
+            conn.request("GET", path)
+            response = conn.getresponse()
+            body = response.read()
+            self.assertEqual(response.status, 200)
+            self.assertIn(b"adm-conn-device", body)
+            self.assertIn(b"device_link_change", body)
+            conn.close()
+
     def test_interface_without_design_switch(self):
         conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port)
         conn.request("GET", "/classic")

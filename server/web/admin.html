@@ -301,6 +301,25 @@ button{border-radius:10px}
           <tbody id="allDevBody"></tbody></table>
         </div>
         <div class="card">
+          <div class="row"><h2 style="margin:0">Связь платы с сервером</h2><div class="spacer"></div>
+            <select class="sel" id="connDevice" style="max-width:220px"></select>
+            <select class="sel" id="connKind" style="max-width:170px">
+              <option value="">Все события</option>
+              <option value="device_online">Подключения</option>
+              <option value="device_offline">Отключения</option>
+              <option value="device_link_change">Смена канала</option>
+            </select>
+            <button class="chip" id="btnConnRefresh">Обновить</button>
+          </div>
+          <div class="hint" id="connHint">События сервера при паузе ≥45 с: помогает отделить разрыв плата↔сервер от отключения Wi-Fi.</div>
+          <div style="overflow-x:auto">
+            <table style="min-width:720px">
+              <thead><tr><th>Время</th><th>Плата</th><th>Событие</th><th>Пауза</th><th>Канал</th><th>RSSI</th><th>Запрос</th></tr></thead>
+              <tbody id="connBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card">
           <h2>Журнал</h2>
           <table><thead><tr><th>Время</th><th>Событие</th></tr></thead><tbody id="eventsBody"></tbody></table>
         </div>
@@ -346,7 +365,7 @@ button{border-radius:10px}
 <script>
 const $ = (id) => document.getElementById(id);
 const TITLES = { car: 'Машина', trips: 'Поездки', charges: 'Зарядки', charts: 'Графики', admin: 'Админ', me: 'Профиль' };
-let me = null, devices = [], cur = null, tab = 'car', timer = null, climMin = 20;
+let me = null, devices = [], cur = null, tab = 'car', timer = null, climMin = 20, connDevices = [];
 
 async function api(path, body, method) {
   const opt = { credentials: 'same-origin' };
@@ -380,6 +399,57 @@ function toast(text) {
 const fmtTime = (ts) => ts ? new Date(ts * 1000).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
 const dur = (s) => !s ? '—' : (s >= 3600 ? Math.floor(s / 3600) + ' ч ' + Math.round(s % 3600 / 60) + ' м' : Math.round(s / 60) + ' м');
 const num = (v, d = 1) => (v === null || v === undefined) ? '—' : Number(v).toFixed(d).replace('.', ',');
+
+/* ---------- журнал связи платы с сервером ---------- */
+function connPayload(e) {
+  try { return typeof e.payload === 'string' ? JSON.parse(e.payload || '{}') : (e.payload || {}); }
+  catch (_) { return {}; }
+}
+const connGap = (s) => !s ? '—' : (s < 60 ? s + ' с' : Math.floor(s / 60) + ' мин ' + (s % 60) + ' с');
+
+async function loadConnectivity() {
+  const sel = $('connDevice');
+  const kindSel = $('connKind');
+  const box = $('connBody');
+  const keep = sel.value;
+  const names = {};
+  connDevices.forEach(d => { names[d.id] = d.name || d.login || ('#' + d.id); });
+  sel.innerHTML = '<option value="">Все платы</option>' + connDevices.map(d =>
+    `<option value="${d.id}">${d.name || d.login || ('#' + d.id)}</option>`).join('');
+  sel.value = keep && [...sel.options].some(o => o.value === keep) ? keep : (connDevices[0] ? connDevices[0].id : '');
+  const qs = new URLSearchParams();
+  if (sel.value) qs.set('device', sel.value);
+  const kinds = kindSel.value ? [kindSel.value] : ['device_online', 'device_offline', 'device_link_change'];
+  kinds.forEach(k => qs.append('kind', k));
+  qs.set('limit', '100');
+  try {
+    const r = await api('/api/admin/events?' + qs.toString());
+    const rows = r.events || [];
+    box.innerHTML = rows.length
+      ? rows.map(e => {
+          const p = connPayload(e);
+          const label = e.kind === 'device_online' ? 'подключение'
+            : e.kind === 'device_offline' ? 'отключение' : 'смена канала';
+          const color = e.kind === 'device_online' ? 'var(--ok)'
+            : e.kind === 'device_offline' ? 'var(--danger)' : 'var(--warn)';
+          const link = e.kind === 'device_link_change'
+            ? ((p.from || '—') + ' → ' + (p.to || '—')) : (p.link || '—');
+          return `<tr><td>${fmtTime(e.ts)}</td><td>${names[e.device_id] || ('#' + e.device_id)}</td>
+            <td style="color:${color}">${label}</td><td>${connGap(p.gap_s)}</td>
+            <td>${link}</td><td>${p.rssi == null ? '—' : p.rssi}</td>
+            <td class="hint">${p.endpoint || '—'}</td></tr>`;
+        }).join('')
+      : '<tr><td colspan="7" class="hint">Событий пока нет · порог 45 с</td></tr>';
+    $('connHint').textContent = rows.length
+      ? rows.length + ' событий · порог 45 с · обновлено ' + new Date().toLocaleTimeString('ru-RU')
+      : 'Событий пока нет · порог 45 с';
+  } catch (e) {
+    $('connHint').textContent = e.message;
+  }
+}
+$('connDevice').onchange = loadConnectivity;
+$('connKind').onchange = loadConnectivity;
+$('btnConnRefresh').onclick = loadAdmin;
 
 /* ---------- boot ---------- */
 async function boot() {
@@ -636,6 +706,8 @@ async function loadAdmin() {
     ).join('') || '<tr><td colspan="4" class="hint">Заявок нет</td></tr>';
 
     const all = await api('/api/admin/devices?status=all');
+    connDevices = all.devices || [];
+    await loadConnectivity();
     $('allDevBody').innerHTML = (all.devices || []).map(d =>
       `<tr><td>${d.login}<div class="hint">${d.serial || ''}</div></td>
        <td>${d.status}</td><td>${d.online ? 'на связи' : (d.last_seen ? fmtTime(d.last_seen) : '—')}</td></tr>`

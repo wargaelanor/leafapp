@@ -1447,6 +1447,23 @@
         <div id="adm-canlog"></div>
       </div>
       <div class="card">
+        <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">Связь платы с сервером</div></div>
+        <div style="font-size:12px;color:var(--muted);margin:6px 0">
+          События при паузе ≥45 с: подключение, отключение, смена канала.
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+          <select id="adm-conn-device" style="flex:1;min-width:140px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--text);font-size:12px"></select>
+          <select id="adm-conn-kind" style="padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--text);font-size:12px">
+            <option value="">Все события</option>
+            <option value="device_online">Подключения</option>
+            <option value="device_offline">Отключения</option>
+            <option value="device_link_change">Смена канала</option>
+          </select>
+          <button id="adm-conn-refresh" style="${admBtn('Обновить')}">Обновить</button>
+        </div>
+        <div id="adm-conn"></div>
+      </div>
+      <div class="card">
         <div class="card-header"><div class="accent-line"></div><div style="font-size:16px">Журнал</div></div>
         <div id="adm-events"></div>
       </div>`;
@@ -1485,6 +1502,56 @@
     if (s < 86400) return Math.round(s / 3600) + ' ч назад';
     return Math.round(s / 86400) + ' дн назад';
   };
+
+  const admConnPayload = (e) => {
+    try { return typeof e.payload === 'string' ? JSON.parse(e.payload || '{}') : (e.payload || {}); }
+    catch (_) { return {}; }
+  };
+  const admConnGap = (s) => !s ? '—'
+    : (s < 60 ? s + ' с' : Math.floor(s / 60) + ' мин ' + (s % 60) + ' с');
+
+  async function loadAdminConnectivity(devices) {
+    const sel = document.getElementById('adm-conn-device');
+    const kindSel = document.getElementById('adm-conn-kind');
+    const box = document.getElementById('adm-conn');
+    if (!sel || !kindSel || !box) return;
+    sel.onchange = () => loadAdminConnectivity(devices);
+    kindSel.onchange = () => loadAdminConnectivity(devices);
+    const refreshBtn = document.getElementById('adm-conn-refresh');
+    if (refreshBtn) refreshBtn.onclick = loadAdmin;
+    const keep = sel.value;
+    const names = {};
+    (devices || []).forEach(d => { names[d.id] = d.name || d.login || ('#' + d.id); });
+    sel.innerHTML = '<option value="">Все платы</option>' + (devices || []).map(d =>
+      `<option value="${d.id}">${d.name || d.login || ('#' + d.id)}</option>`).join('');
+    sel.value = keep && [...sel.options].some(o => o.value === keep)
+      ? keep : ((devices || [])[0] ? devices[0].id : '');
+    const qs = new URLSearchParams();
+    if (sel.value) qs.set('device', sel.value);
+    const kinds = kindSel.value ? [kindSel.value] : ['device_online', 'device_offline', 'device_link_change'];
+    kinds.forEach(k => qs.append('kind', k));
+    qs.set('limit', '100');
+    try {
+      const r = await api('/api/admin/events?' + qs.toString());
+      const rows = r.events || [];
+      box.innerHTML = rows.length
+        ? `<div class="tbl-wrap"><table class="tbl">
+            <thead><tr><th>Время</th><th>Плата</th><th>Событие</th><th>Пауза</th><th>Канал</th><th>RSSI</th><th>Запрос</th></tr></thead>
+            <tbody>${rows.map(e => {
+              const p = admConnPayload(e);
+              const label = e.kind === 'device_online' ? 'подключение'
+                : e.kind === 'device_offline' ? 'отключение' : 'смена канала';
+              const color = e.kind === 'device_online' ? 'var(--ok)'
+                : e.kind === 'device_offline' ? 'var(--danger)' : 'var(--warn)';
+              const link = e.kind === 'device_link_change'
+                ? ((p.from || '—') + ' → ' + (p.to || '—')) : (p.link || '—');
+              return `<tr><td>${admWhen(e.ts)}</td><td>${names[e.device_id] || ('#' + e.device_id)}</td>
+                <td style="color:${color}">${label}</td><td>${admConnGap(p.gap_s)}</td>
+                <td>${link}</td><td>${p.rssi == null ? '—' : p.rssi}</td><td>${p.endpoint || '—'}</td></tr>`;
+            }).join('')}</tbody></table></div>`
+        : '<div class="adm-empty">Событий пока нет · порог 45 с</div>';
+    } catch (e) { box.textContent = e.message; }
+  }
 
   async function loadAdmin() {
     try {
@@ -1678,6 +1745,8 @@
           loadAdmin();
         } catch (e) { alert(e.message); }
       });
+
+      await loadAdminConnectivity(all.devices || []);
 
       // ---- CAN-сессии (тестовый режим)
       try {
