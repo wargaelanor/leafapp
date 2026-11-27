@@ -677,6 +677,77 @@ def log_event(c: sqlite3.Connection, device_id, kind: str, payload: dict) -> Non
     )
 
 
+def note_device_contact(c: sqlite3.Connection, dev: sqlite3.Row, endpoint: str,
+                        data: dict | None = None) -> None:
+    """Log an online transition or link change before last_seen is refreshed.
+
+    The board does not keep a persistent connection: every successful device
+    API request is a "contact". We only log the first request after a gap at
+    least ONLINE_WINDOW_S long, so the log matches the /api/devices online flag
+    without producing an event for every ping.
+    """
+    if not dev:
+        return
+    data = data or {}
+    prev = int(dev["last_seen"] or 0)
+    gap = now() - prev if prev else 0
+    if prev and gap >= ONLINE_WINDOW_S:
+        log_event(c, dev["id"], "device_online", {
+            "endpoint": endpoint,
+            "gap_s": gap,
+            "prev_last_seen": prev,
+            "link": data.get("link") if data.get("link") is not None else dev["last_link"],
+            "rssi": data.get("rssi") if data.get("rssi") is not None else dev["last_rssi"],
+            "fw": data.get("fw") or dev["fw"],
+        })
+    link = data.get("link")
+    if link is not None and link != dev["last_link"]:
+        log_event(c, dev["id"], "device_link_change", {
+            "endpoint": endpoint,
+            "from": dev["last_link"],
+            "to": link,
+            "gap_s": gap,
+            "rssi": data.get("rssi") if data.get("rssi") is not None else dev["last_rssi"],
+        })
+
+
+def log_offline_transitions(c: sqlite3.Connection) -> None:
+    """Log one device_offline event per gap, using the same 45 s threshold."""
+    rows = c.execute(
+        "SELECT id,last_seen,last_link,last_rssi,fw FROM devices "
+        "WHERE status='active' AND last_seen>0"
+    ).fetchall()
+    for r in rows:
+        gap = now() - (r["last_seen"] or 0)
+        if gap < ONLINE_WINDOW_S:
+            continue
+        last = c.execute(
+            "SELECT kind FROM events WHERE device_id=? "
+            "AND kind IN ('device_online','device_offline') ORDER BY id DESC LIMIT 1",
+            (r["id"],),
+        ).fetchone()
+        if last and last["kind"] == "device_offline":
+            continue
+        log_event(c, r["id"], "device_offline", {
+            "last_seen": r["last_seen"],
+            "gap_s": gap,
+            "threshold_s": ONLINE_WINDOW_S,
+            "link": r["last_link"],
+            "rssi": r["last_rssi"],
+            "fw": r["fw"],
+        })
+
+
+def connectivity_log_loop():
+    while True:
+        try:
+            with db_lock, db() as c:
+                log_offline_transitions(c)
+        except Exception as exc:  # noqa: BLE001
+            print("connectivity log error", repr(exc), flush=True)
+        time.sleep(10)
+
+
 def row_to_device(r: sqlite3.Row) -> dict:
     return {
         "id": r["id"],
@@ -1364,6 +1435,7 @@ class Api(BaseHTTPRequestHandler):
             return self.err(401, "bad device token")
         data = self.body()
         with db_lock, db() as c:
+            note_device_contact(c, dev, "heartbeat", data)
             c.execute(
                 "UPDATE devices SET last_seen=?, last_link=?, last_rssi=?, bus_age_s=? WHERE id=?",
                 (now(), data.get("link"), data.get("rssi"), data.get("bus_age_s"), dev["id"]),
@@ -1378,6 +1450,8 @@ class Api(BaseHTTPRequestHandler):
         d = self.body()
         fw = (d.get("fw") or "").strip()[:64]
         with db_lock, db() as c:
+            note_device_contact(c, dev, "ping", {"link": d.get("link"),
+                                                  "rssi": d.get("rssi"), "fw": fw or None})
             c.execute(
                 "UPDATE devices SET last_seen=?, last_link=COALESCE(?, last_link),"
                 " last_rssi=COALESCE(?, last_rssi), fw=COALESCE(?, fw)"
@@ -1504,6 +1578,7 @@ class Api(BaseHTTPRequestHandler):
         fw = data.pop("fw", None)
 
         with db_lock, db() as c:
+            note_device_contact(c, dev, "sync", {"link": link, "rssi": rssi, "fw": fw})
             c.execute(
                 "UPDATE devices SET state_json=?, state_ts=?, last_seen=?, last_link=?, last_rssi=?,"
                 " bus_age_s=?, fw=COALESCE(?, fw) WHERE id=?",
@@ -1576,6 +1651,7 @@ class Api(BaseHTTPRequestHandler):
         if not now() - 365 * 86400 <= ts <= now() + 300:
             return self.err(400, "bad timestamp")
         with db_lock, db() as c:
+            note_device_contact(c, dev, "state")
             c.execute(
                 "UPDATE devices SET state_json=?, state_ts=?, last_seen=?, bus_age_s=? WHERE id=?",
                 (json.dumps(data, ensure_ascii=False), ts, now(), data.get("bus_age_s"), dev["id"]),
@@ -1738,6 +1814,10 @@ class Api(BaseHTTPRequestHandler):
         deadline = time.time() + wait
         while True:
             with db_lock, db() as c:
+                # Long polling refreshes last_seen every second; re-read the row
+                # so a single reconnect cannot be logged many times.
+                current = c.execute("SELECT * FROM devices WHERE id=?", (dev["id"],)).fetchone()
+                note_device_contact(c, current, "cmd_poll")
                 c.execute("UPDATE devices SET last_seen=? WHERE id=?", (now(), dev["id"]))
                 r = c.execute(
                     "SELECT * FROM commands WHERE device_id=? AND status='queued' ORDER BY id LIMIT 1",
@@ -2944,8 +3024,27 @@ class Api(BaseHTTPRequestHandler):
             return self.json(200, {"ok": True})
 
         if path == "/api/admin/events" and method == "GET":
+            q = parse_qs(urlparse(self.path).query)
+            where, args = [], []
+            did = (q.get("device") or [None])[0]
+            if did and did.isdigit():
+                where.append("device_id=?")
+                args.append(int(did))
+            kinds = [k for k in q.get("kind", []) if k]
+            if kinds:
+                where.append("kind IN (%s)" % ",".join("?" for _ in kinds))
+                args.extend(kinds)
+            try:
+                limit = max(1, min(int((q.get("limit") or ["200"])[0]), 1000))
+            except (TypeError, ValueError):
+                limit = 200
+            sql = "SELECT * FROM events"
+            if where:
+                sql += " WHERE " + " AND ".join(where)
+            sql += " ORDER BY id DESC LIMIT ?"
+            args.append(limit)
             with db_lock, db() as c:
-                rows = c.execute("SELECT * FROM events ORDER BY id DESC LIMIT 200").fetchall()
+                rows = c.execute(sql, args).fetchall()
             return self.json(200, {"events": [dict(r) for r in rows]})
 
         if path == "/api/admin/commands" and method == "GET":
@@ -3373,6 +3472,7 @@ def fill_session_sheet(sh, s, dname, dev, sample_fn):
 def main():
     init_db()
     threading.Thread(target=scheduler_loop, daemon=True).start()
+    threading.Thread(target=connectivity_log_loop, daemon=True).start()
     threading.Thread(target=samples_cleanup, daemon=True).start()
     threading.Thread(target=can_logs_cleanup, daemon=True).start()
     threading.Thread(target=accounts_cleanup_loop, daemon=True).start()

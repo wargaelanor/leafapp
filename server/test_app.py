@@ -128,6 +128,65 @@ class ApiContractTests(unittest.TestCase):
                                 (dev,)).fetchone()
         self.assertEqual(expired["status"], "expired")
 
+    def test_connectivity_logging(self):
+        t = app.now()
+        with app.db_lock, app.db() as c:
+            did = c.execute(
+                "INSERT INTO devices(serial,login,device_token,status,created_at,last_seen,"
+                "last_link,last_rssi,fw) VALUES(?,?,?,?,?,?,?,?,?)",
+                ("connectivity-board", "connectivity-board", "connectivity-token", "active",
+                 t, t - 120, "wifi", -46, "FR-test"),
+            ).lastrowid
+            dev = c.execute("SELECT * FROM devices WHERE id=?", (did,)).fetchone()
+            app.note_device_contact(c, dev, "ping", {"link": "wifi", "rssi": -46, "fw": "FR-test"})
+            online = c.execute(
+                "SELECT payload FROM events WHERE device_id=? AND kind='device_online'", (did,)
+            ).fetchall()
+            self.assertEqual(len(online), 1)
+            payload = json.loads(online[0]["payload"])
+            self.assertGreaterEqual(payload["gap_s"], app.ONLINE_WINDOW_S)
+            self.assertEqual(payload["endpoint"], "ping")
+
+            c.execute("UPDATE devices SET last_seen=?, last_link=?, last_rssi=? WHERE id=?",
+                      (t - 120, "wifi", -46, did))
+            app.log_offline_transitions(c)
+            off = c.execute(
+                "SELECT payload FROM events WHERE device_id=? AND kind='device_offline'", (did,)
+            ).fetchall()
+            self.assertEqual(len(off), 1)
+            self.assertGreaterEqual(json.loads(off[0]["payload"])["gap_s"], app.ONLINE_WINDOW_S)
+            app.log_offline_transitions(c)
+            count = c.execute(
+                "SELECT COUNT(*) FROM events WHERE device_id=? AND kind='device_offline'", (did,)
+            ).fetchone()[0]
+            self.assertEqual(count, 1)
+
+            uid = c.execute(
+                "INSERT INTO users(username,pass_hash,role,created_at) VALUES(?,?,?,?)",
+                ("connectivity-admin", app.hash_password("test-password"), "admin", t),
+            ).lastrowid
+            c.execute("INSERT INTO sessions(token,user_id,created_at,expires_at) VALUES(?,?,?,?)",
+                      ("connectivity-cookie", uid, t, t + 600))
+            c.execute("UPDATE devices SET last_seen=? WHERE id=?", (t - 120, did))
+
+        status, _, _ = self.request(
+            "POST", "/api/device/ping", {"fw": "FR-test", "link": "wifi", "rssi": -46},
+            {"Authorization": "Bearer connectivity-token"})
+        self.assertEqual(status, 200)
+        with app.db_lock, app.db() as c:
+            count = c.execute(
+                "SELECT COUNT(*) FROM events WHERE device_id=? AND kind='device_online'", (did,)
+            ).fetchone()[0]
+        self.assertEqual(count, 2)
+
+        admin = {"Cookie": "leaf_session=connectivity-cookie"}
+        status, result, _ = self.request(
+            "GET", f"/api/admin/events?device={did}&kind=device_online&limit=50", headers=admin)
+        self.assertEqual(status, 200)
+        self.assertTrue(result["events"])
+        self.assertTrue(all(e["kind"] == "device_online" and e["device_id"] == did
+                            for e in result["events"]))
+
     def test_interface_without_design_switch(self):
         conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port)
         conn.request("GET", "/classic")
